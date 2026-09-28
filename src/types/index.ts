@@ -16,6 +16,7 @@ export interface MusicianProfile extends UserBase {
   bio?: string;
   estilosMusicais: string[];
   avaliacaoMedia: number;
+  totalAvaliacoes: number;
 }
 
 export interface ContractorProfile extends UserBase {
@@ -39,11 +40,31 @@ export interface Event {
   estiloMusical: string;
   descricao?: string;
   imagemUrl: string;
-  status: "ABERTO" | "CONTRATADO" | "CONCLUIDO";
-  candidatosIds: string[];
+  status: "ABERTO" | "CONTRATADO" | "CANCELADO" | "CONCLUIDO";
   musicoContratadoId?: string;
   confirmacaoMusico: boolean;
   confirmacaoContratante: boolean;
+  candidatos?: EventCandidate[];
+}
+
+export type CandidateStatus = "PENDENTE" | "APROVADO" | "RECUSADO";
+
+export interface EventCandidate {
+  id: string;
+  eventId: string;
+  musicianId: string;
+  status: CandidateStatus;
+  createdAt: string;
+}
+
+export interface Review {
+  id: string;
+  eventId: string;
+  authorId: string;
+  reviewedId: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
 }
 
 export interface BlockedDocument {

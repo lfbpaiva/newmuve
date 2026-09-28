@@ -1,0 +1,70 @@
+2. CORREÇÕES DE AUTENTICAÇÃO E CADASTRO
+Sanitização Universal de E-mail:
+
+Aplique obrigatoriamente .trim().toLowerCase() em todos os campos de e-mail (login e cadastro) antes de qualquer consulta ou inserção no banco de dados.
+
+Trava de Duplicidade de E-mail:
+
+Antes de realizar um novo cadastro, consulte a tabela unificada User. Se o e-mail já existir, retorne o erro: "Este e-mail já está vinculado a uma conta." e bloqueie a submissão.
+
+Correção do Bug de Login:
+
+O endpoint de autenticação deve consultar o e-mail diretamente na tabela User, autenticar o hash e carregar o perfil correspondente (MusicianProfile ou ContractorProfile).
+
+Logoff Seguro:
+
+Ao clicar em "Sair", limpe integralmente o estado global da aplicação e resete os inputs do formulário de login (o e-mail só deve ser mantido se a opção "Lembrar de mim" estiver ativada).
+
+3. COMPONENTE GENÉRICO DE LOCALIZAÇÃO (LocationSelector)
+Reatividade e Reutilização:
+
+Crie um componente genérico reutilizável para o cadastro de Músico, Contratante, Edição de Perfil e Criar Evento.
+
+Integração Dinâmica com IBGE:
+
+O seletor de Cidades deve consumir diretamente a API do IBGE (/api/v1/localidades/estados/{UF}/municipios).
+
+Ao alterar o Estado (UF), a cidade selecionada deve ser resetada imediatamente e a lista re-populada com as cidades correspondentes àquele Estado especificamente (corrigir a falha onde a seleção da UF PR exibe cidades da PB e garanta que Cascavel - PR esteja disponível em todas as telas).
+
+4. CRIAÇÃO, EDIÇÃO E EXCLUSÃO DE EVENTOS
+Campos Obrigatoriamente Inclusos no Formulário:
+
+Título do evento, Tipo de evento, Data, Horário de início (usando componente TimePicker HH:mm), Duração estimada (usando TimePicker HH:mm), UF, Cidade, Estilo musical procurado (dropdown utilizando a mesma lista de gêneros do perfil do Músico), Cachê oferecido, Foto ilustrativa obrigatória (upload enviando a imagem ao bucket event-banners do Supabase e salvando a URL em imagemUrl), e Descrição.
+
+Persistência de Dados (Fix no Banco):
+
+Garanta que o payload da requisição POST /events realize o upload da foto, vincule o contractorId do usuário logado e execute a inserção no banco PostgreSQL utilizando o Prisma. Adicione tratamento de erros com try/catch visível no frontend.
+
+Validação de Data/Hora (Impedir Eventos no Passado):
+
+Se a data selecionada for a data atual, o campo Horário de início DEVE ser superior ao horário atual. Exiba o erro: "O horário de início não pode ser inferior ao horário atual."
+
+Regras de Edição e Exclusão do Evento:
+
+Se status == ABERTO e musicoContratadoId == null: O Contratante pode editar todas as informações do evento e possui a opção de Excluir o evento.
+
+Se musicoContratadoId != null (Músico Aceito): Bloqueie completamente os botões de editar e excluir o evento, exibindo a tag: "Evento com músico contratado. Não é mais possível alterar os dados ou excluir esta oportunidade."
+
+5. ALGORITMO DE MATCH E FEED DO MÚSICO
+Um evento só deve aparecer no feed do Músico se atender simultaneamente às condições:
+
+Event.uf == MusicianProfile.uf
+
+LOWER(Event.cidade) == LOWER(MusicianProfile.cidade) (Tratamento insensitive de caixa/acentuação para bater com a cidade cadastrada).
+
+Event.estiloMusical estiver presente dentro do array MusicianProfile.estilosMusicais[].
+
+Event.status == 'ABERTO'.
+
+6. EXCLUSÃO DEFINITIVA DE CONTA E BLOQUEIO DE CPF/CNPJ
+Tela de Configurações:
+
+Adicione um card de alerta destacado em vermelho com o texto: "ATENÇÃO: A EXCLUSÃO DA CONTA É PERMANENTE. SEU CPF/CNPJ SERÁ BLOQUEADO E VOCÊ NÃO PODERÁ VOLTAR A SE CADASTRAR NA PLATAFORMA."
+
+Exija a confirmação digitando o e-mail e a senha atual.
+
+Execução no Banco de Dados:
+
+Ao confirmar, exclua a conta do banco e insira o registro do CPF ou CNPJ limpo na tabela BlockedDocument.
+
+No fluxo de cadastro, interrompa a criação de conta se o CPF ou CNPJ informado constar na tabela BlockedDocument com a mensagem: "Documento impossibilitado de criar nova conta na plataforma."

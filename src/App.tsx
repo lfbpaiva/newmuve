@@ -7,6 +7,7 @@ import {
   maskPhone,
   sanitizeEmail,
 } from "./utils/validators";
+import LocationSelector from "./components/LocationSelector";
 
 type Screen =
   | "login"
@@ -27,7 +28,14 @@ type Screen =
 type Role = "musician" | "contractor";
 
 const styles = ["MPB", "Pop", "Rock", "Sertanejo", "Jazz", "Pagode"];
-const states = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+
+function normalizeLocation(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+}
 
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
@@ -126,8 +134,6 @@ export default function App() {
   const [ratingComment, setRatingComment] = useState("");
   const [password, setPassword] = useState("");
   const [account, setAccount] = useState<{ email: string; password: string; role: Role; name: string; document: string; phone: string; uf: string; city: string; avatar: string; bio: string } | null>(null);
-  const [cities, setCities] = useState<string[]>([]);
-  const [eventCities, setEventCities] = useState<string[]>([]);
   const [seconds, setSeconds] = useState(900);
   const [toast, setToast] = useState("");
   const [recoverySent, setRecoverySent] = useState(false);
@@ -135,31 +141,6 @@ export default function App() {
   const [deleteConfirmation, setDeleteConfirmation] = useState({ email: "", password: "" });
   const [deleteError, setDeleteError] = useState("");
   const [blockedDocuments, setBlockedDocuments] = useState<string[]>([]);
-  const [profileCities, setProfileCities] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!signup.uf) return setCities([]);
-    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${signup.uf}/municipios?orderBy=nome`)
-      .then((response) => response.json())
-      .then((data: { nome: string }[]) => setCities(data.map((city) => city.nome)))
-      .catch(() => setSignupError("Não foi possível carregar as cidades do IBGE."));
-  }, [signup.uf]);
-
-  useEffect(() => {
-    if (!eventForm.uf) return setEventCities([]);
-    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${eventForm.uf}/municipios?orderBy=nome`)
-      .then((response) => response.json())
-      .then((data: { nome: string }[]) => setEventCities(data.map((city) => city.nome)))
-      .catch(() => setEventError("Não foi possível carregar as cidades do IBGE."));
-  }, [eventForm.uf]);
-
-  useEffect(() => {
-    if (!account?.uf) return setProfileCities([]);
-    fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${account.uf}/municipios?orderBy=nome`)
-      .then((response) => response.json())
-      .then((data: { nome: string }[]) => setProfileCities(data.map((city) => city.nome)))
-      .catch(() => setProfileCities([]));
-  }, [account?.uf]);
 
   useEffect(() => {
     if (screen !== "checkout" || seconds <= 0) return;
@@ -203,10 +184,17 @@ export default function App() {
   }
 
   function publishEvent() {
-    const minimumDate = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const minimumDate = now.toISOString().slice(0, 10);
     if (!eventForm.title.trim()) return setEventError("Informe o título do evento.");
     if (!eventForm.type || !eventForm.start || !eventForm.duration) return setEventError("Informe tipo, horário de início e duração do evento.");
     if (!eventForm.date || eventForm.date < minimumDate) return setEventError("Escolha a data de hoje ou uma data futura.");
+    if (eventForm.date === minimumDate) {
+      const [h, m] = eventForm.start.split(":").map(Number);
+      const startMinutes = h * 60 + m;
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      if (startMinutes <= nowMinutes) return setEventError("O horário de início não pode ser inferior ao horário atual.");
+    }
     if (!isValidCache(Number(eventForm.cache.replace(",", ".")))) return setEventError("O cachê mínimo é de R$ 100,00.");
     if (!eventForm.uf || !eventForm.city) return setEventError("Selecione o estado e a cidade do evento.");
     if (!eventForm.style) return setEventError("Selecione o estilo musical do evento.");
@@ -291,19 +279,33 @@ export default function App() {
         <button className={signupRole === "contractor" ? "selected" : ""} onClick={() => resetSignup("contractor")}><Icon name="calendar" size={26}/><b>Sou contratante</b><span>Quero contratar talentos</span></button>
       </div>
       <UploadField label="Foto de perfil obrigatória" preview={signup.avatar} onFile={(file) => { setSignup({ ...signup, avatar: URL.createObjectURL(file) }); setSignupError(""); }}/>
-      <div className="grid-2"><Field label={signupRole === "musician" ? "Nome completo" : "Nome fantasia"} placeholder="Como devemos chamar você?" value={signup.name} onChange={(v) => setSignup({ ...signup, name: v })}/><Field label="E-mail" type="email" placeholder="seunome@gmail.com" value={signup.email} onChange={(v) => { const clean = sanitizeEmail(v); setSignup({ ...signup, email: clean }); setSignupError(clean && !isValidGmail(clean) ? "O e-mail deve terminar em @gmail.com." : ""); }}/><PasswordField value={signup.password} onChange={(v) => { setSignup({ ...signup, password: v }); setSignupError(""); }}/><Field label={signupRole === "musician" ? "CPF" : "CNPJ"} placeholder={signupRole === "musician" ? "000.000.000-00" : "00.000.000/0000-00"} value={signup.document} onChange={(v) => { setSignup({ ...signup, document: signupRole === "musician" ? maskCPF(v) : maskCNPJ(v) }); setSignupError(""); }}/><Field label="Telefone" placeholder="(00) 00000-0000" value={signup.phone} onChange={(v) => { setSignup({ ...signup, phone: maskPhone(v) }); setSignupError(""); }}/><label className="field"><span>Estado (UF)</span><select value={signup.uf} onChange={(e) => { setSignup({ ...signup, uf: e.target.value, city: "" }); setSignupError(""); }}><option value="">Selecione</option>{states.map((uf) => <option key={uf}>{uf}</option>)}</select></label><label className="field"><span>Cidade</span><select value={signup.city} disabled={!signup.uf || !cities.length} onChange={(e) => { setSignup({ ...signup, city: e.target.value }); setSignupError(""); }}><option value="">{signup.uf ? "Selecione a cidade" : "Selecione o estado primeiro"}</option>{cities.map((city) => <option key={city}>{city}</option>)}</select></label></div>
+      <div className="grid-2"><Field label={signupRole === "musician" ? "Nome completo" : "Nome fantasia"} placeholder="Como devemos chamar você?" value={signup.name} onChange={(v) => setSignup({ ...signup, name: v })}/><Field label="E-mail" type="email" placeholder="seunome@gmail.com" value={signup.email} onChange={(v) => { const clean = sanitizeEmail(v); setSignup({ ...signup, email: clean }); setSignupError(clean && !isValidGmail(clean) ? "O e-mail deve terminar em @gmail.com." : ""); }}/><PasswordField value={signup.password} onChange={(v) => { setSignup({ ...signup, password: v }); setSignupError(""); }}/><Field label={signupRole === "musician" ? "CPF" : "CNPJ"} placeholder={signupRole === "musician" ? "000.000.000-00" : "00.000.000/0000-00"} value={signup.document} onChange={(v) => { setSignup({ ...signup, document: signupRole === "musician" ? maskCPF(v) : maskCNPJ(v) }); setSignupError(""); }}/><Field label="Telefone" placeholder="(00) 00000-0000" value={signup.phone} onChange={(v) => { setSignup({ ...signup, phone: maskPhone(v) }); setSignupError(""); }}/><LocationSelector uf={signup.uf} city={signup.city} onUfChange={(uf) => { setSignup({ ...signup, uf, city: "" }); setSignupError(""); }} onCityChange={(city) => { setSignup({ ...signup, city }); setSignupError(""); }} onError={setSignupError}/></div>
       {signupRole === "musician" && <><label className="field"><span>Bio</span><textarea value={signup.bio} onChange={(e) => setSignup({ ...signup, bio: e.target.value })} placeholder="Conte um pouco sobre sua trajetória musical..."/></label><div className="styles"><span>Estilos musicais</span><div>{styles.map((s) => <button key={s} className={selectedStyles.includes(s) ? "selected" : ""} onClick={() => { setSelectedStyles((old) => old.includes(s) ? old.filter((x) => x !== s) : [...old, s]); setSignupError(""); }}>{s}{selectedStyles.includes(s) && " ×"}</button>)}</div></div></>}
       {signupError && <p className="form-error">{signupError}</p>}
       <button className="primary wide" disabled={signupRole === "musician" && selectedStyles.length === 0} onClick={createAccount}>Criar minha conta</button>
     </div>
   </div>;
 
-  if (screen === "musician") return <AppShell role="musician" active="home" go={navigate}>
-    <header className="topbar"><div><span className="eyebrow">{account?.city}, {account?.uf} · {selectedStyles[0]}</span><h1>Olá, {account?.name}</h1></div>{account?.avatar && <button className="avatar image-avatar" onClick={() => setScreen("profile")}><img src={account.avatar} alt="Foto do perfil"/></button>}</header>
-    <section className="welcome"><div><span className="status-pill">Perfil ativo</span><h2>Encontre o palco<br/>que combina com você.</h2><p>As oportunidades são filtradas pela sua cidade e estilos cadastrados.</p></div></section>
-    <div className="section-title"><div><span className="eyebrow">Seu feed</span><h2>Próximos eventos</h2></div></div>
-    <div className="empty-state"><span><Icon name="music" size={34}/></span><h3>Nenhum evento disponível na sua região para o seu estilo no momento.</h3><p>Novos eventos compatíveis aparecerão aqui automaticamente.</p></div>
-  </AppShell>;
+  if (screen === "musician") {
+    const hasMatchingEvent = Boolean(
+      account &&
+      eventForm.title &&
+      !approved &&
+      eventForm.uf === account.uf &&
+      normalizeLocation(eventForm.city) === normalizeLocation(account.city) &&
+      selectedStyles.includes(eventForm.style),
+    );
+
+    return <AppShell role="musician" active="home" go={navigate}>
+      <header className="topbar"><div><span className="eyebrow">{account?.city}, {account?.uf} · {selectedStyles[0]}</span><h1>Olá, {account?.name}</h1></div>{account?.avatar && <button className="avatar image-avatar" onClick={() => setScreen("profile")}><img src={account.avatar} alt="Foto do perfil"/></button>}</header>
+      <section className="welcome"><div><span className="status-pill">Perfil ativo</span><h2>Encontre o palco<br/>que combina com você.</h2><p>As oportunidades são filtradas pela sua cidade e estilos cadastrados.</p></div></section>
+      <div className="section-title"><div><span className="eyebrow">Seu feed</span><h2>Próximos eventos</h2></div></div>
+      {hasMatchingEvent ? <div className="event-grid"><article className="event-card">
+        <div className="event-image"><img src={eventForm.image} alt=""/><span>{eventForm.type}</span></div>
+        <div className="event-body"><div className="tag-list"><span>{eventForm.style}</span></div><h3>{eventForm.title}</h3><p><Icon name="pin" size={15}/> {eventForm.city}, {eventForm.uf}</p><p><Icon name="calendar" size={15}/> {eventForm.date} às {eventForm.start}</p><div><span className="price"><small>Cachê</small>R$ {Number(eventForm.cache).toFixed(2).replace(".", ",")}</span><button className="primary" onClick={() => setScreen("opportunity")}>Ver oportunidade</button></div></div>
+      </article></div> : <div className="empty-state"><span><Icon name="music" size={34}/></span><h3>Nenhum evento disponível na sua região para o seu estilo no momento.</h3><p>Novos eventos compatíveis aparecerão aqui automaticamente.</p></div>}
+    </AppShell>;
+  }
 
   if (screen === "opportunity") return <Secondary title={eventForm.title} subtitle="Detalhes da oportunidade" onBack={() => setScreen("musician")}>
     <div className="opportunity-hero">{eventForm.image && <img src={eventForm.image} alt={eventForm.title}/>}<div><div className="tag-list"><span>{eventForm.style}</span></div><h2>{eventForm.title}</h2><p><Icon name="pin" size={17}/> {eventForm.city}, {eventForm.uf}</p><p><Icon name="calendar" size={17}/> {eventForm.date}</p></div></div>
@@ -322,7 +324,7 @@ export default function App() {
       <div className="form-section"><b>01</b><div><h3>Sobre o evento</h3><p>Informações principais da oportunidade.</p></div></div>
       <div className="grid-2"><div className="span-2"><Field label="Título do evento" placeholder="Ex: Noite acústica no terraço" value={eventForm.title} onChange={(v) => { setEventForm({ ...eventForm, title: v }); setEventError(""); }}/></div><label className="field"><span>Tipo de evento</span><select value={eventForm.type} onChange={(e) => setEventForm({ ...eventForm, type: e.target.value })}><option value="">Selecione</option><option>Bar e restaurante</option><option>Festa particular</option><option>Corporativo</option></select></label><Field label="Data" type="date" value={eventForm.date} onChange={(v) => { setEventForm({ ...eventForm, date: v }); setEventError(""); }} min={new Date().toISOString().slice(0, 10)}/><Field label="Horário de início" type="time" value={eventForm.start} onChange={(v) => setEventForm({ ...eventForm, start: v })}/><Field label="Duração estimada (HH:mm)" type="time" value={eventForm.duration} onChange={(v) => setEventForm({ ...eventForm, duration: v })}/></div>
       <div className="form-section"><b>02</b><div><h3>Local e cachê</h3><p>Onde será o show e qual o investimento.</p></div></div>
-      <div className="grid-2"><label className="field"><span>Estado (UF)</span><select value={eventForm.uf} onChange={(e) => { setEventForm({ ...eventForm, uf: e.target.value, city: "" }); setEventError(""); }}><option value="">Selecione</option>{states.map((uf) => <option key={uf}>{uf}</option>)}</select></label><label className="field"><span>Cidade</span><select value={eventForm.city} disabled={!eventForm.uf || !eventCities.length} onChange={(e) => { setEventForm({ ...eventForm, city: e.target.value }); setEventError(""); }}><option value="">Selecione</option>{eventCities.map((city) => <option key={city}>{city}</option>)}</select></label><label className="field"><span>Estilo musical</span><select value={eventForm.style} onChange={(e) => setEventForm({ ...eventForm, style: e.target.value })}><option value="">Selecione</option>{styles.map((style) => <option key={style}>{style}</option>)}</select></label><Field label="Cachê oferecido" type="number" placeholder="R$ 100,00 ou mais" value={eventForm.cache} onChange={(v) => { setEventForm({ ...eventForm, cache: v }); setEventError(""); }} min="100"/></div>
+      <div className="grid-2"><LocationSelector uf={eventForm.uf} city={eventForm.city} onUfChange={(uf) => { setEventForm({ ...eventForm, uf, city: "" }); setEventError(""); }} onCityChange={(city) => { setEventForm({ ...eventForm, city }); setEventError(""); }} onError={setEventError}/><label className="field"><span>Estilo musical</span><select value={eventForm.style} onChange={(e) => setEventForm({ ...eventForm, style: e.target.value })}><option value="">Selecione</option>{styles.map((style) => <option key={style}>{style}</option>)}</select></label><Field label="Cachê oferecido" type="number" placeholder="R$ 100,00 ou mais" value={eventForm.cache} onChange={(v) => { setEventForm({ ...eventForm, cache: v }); setEventError(""); }} min="100"/></div>
       <UploadField label="Foto ilustrativa obrigatória" preview={eventForm.image} onFile={(file) => { setEventForm({ ...eventForm, image: URL.createObjectURL(file) }); setEventError(""); }}/>
       <label className="field"><span>Descrição e observações</span><textarea value={eventForm.description} onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} placeholder="Conte um pouco sobre o evento, repertório esperado e estrutura disponível..."/></label>
       {eventError && <p className="form-error">{eventError}</p>}
@@ -330,11 +332,31 @@ export default function App() {
     </div>
   </Secondary>;
 
-  if (screen === "event") return <Secondary title={eventForm.title || "Meus eventos"} subtitle={eventForm.title ? `${eventForm.date} · ${eventForm.city}, ${eventForm.uf}` : "Gerencie seus eventos publicados"} onBack={() => setScreen("contractor")}>
-    {eventForm.title ? <><div className="event-summary"><div><span className="open">Inscrições abertas</span><h3>0 músicos se inscreveram</h3><p>Os candidatos aparecerão aqui quando se inscreverem.</p></div><div className="summary-meta"><span>Cachê oferecido<b>R$ {Number(eventForm.cache).toFixed(2).replace(".",",")}</b></span><span>Estilo<b>{eventForm.style}</b></span></div></div>
-    <div className="section-title"><div><span className="eyebrow">Candidatos</span><h2>Talentos interessados</h2></div><button className="filter">Melhor avaliação</button></div>
-    <div className="empty-state compact"><span><Icon name="user" size={30}/></span><h3>Nenhuma candidatura recebida</h3><p>A contagem será atualizada conforme as inscrições vinculadas ao evento.</p></div></> : <div className="empty-state"><span><Icon name="calendar" size={34}/></span><h3>Nenhum evento selecionado</h3><p>Crie um evento antes de gerenciar candidatos.</p><button className="primary" onClick={() => setScreen("create")}>Criar evento</button></div>}
-  </Secondary>;
+  if (screen === "event") {
+    const isContracted = approved;
+    return <Secondary title={eventForm.title || "Meus eventos"} subtitle={eventForm.title ? `${eventForm.date} · ${eventForm.city}, ${eventForm.uf}` : "Gerencie seus eventos publicados"} onBack={() => setScreen("contractor")}>
+      {eventForm.title ? <>
+        {isContracted && <div className="contracted-lock"><Icon name="check" size={16}/> Evento com músico contratado. Não é mais possível alterar os dados ou excluir esta oportunidade.</div>}
+        <div className="event-summary">
+          <div>
+            <span className={isContracted ? "contracted" : "open"}>{isContracted ? "Músico contratado" : "Inscrições abertas"}</span>
+            <h3>0 músicos se inscreveram</h3>
+            <p>Os candidatos aparecerão aqui quando se inscreverem.</p>
+          </div>
+          <div className="summary-meta">
+            <span>Cachê oferecido<b>R$ {Number(eventForm.cache).toFixed(2).replace(".",",")}</b></span>
+            <span>Estilo<b>{eventForm.style}</b></span>
+          </div>
+        </div>
+        <div className="event-actions">
+          <button className="secondary" disabled={isContracted} onClick={() => !isContracted && setScreen("create")}>Editar evento</button>
+          <button className="danger-btn" disabled={isContracted} onClick={() => { if (!isContracted) { setEventForm({ title: "", type: "", date: "", start: "", duration: "", cache: "", uf: "", city: "", style: "", description: "", image: "" }); setScreen("contractor"); } }}>Excluir evento</button>
+        </div>
+        <div className="section-title"><div><span className="eyebrow">Candidatos</span><h2>Talentos interessados</h2></div><button className="filter">Melhor avaliação</button></div>
+        <div className="empty-state compact"><span><Icon name="user" size={30}/></span><h3>Nenhuma candidatura recebida</h3><p>A contagem será atualizada conforme as inscrições vinculadas ao evento.</p></div>
+      </> : <div className="empty-state"><span><Icon name="calendar" size={34}/></span><h3>Nenhum evento selecionado</h3><p>Crie um evento antes de gerenciar candidatos.</p><button className="primary" onClick={() => setScreen("create")}>Criar evento</button></div>}
+    </Secondary>;
+  }
 
   if (screen === "profile") return <Secondary title="Meu perfil" subtitle="Dados da conta autenticada." onBack={() => setScreen(role === "contractor" ? "contractor" : "musician")}>
     <div className="profile-hero">{account?.avatar && <img src={account.avatar} alt={`Foto de ${account.name}`}/>}<div><span className="available">{role === "musician" ? "Perfil de músico" : "Perfil de contratante"}</span><h1>{account?.name}</h1><p>{account?.city}, {account?.uf}</p><div className="big-rating"><b>Novo na plataforma</b><span>0 avaliações</span></div></div></div>
@@ -359,7 +381,7 @@ export default function App() {
   </Secondary>;
 
   if (screen === "editProfile") return <Secondary title="Editar perfil" subtitle="Atualize os dados públicos da sua conta." onBack={() => setScreen("settings")}>
-    <div className="form-card"><UploadField label="Alterar foto do perfil" preview={account?.avatar ?? ""} onFile={(file) => account && setAccount({ ...account, avatar: URL.createObjectURL(file) })}/><div className="grid-2"><Field label={role === "musician" ? "Nome completo" : "Nome / Razão Social"} value={account?.name ?? ""} onChange={(name) => account && setAccount({ ...account, name })}/><Field label="Telefone" value={account?.phone ?? ""} onChange={(phone) => account && setAccount({ ...account, phone: maskPhone(phone) })}/><label className="field locked"><span>{role === "musician" ? "CPF" : "CNPJ"} (não editável)</span><input value={account?.document ?? ""} disabled readOnly/></label><label className="field"><span>Estado (UF)</span><select value={account?.uf ?? ""} onChange={(e) => account && setAccount({ ...account, uf: e.target.value, city: "" })}><option value="">Selecione</option>{states.map((uf) => <option key={uf}>{uf}</option>)}</select></label><label className="field"><span>Cidade</span><select value={account?.city ?? ""} disabled={!account?.uf || !profileCities.length} onChange={(e) => account && setAccount({ ...account, city: e.target.value })}><option value="">Selecione</option>{profileCities.map((city) => <option key={city}>{city}</option>)}</select></label></div>{role === "musician" && <><label className="field"><span>Bio</span><textarea value={account?.bio ?? ""} onChange={(e) => account && setAccount({ ...account, bio: e.target.value })}/></label><div className="styles"><span>Estilos musicais</span><div>{styles.map((style) => <button key={style} className={selectedStyles.includes(style) ? "selected" : ""} onClick={() => setSelectedStyles((current) => current.includes(style) ? current.filter((item) => item !== style) : [...current, style])}>{style}{selectedStyles.includes(style) && " ×"}</button>)}</div></div></>}<div className="form-actions"><button className="secondary" onClick={() => setScreen("settings")}>Cancelar</button><button className="primary" disabled={role === "musician" && selectedStyles.length === 0} onClick={() => setScreen("settings")}>Salvar alterações</button></div></div>
+    <div className="form-card"><UploadField label="Alterar foto do perfil" preview={account?.avatar ?? ""} onFile={(file) => account && setAccount({ ...account, avatar: URL.createObjectURL(file) })}/><div className="grid-2"><Field label={role === "musician" ? "Nome completo" : "Nome / Razão Social"} value={account?.name ?? ""} onChange={(name) => account && setAccount({ ...account, name })}/><Field label="Telefone" value={account?.phone ?? ""} onChange={(phone) => account && setAccount({ ...account, phone: maskPhone(phone) })}/><label className="field locked"><span>{role === "musician" ? "CPF" : "CNPJ"} (não editável)</span><input value={account?.document ?? ""} disabled readOnly/></label><LocationSelector uf={account?.uf ?? ""} city={account?.city ?? ""} onUfChange={(uf) => account && setAccount({ ...account, uf, city: "" })} onCityChange={(city) => account && setAccount({ ...account, city })}/></div>{role === "musician" && <><label className="field"><span>Bio</span><textarea value={account?.bio ?? ""} onChange={(e) => account && setAccount({ ...account, bio: e.target.value })}/></label><div className="styles"><span>Estilos musicais</span><div>{styles.map((style) => <button key={style} className={selectedStyles.includes(style) ? "selected" : ""} onClick={() => setSelectedStyles((current) => current.includes(style) ? current.filter((item) => item !== style) : [...current, style])}>{style}{selectedStyles.includes(style) && " ×"}</button>)}</div></div></>}<div className="form-actions"><button className="secondary" onClick={() => setScreen("settings")}>Cancelar</button><button className="primary" disabled={role === "musician" && selectedStyles.length === 0} onClick={() => setScreen("settings")}>Salvar alterações</button></div></div>
   </Secondary>;
 
   if (screen === "deleteAccount") return <Secondary title="Excluir conta" subtitle="Confirme sua identidade para continuar." onBack={() => setScreen("settings")}>
