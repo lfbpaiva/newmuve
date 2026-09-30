@@ -33,3 +33,5 @@ Thumbs.db
 /.figma/design-context/
 /.plugins/
 /.opencode-skills/
+
+supabase/.temp/
