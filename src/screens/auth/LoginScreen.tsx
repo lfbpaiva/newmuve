@@ -45,14 +45,13 @@ export default function LoginScreen({ onSignup, onRecover }: { onSignup: () => v
 
   return <div className="auth">
     <section className="auth-visual auth-art">
-      <Logo light size={84}/>
-      <div><span className="eyebrow light">Onde a música acontece</span><h1>Seu próximo palco<br/>começa aqui.</h1><p>Conectamos músicos incríveis a eventos inesquecíveis.</p></div>
-      <small>Talentos e oportunidades no mesmo ritmo.</small>
+      <Logo size={44}/>
+      <div><h1>Seu próximo<br/>palco <em>começa aqui.</em></h1><p>Shows da sua região, candidatura sem custo e cachê garantido antes de subir no palco.</p></div>
+      <small>Músicos × contratantes</small>
     </section>
     <section className="auth-form">
       <div className="mobile-logo"><Logo/></div>
       <div className="form-wrap">
-        <span className="eyebrow">Bem-vindo de volta</span>
         <h2>Entre na sua conta</h2>
         <p className="muted">Use o e-mail cadastrado para continuar.</p>
         <form onSubmit={login} noValidate>

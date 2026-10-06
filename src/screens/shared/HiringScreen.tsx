@@ -117,7 +117,6 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
       </>}
 
       {concluded && !avaliou && <div className="rating-form">
-        <span className="eyebrow">Avaliação liberada</span>
         <h3>Como foi a experiência?</h3>
         <div className="rating-picker" role="radiogroup" aria-label="Nota de 1 a 5">{[1, 2, 3, 4, 5].map((star) => <button key={star} role="radio" aria-checked={star === rating} aria-label={`${star} ${star === 1 ? "estrela" : "estrelas"}`} className={star <= rating ? "selected" : ""} onClick={() => setRating(star)}><Icon name="star" size={28}/></button>)}</div>
         <label className="field"><span>Comentário (opcional)</span><textarea value={comment} maxLength={1000} onChange={(e) => setComment(e.target.value)} placeholder={isContractor ? "Conte como foi trabalhar com este profissional..." : "Conte como foi tocar neste evento..."}/></label>

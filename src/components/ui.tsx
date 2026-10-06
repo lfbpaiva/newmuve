@@ -19,13 +19,15 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></>,
     eyeOff: <><path d="m3 3 18 18"/><path d="M10.5 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-2.1 2.8M6.2 6.2C3.5 8 2 12 2 12s3.5 6 10 6a10 10 0 0 0 3-.4"/></>,
     upload: <><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 15v5h16v-5"/></>,
+    external: <><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v6H4V5h6"/></>,
+    close: <path d="M6 6l12 12M18 6 6 18"/>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-/** Logomarca. "light": versão branca, para fundos coloridos. "size": altura em px. */
-export function Logo({ light = false, size = 26 }: { light?: boolean; size?: number }) {
-  return <img className={`logo ${light ? "logo-light" : ""}`} src="/logo.webp" alt="Muve" style={{ height: size }} draggable={false}/>;
+/** Logomarca em branco: o site inteiro é escuro. "size": altura em px. */
+export function Logo({ size = 26 }: { light?: boolean; size?: number }) {
+  return <img className="logo" src="/logo-branca.png" alt="Muve" style={{ height: size }} draggable={false}/>;
 }
 
 export function Back({ onClick }: { onClick: () => void }) {

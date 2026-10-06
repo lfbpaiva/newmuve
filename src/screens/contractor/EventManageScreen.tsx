@@ -71,7 +71,7 @@ export default function EventManageScreen({ eventId, onBack, onEdit, onCheckout,
     {paymentInProgress && <p className="notice">Há um pagamento em andamento para este evento. Conclua ou aguarde a cobrança expirar para editar.</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
 
-    <div className="section-title"><div><span className="eyebrow">Candidatos</span><h2>Talentos interessados</h2></div></div>
+    <div className="section-title"><h2>Candidatos</h2></div>
     {candidates.length === 0
       ? <div className="empty-state compact"><span><Icon name="user" size={30}/></span><h3>Nenhuma candidatura recebida</h3><p>Os músicos compatíveis com a cidade e o estilo do evento aparecerão aqui ao se inscreverem.</p></div>
       : <div className="candidates">{candidates.map((candidate) => <CandidateCard
@@ -96,7 +96,7 @@ function CandidateCard({ candidate, canApprove, approveLabel, onApprove }: { can
         <RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/>
       </div>
       {musician.bio && <p className="candidate-bio">{musician.bio}</p>}
-      {musician.portfolioUrl && <p className="candidate-bio"><a href={musician.portfolioUrl} target="_blank" rel="noreferrer">Ver trabalho do músico ↗</a></p>}
+      {musician.portfolioUrl && <p className="candidate-bio"><a href={musician.portfolioUrl} target="_blank" rel="noreferrer">Ver trabalho do músico <Icon name="external" size={14}/></a></p>}
       {showReviews && <CandidateReviews musicianId={musician.id}/>}
     </div>
     <div className="candidate-actions">

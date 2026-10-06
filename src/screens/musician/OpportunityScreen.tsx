@@ -46,7 +46,7 @@ export default function OpportunityScreen({ me, eventId, onBack, onHiring, onCom
   const hired = event.musicoContratadoId === me.id;
   const cancellable = hasCancellationNotice(new Date(event.inicio), new Date());
 
-  return <Secondary title={event.titulo} subtitle="Detalhes da oportunidade" onBack={onBack}>
+  return <Secondary title="Oportunidade" subtitle={`${event.tipoEvento} · ${event.cidade}, ${event.uf}`} onBack={onBack}>
     <div className="opportunity-hero">
       <img src={event.imagemUrl} alt={`Foto do evento ${event.titulo}`}/>
       <div>

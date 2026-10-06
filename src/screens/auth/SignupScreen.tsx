@@ -38,7 +38,6 @@ export default function SignupScreen({ onBack }: { onBack: () => void }) {
   if (sentTo) return <div className="secondary-page auth-secondary">
     <header><Back onClick={onBack}/><Logo/></header>
     <main className="secondary-main"><div className="recover-card">
-      <span className="logo-mark"><Icon name="check"/></span>
       <h2>Confirme seu e-mail</h2>
       <p>Enviamos um link de confirmação para <b>{sentTo}</b>. Abra a mensagem e clique no link para ativar sua conta.</p>
       <button className="primary wide" onClick={onBack}>Voltar para o login</button>

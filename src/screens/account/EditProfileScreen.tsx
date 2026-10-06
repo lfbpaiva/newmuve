@@ -3,7 +3,7 @@ import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, imageProblem, is
 import { useAuth } from "../../auth/AuthContext";
 import LocationSelector from "../../components/LocationSelector";
 import PixKeyFields from "../../components/PixKeyFields";
-import { Field, Secondary, UploadField } from "../../components/ui";
+import { Field, Icon, Secondary, UploadField } from "../../components/ui";
 import { updateProfile, type Me } from "../../services/account";
 import { errorMessage } from "../../services/api";
 import { maskDocumento, maskPhone } from "../../utils/validators";
@@ -82,7 +82,7 @@ export default function EditProfileScreen({ me, onDone, acao }: { me: Me; onDone
         <label className="field"><span>Bio</span><textarea value={form.bio} maxLength={1000} onChange={(e) => set({ bio: e.target.value })}/></label>
         <div className="styles"><span>Estilos musicais</span><div>{ESTILOS_MUSICAIS.map((estilo) => {
           const selected = estilos.includes(estilo);
-          return <button type="button" key={estilo} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => { setEstilos((old) => selected ? old.filter((x) => x !== estilo) : [...old, estilo]); setError(""); }}>{estilo}{selected && " ×"}</button>;
+          return <button type="button" key={estilo} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => { setEstilos((old) => selected ? old.filter((x) => x !== estilo) : [...old, estilo]); setError(""); }}>{selected && <Icon name="check" size={13}/>}{estilo}</button>;
         })}</div></div>
       </>}
       {error && <p className="form-error" role="alert">{error}</p>}

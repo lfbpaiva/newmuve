@@ -30,7 +30,6 @@ export default function RecoverScreen({ onBack }: { onBack: () => void }) {
   return <div className="secondary-page auth-secondary">
     <header><Back onClick={onBack}/><Logo/></header>
     <main className="secondary-main"><div className="recover-card">
-      <span className="logo-mark"><Icon name="user"/></span>
       <h2>Recupere seu acesso</h2>
       <p>Enviaremos as instruções de redefinição para o e-mail cadastrado.</p>
       {sent

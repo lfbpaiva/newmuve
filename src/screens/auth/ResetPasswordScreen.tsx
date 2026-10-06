@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { useAuth } from "../../auth/AuthContext";
-import { Icon, Logo, PasswordField } from "../../components/ui";
+import { Logo, PasswordField } from "../../components/ui";
 import { updatePassword } from "../../services/account";
 import { errorMessage } from "../../services/api";
 
@@ -31,7 +31,6 @@ export default function ResetPasswordScreen() {
   return <div className="secondary-page auth-secondary">
     <header><span/><Logo/></header>
     <main className="secondary-main"><form className="recover-card" onSubmit={submit} noValidate>
-      <span className="logo-mark"><Icon name="user"/></span>
       <h2>Defina uma nova senha</h2>
       <p>Escolha a senha que você usará para entrar na Muve a partir de agora.</p>
       <PasswordField label="Nova senha" value={password} onChange={(value) => { setPassword(value); setError(""); }}/>

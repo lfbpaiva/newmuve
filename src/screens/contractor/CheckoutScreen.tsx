@@ -102,9 +102,9 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
         </>}
       </section>
       <aside className="order">
-        <span className="eyebrow">Resumo da contratação</span>
+        <h3>Resumo</h3>
         {event.data ? <>
-          <h3>{event.data.titulo}</h3><hr/>
+          <p className="subtitle">{event.data.titulo}</p><hr/>
           <p><span>Data</span><b>{formatDateTime(event.data.inicio)}</b></p>
           <p><span>Local</span><b>{event.data.cidade}, {event.data.uf}</b></p>
           <p><span>Cachê do músico</span><b>{formatCurrency(checkout?.cache ?? event.data.cache)}</b></p>

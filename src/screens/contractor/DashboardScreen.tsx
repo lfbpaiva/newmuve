@@ -32,7 +32,7 @@ export default function DashboardScreen({ me, showAll, onCreate, onOpen, onCompl
 
   return <>
     <header className="topbar">
-      <div><span className="eyebrow">{showAll ? "Histórico" : "Visão geral"}</span><h1>{showAll ? "Meus eventos" : `Olá, ${me.nome}`}</h1></div>
+      <div><h1>{showAll ? "Meus eventos" : `Olá, ${me.nome}`}</h1><p className="meta">{showAll ? "Todos os eventos que você publicou" : "Visão geral dos seus shows"}</p></div>
       <button className="primary new-event" onClick={create} aria-label="Criar novo evento"><Icon name="plus"/> Criar novo evento</button>
     </header>
     {faltando.length > 0 && <p className="notice">Antes de publicar seu primeiro evento, complete o perfil: <b>{descreverFaltantes(faltando)}</b>. <button className="text-btn" onClick={onComplete}>Completar agora</button></p>}
@@ -43,7 +43,7 @@ export default function DashboardScreen({ me, showAll, onCreate, onOpen, onCompl
       <div><span>Shows realizados</span><b>{two(all.filter((event) => event.status === "CONCLUIDO").length)}</b><small>Confirmados pelas duas partes</small></div>
     </div>}
 
-    <div className="section-title"><div><span className="eyebrow">Gerencie seus shows</span><h2>{showAll ? "Todos os eventos" : "Eventos em andamento"}</h2></div></div>
+    <div className="section-title"><h2>{showAll ? "Todos os eventos" : "Eventos em andamento"}</h2></div>
 
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
     {!events.error && !events.data && <Loading/>}

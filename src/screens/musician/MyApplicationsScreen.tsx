@@ -16,7 +16,7 @@ export default function MyApplicationsScreen({ me, onOpen }: { me: Me; onOpen: (
   const applications = useAsync(`applications:${me.id}`, () => fetchMyApplications(me.id));
 
   return <>
-    <header className="topbar"><div><span className="eyebrow">Suas inscrições</span><h1>Meus eventos</h1></div></header>
+    <header className="topbar"><div><h1>Meus eventos</h1><p className="meta">Eventos em que você se inscreveu</p></div></header>
     {applications.error && <ErrorState message={applications.error} onRetry={applications.reload}/>}
     {!applications.error && !applications.data && <Loading/>}
     {applications.data?.length === 0 && <EmptyState icon="calendar" title="Você ainda não se inscreveu em eventos"><p>Encontre oportunidades no seu feed e inscreva-se sem custo.</p></EmptyState>}

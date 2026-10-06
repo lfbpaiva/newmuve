@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ESTILOS_EVENTO, FORMACOES, imageProblem, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import LocationSelector from "../../components/LocationSelector";
 import { ErrorState, Loading } from "../../components/states";
-import { Field, Secondary, UploadField } from "../../components/ui";
+import { Field, Icon, Secondary, UploadField } from "../../components/ui";
 import { useAsync } from "../../hooks/useAsync";
 import { errorMessage } from "../../services/api";
 import { createEvent, fetchEvent, fetchEventAddress, updateEvent, type EventItem } from "../../services/events";
@@ -105,7 +105,7 @@ function EventForm({ event, title, onBack, onSaved }: { event: EditableEvent | n
 
   return <Secondary title={title} subtitle="Preencha os detalhes para encontrar o músico ideal." onBack={onBack}>
     <div className="form-card">
-      <div className="form-section"><b>01</b><div><h3>Sobre o evento</h3><p>Informações principais da oportunidade.</p></div></div>
+      <div className="form-section"><h3>Sobre o evento</h3><p>Informações principais da oportunidade.</p></div>
       <div className="grid-2">
         <div className="span-2"><Field label="Título do evento" placeholder="Ex: Noite acústica no terraço" value={form.titulo} onChange={(titulo) => set({ titulo })}/></div>
         <label className="field"><span>Tipo de evento</span><select value={form.tipoEvento} onChange={(e) => set({ tipoEvento: e.target.value })}><option value="">Selecione</option>{TIPOS_EVENTO.map((tipo) => <option key={tipo}>{tipo}</option>)}</select></label>
@@ -113,13 +113,13 @@ function EventForm({ event, title, onBack, onSaved }: { event: EditableEvent | n
         <Field label="Horário de início" type="time" value={form.horario} onChange={(horario) => set({ horario })}/>
         <Field label="Duração estimada (HH:mm)" type="time" value={form.duracao} onChange={(duracao) => set({ duracao })}/>
       </div>
-      <div className="form-section"><b>02</b><div><h3>Local e cachê</h3><p>Onde será o show e qual o investimento.</p></div></div>
+      <div className="form-section"><h3>Local e cachê</h3><p>Onde será o show e qual o investimento.</p></div>
       <div className="grid-2">
         <LocationSelector uf={form.uf} city={form.cidade} onUfChange={(uf) => set({ uf, cidade: "" })} onCityChange={(cidade) => set({ cidade })} onError={setError}/>
         <div className="span-2"><Field label="Endereço do evento" placeholder="Rua, número, bairro e ponto de referência" value={form.endereco} onChange={(endereco) => set({ endereco })}/><small className="muted">Visível apenas para o músico contratado.</small></div>
         <div className="styles span-2"><span>Estilos musicais</span><small className="muted">Marque um ou mais; "Qualquer estilo" abre o evento para todos os músicos.</small><div>{ESTILOS_EVENTO.map((estilo) => {
           const selected = form.estilosMusicais.includes(estilo);
-          return <button type="button" key={estilo} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => set({ estilosMusicais: estilo === QUALQUER_ESTILO ? (selected ? [] : [QUALQUER_ESTILO]) : selected ? form.estilosMusicais.filter((x) => x !== estilo) : [...form.estilosMusicais.filter((x) => x !== QUALQUER_ESTILO), estilo] })}>{estilo}{selected && " ×"}</button>;
+          return <button type="button" key={estilo} aria-pressed={selected} className={selected ? "selected" : ""} onClick={() => set({ estilosMusicais: estilo === QUALQUER_ESTILO ? (selected ? [] : [QUALQUER_ESTILO]) : selected ? form.estilosMusicais.filter((x) => x !== estilo) : [...form.estilosMusicais.filter((x) => x !== QUALQUER_ESTILO), estilo] })}>{selected && <Icon name="check" size={13}/>}{estilo}</button>;
         })}</div></div>
         <label className="field"><span>Formação desejada</span><select value={form.formacao} onChange={(e) => set({ formacao: e.target.value })}>{FORMACOES.map((f) => <option key={f}>{f}</option>)}</select></label>
         <label className="check span-2 structure"><input type="checkbox" checked={form.somDisponivel} onChange={(e) => set({ somDisponivel: e.target.checked })}/> O local oferece equipamento de som (caixas, mesa e microfones)</label>
