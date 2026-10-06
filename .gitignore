@@ -42,3 +42,6 @@ supabase/.temp/
 # Skills instaladas localmente (npx skills add)
 .agents/
 skills-lock.json
+
+# Lockfile de outro gerenciador (web e backend usam pnpm; mobile usa npm de proposito)
+yarn.lock
