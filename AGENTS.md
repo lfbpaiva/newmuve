@@ -27,4 +27,4 @@ Antes de concluir uma mudança: `pnpm typecheck`, `pnpm lint`, `pnpm test` e `pn
 
 - Estilos em `src/index.css` (CSS próprio; Tailwind v4 está disponível via `@tailwindcss/vite`).
 - Componentes exportados como default; strings com aspas duplas.
-- `vite.config.ts` e `.figma/` vêm do scaffold do Figma Make: evite alterá-los.
+- `vite.config.ts` veio do scaffold do Figma Make, que não é mais usado; `.figma/` fica fora do versionamento.
