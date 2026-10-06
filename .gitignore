@@ -31,7 +31,7 @@ Thumbs.db
 .idea/
 
 # Caches do Figma e Ferramentas
-/.figma/design-context/
+/.figma/
 /.plugins/
 /.opencode-skills/
 
