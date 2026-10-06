@@ -1,6 +1,7 @@
 # Credenciais e Variáveis de Ambiente (CRÍTICO)
 .env*
 *.env
+!.env.example
 
 # Dependências
 node_modules/
@@ -35,3 +36,9 @@ Thumbs.db
 /.opencode-skills/
 
 supabase/.temp/
+# Configuração local do Claude Code
+.claude/
+
+# Skills instaladas localmente (npx skills add)
+.agents/
+skills-lock.json

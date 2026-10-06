@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Muve",
+    "slug": "muve",
+    "version": "1.0.0",
+    "scheme": "muve",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0d0e14",
+    "newArchEnabled": true,
+    "android": {
+      "package": "br.com.muve.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#8b6bff"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "br.com.muve.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "backgroundColor": "#0d0e14"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Muve usa suas fotos para a foto de perfil e a imagem do evento."
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "icon": "./assets/icon.png"
+  }
+}

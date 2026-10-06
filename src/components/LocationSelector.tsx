@@ -11,17 +11,13 @@ interface Props {
 }
 
 export default function LocationSelector({ uf, city, onUfChange, onCityChange, onError }: Props) {
-  const [cities, setCities] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState<{ uf: string; cities: string[] }>({ uf: "", cities: [] });
+  const loading = Boolean(uf) && loaded.uf !== uf;
+  const cities = loaded.uf === uf ? loaded.cities : [];
 
   useEffect(() => {
+    if (!uf) return;
     const controller = new AbortController();
-    setCities([]);
-    if (!uf) {
-      setLoading(false);
-      return () => controller.abort();
-    }
-    setLoading(true);
     fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`, {
       signal: controller.signal,
     })
@@ -29,17 +25,14 @@ export default function LocationSelector({ uf, city, onUfChange, onCityChange, o
         if (!response.ok) throw new Error("IBGE request failed");
         return response.json();
       })
-      .then((data: { nome: string }[]) => setCities(data.map((c) => c.nome)))
+      .then((data: { nome: string }[]) => setLoaded({ uf, cities: data.map((c) => c.nome) }))
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          onError?.("Não foi possível carregar as cidades do IBGE.");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setLoaded({ uf, cities: [] });
+        onError?.("Não foi possível carregar as cidades do IBGE.");
       });
     return () => controller.abort();
-  }, [uf]);
+  }, [uf, onError]);
 
   return <>
     <label className="field">
