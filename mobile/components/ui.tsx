@@ -38,10 +38,9 @@ export function Screen({ children, scroll = true, padded = true }: { children: R
 }
 
 /** Título de página em caixa alta, com uma linha branca acima: a assinatura editorial das telas. */
-export function Heading({ title, subtitle, size = "headline", kicker }: { title: string; subtitle?: string; size?: "display" | "headline"; kicker?: string }) {
+export function Heading({ title, subtitle, size = "headline" }: { title: string; subtitle?: string; size?: "display" | "headline" }) {
   return <View style={{ gap: space.sm }}>
     <View style={styles.rule}/>
-    {kicker ? <Text style={type.labelSmall}>{kicker}</Text> : null}
     <Text style={type[size]} accessibilityRole="header">{title}</Text>
     {subtitle ? <Text style={type.bodySmall}>{subtitle}</Text> : null}
   </View>;
@@ -184,15 +183,16 @@ export function Select({ label, value, options, placeholder = "Selecionar", disa
 }
 
 /** Chips de seleção múltipla (estilos musicais) ou única (raio do feed). */
-export function Chips({ options, selected, onToggle, labels }: { options: readonly string[]; selected: string[]; onToggle: (value: string) => void; labels?: (value: string) => string }) {
-  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-    {options.map((option) => {
+/** "scroll": uma única linha rolável, para filtros curtos como a distância do feed. */
+export function Chips({ options, selected, onToggle, labels, scroll }: { options: readonly string[]; selected: string[]; onToggle: (value: string) => void; labels?: (value: string) => string; scroll?: boolean }) {
+  const items = options.map((option) => {
       const on = selected.includes(option);
       return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => onToggle(option)} style={({ pressed }) => ({ minHeight: 38, borderRadius: radius.sm, paddingHorizontal: 14, justifyContent: "center", backgroundColor: on ? colors.ink : pressed ? colors.surface2 : "transparent", borderWidth: 1, borderColor: on ? colors.ink : colors.line })}>
         <Text style={[type.label, { color: on ? colors.bg : colors.ink2 }]}>{labels ? labels(option) : option}</Text>
       </Pressable>;
-    })}
-  </View>;
+  });
+  if (scroll) return <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -space.lg, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: space.lg }}>{items}</ScrollView>;
+  return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{items}</View>;
 }
 
 export function ListItem({ icon, title, subtitle, onPress, tone = "default", trailing = "arrow-forward" }: { icon: IconName; title: string; subtitle?: string; onPress: () => void; tone?: "default" | "danger"; trailing?: IconName | null }) {
@@ -248,7 +248,7 @@ export function Loading({ label = "Carregando...", cards = 2 }: { label?: string
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return <View style={styles.empty} accessibilityRole="alert">
-    <Text style={type.headline}>Sem conexão</Text>
+    <Text style={type.headline}>Algo deu errado</Text>
     <Text style={type.bodySmall}>{message}</Text>
     <Button title="Tentar novamente" variant="outlined" icon="refresh" onPress={onRetry} block={false}/>
   </View>;

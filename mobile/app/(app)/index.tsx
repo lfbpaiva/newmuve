@@ -22,7 +22,7 @@ function TopBar({ title, subtitle }: { title: string; subtitle: string }) {
   const router = useRouter();
   return <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.surface }}>
     <View style={[styles.between, { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm, alignItems: "flex-end" }]}>
-      <View style={{ flex: 1, gap: 4 }}><Text style={type.labelSmall} numberOfLines={1}>{subtitle}</Text><Text style={type.display} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{title}</Text></View>
+      <View style={{ flex: 1, gap: 6 }}><Text style={[type.display, { fontSize: 30, lineHeight: 30 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityRole="header">{title}</Text><Text style={type.labelSmall} numberOfLines={1}>{subtitle}</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel="Abrir meu perfil" onPress={() => router.push("/(app)/profile")} hitSlop={6}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={44}/></Pressable>
     </View>
   </SafeAreaView>;
@@ -56,7 +56,7 @@ function Feed() {
       {setupPending && <EmptyState title={"Monte\nseu feed"} action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
-      {!setupPending && <Chips options={RAIOS_FEED_KM.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
+      {!setupPending && <Chips scroll options={RAIOS_FEED_KM.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
       {!setupPending && feed.error && <ErrorState message={feed.error} onRetry={feed.reload}/>}
       {!setupPending && !feed.error && !feed.data && <Loading label="Buscando eventos..."/>}
       {!setupPending && feed.data?.length === 0 && <EmptyState icon="musical-notes-outline" title={radius === 0 ? "Nada na sua cidade por enquanto" : `Nada até ${radius} km por enquanto`} action={radius < 200 ? <Button title="Aumentar a distância" variant="tonal" block={false} onPress={() => changeRadius(String(RAIOS_FEED_KM[RAIOS_FEED_KM.indexOf(radius as 0) + 1] ?? 200))}/> : undefined}>
@@ -98,7 +98,7 @@ function Dashboard() {
         {events.data && active.length === 0 && <EmptyState icon="calendar-outline" title={all.length ? "Nenhum evento em andamento" : "Publique seu primeiro evento"} action={<Button title="Criar evento" icon="add" block={false} onPress={create}/>}>
           <Text style={[type.bodySmall, { textAlign: "center" }]}>Descreva o show, o cachê e o estilo. Músicos da região se candidatam e você escolhe quem aprovar.</Text>
         </EmptyState>}
-        {active.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} trailing={<><EventStatusPill status={event.status} encerrado={event.encerrado}/><Text style={type.bodySmall}>{event.totalCandidatos ?? 0} {event.totalCandidatos === 1 ? "candidato" : "candidatos"}</Text></>}/>)}
+        {active.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} detail={`${event.totalCandidatos ?? 0} ${event.totalCandidatos === 1 ? "candidato" : "candidatos"}`} trailing={<EventStatusPill status={event.status} encerrado={event.encerrado}/>}/>)}
       </Section>
     </Screen>
     {active.length > 0 && <Fab label="Novo evento" icon="add" onPress={create}/>}

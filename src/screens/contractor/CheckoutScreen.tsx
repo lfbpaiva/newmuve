@@ -4,6 +4,7 @@ import { Icon, Secondary } from "../../components/ui";
 import { useAsync } from "../../hooks/useAsync";
 import { errorMessage } from "../../services/api";
 import { fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../services/events";
+import { calcularCobranca } from "../../../shared/dominio.ts";
 import { formatCountdown, formatCurrency, formatDateTime } from "../../utils/format";
 
 const POLLING_INTERVAL_MS = 5000;
@@ -108,9 +109,9 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
           <p><span>Data</span><b>{formatDateTime(event.data.inicio)}</b></p>
           <p><span>Local</span><b>{event.data.cidade}, {event.data.uf}</b></p>
           <p><span>Cachê do músico</span><b>{formatCurrency(checkout?.cache ?? event.data.cache)}</b></p>
-          {checkout && <p><span>Taxa de serviço (10%)</span><b>{formatCurrency(checkout.comissao)}</b></p>}
+          <p><span>Taxa de serviço (10%)</span><b>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache).comissao)}</b></p>
           <hr/>
-          <p className="total"><span>Total</span><b>{formatCurrency(checkout?.valor ?? event.data.cache)}</b></p>
+          <p className="total"><span>Total</span><b>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache).total)}</b></p>
           <small className="muted">O cachê fica retido na plataforma e só é repassado ao músico depois que as duas partes confirmarem o show. A taxa de serviço cobre essa garantia: se o músico não comparecer, você recebe o valor integral de volta; se cancelar com mais de 24h de antecedência, também.</small>
         </> : <p className="muted">{event.error ?? "Carregando..."}</p>}
         {waiting && !expired && <span className="payment-wait" role="status"><Icon name="clock"/>Aguardando a confirmação do pagamento</span>}

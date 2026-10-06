@@ -2,10 +2,11 @@ import "../lib/client";
 import { Archivo_800ExtraBold, Archivo_900Black } from "@expo-google-fonts/archivo";
 import { Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold, useFonts } from "@expo-google-fonts/manrope";
 import * as Linking from "expo-linking";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
+import { Platform, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { supabase } from "../lib/client";
 import { colors } from "../lib/theme";
@@ -17,8 +18,22 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
   return <AuthProvider>
     <StatusBar style="light"/>
-    <AuthGate/>
+    <WebFrame><AuthGate/></WebFrame>
   </AuthProvider>;
+}
+
+/**
+ * No navegador, o app fica numa coluna com largura de celular, centralizada.
+ * Sem isso, em uma tela de computador as fotos e listas esticam até as bordas.
+ * No celular (iOS/Android) não muda nada.
+ */
+function WebFrame({ children }: { children: ReactNode }) {
+  if (Platform.OS !== "web") return children;
+  return <View style={{ flex: 1, alignItems: "center", backgroundColor: "#050506" }}>
+    <View style={{ flex: 1, width: "100%", maxWidth: 480, backgroundColor: colors.bg, borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.line, overflow: "hidden" }}>
+      {children}
+    </View>
+  </View>;
 }
 
 /** Abre a sessão a partir dos links de confirmação de e-mail e de redefinição de senha (muve://auth#access_token=...). */
@@ -38,20 +53,22 @@ function useAuthLinks() {
 }
 
 // Decide entre as telas públicas e as autenticadas; a sessão vem do AuthContext compartilhado com a web.
+// Stack.Protected garante que nenhuma tela interna seja montada sem sessão (nem por link direto).
 function AuthGate() {
   const { state, recoveringPassword } = useAuth();
-  const segments = useSegments();
   const router = useRouter();
   useAuthLinks();
+  const loading = state.status === "loading";
+  const signedIn = state.status === "signedIn" && !recoveringPassword;
 
   useEffect(() => {
-    if (state.status === "loading") return;
+    if (loading) return;
     SplashScreen.hideAsync().catch(() => {});
-    const inAuthGroup = segments[0] === "(auth)";
     if (recoveringPassword) router.replace("/(auth)/reset");
-    else if (state.status === "signedIn" && inAuthGroup) router.replace("/(app)");
-    else if (state.status === "signedOut" && !inAuthGroup) router.replace("/(auth)/login");
-  }, [state.status, recoveringPassword, segments, router]);
+  }, [loading, recoveringPassword, router]);
+
+  // Enquanto a sessão é lida do armazenamento, a splash continua visível.
+  if (loading) return null;
 
   return <Stack screenOptions={{
     headerStyle: { backgroundColor: colors.bg },
@@ -62,15 +79,19 @@ function AuthGate() {
     contentStyle: { backgroundColor: colors.bg },
     animation: "slide_from_right",
   }}>
-    <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
-    <Stack.Screen name="(app)" options={{ headerShown: false }}/>
-    <Stack.Screen name="event/new" options={{ title: "NOVO EVENTO" }}/>
-    <Stack.Screen name="event/[id]/index" options={{ title: "" }}/>
-    <Stack.Screen name="event/[id]/edit" options={{ title: "EDITAR EVENTO" }}/>
-    <Stack.Screen name="event/[id]/checkout" options={{ title: "PAGAMENTO" }}/>
-    <Stack.Screen name="event/[id]/hiring" options={{ title: "CONTRATAÇÃO" }}/>
-    <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
-    <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
-    <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>
+    <Stack.Protected guard={!signedIn}>
+      <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
+    </Stack.Protected>
+    <Stack.Protected guard={signedIn}>
+      <Stack.Screen name="(app)" options={{ headerShown: false }}/>
+      <Stack.Screen name="event/new" options={{ title: "NOVO EVENTO" }}/>
+      <Stack.Screen name="event/[id]/index" options={{ title: "" }}/>
+      <Stack.Screen name="event/[id]/edit" options={{ title: "EDITAR EVENTO" }}/>
+      <Stack.Screen name="event/[id]/checkout" options={{ title: "PAGAMENTO" }}/>
+      <Stack.Screen name="event/[id]/hiring" options={{ title: "CONTRATAÇÃO" }}/>
+      <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
+      <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
+      <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>
+    </Stack.Protected>
   </Stack>;
 }

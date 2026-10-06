@@ -25,12 +25,17 @@ export default function ProfileScreen() {
   ];
 
   return <Screen>
-    <View style={{ alignItems: "center", gap: space.sm, paddingTop: space.lg }}>
-      <Avatar uri={me.fotoPerfilUrl} name={me.nome} size={96}/>
-      <Text style={[type.headline, { textAlign: "center" }]}>{me.nome}</Text>
-      <Pill text={isMusician ? "Músico" : "Contratante"}/>
-      <RatingSummary media={me.avaliacaoMedia} total={me.totalAvaliacoes}/>
-      <Button title="Editar perfil" variant="tonal" icon="create-outline" block={false} onPress={() => router.push("/account/edit")}/>
+    <View style={{ gap: space.lg }}>
+      <View style={styles.rule}/>
+      <View style={[styles.row, { gap: space.lg }]}>
+        <Avatar uri={me.fotoPerfilUrl} name={me.nome} size={88}/>
+        <View style={{ flex: 1, gap: space.sm }}>
+          <Pill text={isMusician ? "Músico" : "Contratante"}/>
+          <Text style={type.headline} accessibilityRole="header">{me.nome}</Text>
+          <RatingSummary media={me.avaliacaoMedia} total={me.totalAvaliacoes}/>
+        </View>
+      </View>
+      <Button title="Editar perfil" variant="outlined" icon="create-outline" onPress={() => router.push("/account/edit")}/>
     </View>
     {isMusician && (me.bio || me.portfolioUrl) && <View style={[styles.card, { gap: space.md }]}>
       {me.bio ? <Text style={type.body}>{me.bio}</Text> : null}

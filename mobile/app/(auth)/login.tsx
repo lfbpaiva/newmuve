@@ -47,7 +47,6 @@ export default function LoginScreen() {
     <LinearGradient colors={["#17171c", colors.bg]} style={{ paddingTop: 64, paddingHorizontal: space.lg, paddingBottom: space.xl, gap: space.lg }}>
       <Image source={require("../../assets/logo-branca.png")} style={{ width: 112, height: 64, resizeMode: "contain" }} accessibilityLabel="Muve"/>
       <View style={{ gap: 4 }}>
-        <Text style={type.labelSmall}>Músicos × contratantes</Text>
         <Text style={[type.display, { fontSize: 46, lineHeight: 44 }]}>Seu próximo{"\n"}palco <Text style={{ color: colors.accent }}>começa aqui.</Text></Text>
       </View>
       <Text style={type.bodySmall}>Shows da sua região, candidatura sem custo e cachê garantido antes de subir no palco.</Text>

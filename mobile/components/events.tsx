@@ -63,7 +63,8 @@ export function EventCard({ event }: { event: EventItem }) {
 }
 
 /** Linha de lista (eventos do contratante e inscrições do músico): data grande à esquerda, linha fina abaixo. */
-export function EventRow({ event, trailing, onPress }: { event: EventItem; trailing: React.ReactNode; onPress: () => void }) {
+/** "detail": informação extra na linha de horário e cidade (ex.: número de candidatos). */
+export function EventRow({ event, trailing, detail, onPress }: { event: EventItem; trailing: React.ReactNode; detail?: string; onPress: () => void }) {
   const { day, month, time } = dateParts(event.inicio);
   return <Pressable accessibilityRole="button" onPress={onPress} android_ripple={{ color: colors.surface2 }} style={({ pressed }) => [styles.row, { gap: 14, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line, opacity: pressed ? 0.7 : 1 }]}>
     <View style={{ width: 56, alignItems: "center" }}>
@@ -72,8 +73,8 @@ export function EventRow({ event, trailing, onPress }: { event: EventItem; trail
     </View>
     <Image source={{ uri: event.imagemUrl }} style={{ width: 56, height: 56, borderRadius: radius.sm, backgroundColor: colors.surface2 }}/>
     <View style={{ flex: 1, gap: 4 }}>
-      <Text style={type.titleSmall} numberOfLines={1}>{event.titulo}</Text>
-      <Text style={type.bodySmall} numberOfLines={1}>{time} · {event.cidade}</Text>
+      <Text style={type.titleSmall} numberOfLines={2}>{event.titulo}</Text>
+      <Text style={type.bodySmall} numberOfLines={1}>{time} · {event.cidade}{detail ? ` · ${detail}` : ""}</Text>
       <View style={[styles.row, { marginTop: 2 }]}>{trailing}</View>
     </View>
     <Icon name="arrow-forward" size={18} color={colors.ink3}/>

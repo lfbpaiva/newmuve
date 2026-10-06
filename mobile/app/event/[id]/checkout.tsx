@@ -5,6 +5,7 @@ import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
 import { fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
 import { formatCountdown, formatCurrency, formatDateTime } from "../../../../shared/client/format.ts";
+import { calcularCobranca } from "../../../../shared/dominio.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { Alert, Button, ErrorState, Icon, Loading, Screen, Snackbar } from "../../../components/ui";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
@@ -80,8 +81,8 @@ export default function CheckoutScreen() {
           <Text style={type.bodySmall}>{formatDateTime(event.data.inicio)}</Text>
           <View style={[styles.divider, { marginVertical: 6 }]}/>
           <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(checkout?.cache ?? event.data.cache)}</Text></View>
-          {checkout && <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço (10%)</Text><Text style={type.body}>{formatCurrency(checkout.comissao)}</Text></View>}
-          <View style={styles.between}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? event.data.cache)}</Text></View>
+          <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço (10%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache).comissao)}</Text></View>
+          <View style={styles.between}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache).total)}</Text></View>
         </> : <Text style={type.bodySmall}>{event.error ?? "Carregando..."}</Text>}
       </View>
       <Alert tone="info">O cachê fica retido e só é repassado ao músico depois que vocês dois confirmarem o show. A taxa cobre essa garantia: se o músico não comparecer, ou se você cancelar com mais de 24h, recebe o valor integral de volta.</Alert>
