@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
-import { deleteAccountSchema, signupSchema, updateProfileSchemas } from "../domain/account.ts";
+import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { asaasWebhookSchema, checkoutSchema, eventSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
@@ -23,7 +23,7 @@ export interface AppDeps {
   asaasWebhookToken: string | undefined;
 }
 
-type Env = { Variables: { user: AuthUser } };
+type Env = { Variables: { user: AuthUser; signupInput: SignupInput } };
 
 const requisicaoInvalida = () => new AppError(400, "REQUISICAO_INVALIDA", "Requisição inválida.");
 
@@ -67,6 +67,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
       origin: (origin) => (allowedOrigins.includes(origin) ? origin : null),
       allowHeaders: ["Authorization", "Content-Type", "apikey", "x-client-info"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      exposeHeaders: ["Retry-After"],
       maxAge: 600,
     }),
   );
@@ -87,6 +88,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.onError((error, c) => {
     if (error instanceof AppError) {
+      if (error.retryAfter) c.header("Retry-After", error.retryAfter);
       return c.json({ error: { code: error.code, message: error.message } }, error.status);
     }
     if (error instanceof ZodError) {
@@ -105,8 +107,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
-  app.post("/auth/signup", sensitive, async (c) => {
+  app.post("/auth/signup", async (c, next) => {
     const input = signupSchema.parse(await readJson(c));
+    c.set("signupInput", input);
+    await next();
+  }, sensitive, async (c) => {
+    const input = c.get("signupInput");
     // Destino do link: o informado pelo cliente (site ou app), se autorizado; senão a origem da requisição.
     const origin = c.req.header("Origin");
     const redirectTo = redirectAllowed(input.redirectTo) ? input.redirectTo : redirectAllowed(origin) ? origin : undefined;
@@ -195,6 +201,11 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.json(payment && toCheckoutView(payment));
   });
 
+  app.delete("/events/:id/checkout", async (c) => {
+    await payments.cancelPendingCheckout(c.get("user"), c.req.param("id"));
+    return c.json({ situacao: "COBRANCA_CANCELADA" });
+  });
+
   // Comprovante da contratação: endereço, contatos, valores e situação do repasse.
   app.get("/events/:id/contratacao", async (c) => c.json(await events.getHiring(c.get("user"), c.req.param("id"))));
 
@@ -202,8 +213,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   // Garantia do contratante: músico não compareceu → estorno integral.
   app.post("/events/:id/nao-comparecimento", async (c) => {
-    await events.reportNoShow(c.get("user"), c.req.param("id"));
-    return c.body(null, 204);
+    return c.json(await events.reportNoShow(c.get("user"), c.req.param("id")));
   });
 
   app.post("/events/:id/confirmacao", async (c) => {

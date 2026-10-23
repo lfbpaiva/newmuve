@@ -6,6 +6,8 @@ export type EventStatus = "ABERTO" | "CONTRATADO" | "CANCELADO" | "CONCLUIDO";
 export type CandidateStatus = "PENDENTE" | "APROVADO" | "RECUSADO";
 export type PaymentStatus = "PENDENTE" | "PAGO" | "EXPIRADO" | "CANCELADO" | "ESTORNADO";
 export type PayoutStatus = "RETIDO" | "PROCESSANDO" | "REPASSADO" | "FALHOU";
+export type RefundStatus = "PROCESSANDO" | "NEGADO" | "CONFIRMADO";
+export type RefundAction = "REABRIR" | "CANCELAR" | "NAO_COMPARECIMENTO" | "NENHUMA";
 
 const isCentavos = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 
@@ -101,6 +103,8 @@ export interface PaymentRecord {
   valorCache: number;
   status: PaymentStatus;
   repasseStatus: PayoutStatus | null;
+  refundStatus: RefundStatus | null;
+  refundAction: RefundAction | null;
   pixCopiaCola: string | null;
   pixQrCode: string | null;
   expiraEm: Date;

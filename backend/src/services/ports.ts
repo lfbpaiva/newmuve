@@ -1,4 +1,4 @@
-import type { CandidateRecord, EventInput, EventRecord, PaymentRecord, PaymentStatus, PayoutStatus } from "../domain/event.ts";
+import type { CandidateRecord, EventInput, EventRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 
 // Portas de eventos, candidaturas e pagamentos. Os serviços dependem destas
 // interfaces; as implementações reais ficam em adapters/.
@@ -52,6 +52,11 @@ export interface PaymentStore {
     expiraEm: Date;
   }): Promise<PaymentRecord>;
   setPaymentStatus(id: string, status: PaymentStatus): Promise<void>;
+  /** Reserva um único estorno antes da chamada externa, inclusive entre processos. */
+  claimRefund(id: string, action: RefundAction): Promise<boolean>;
+  setRefundStatus(id: string, status: RefundStatus): Promise<void>;
+  /** Confirma pagamento, evento e candidaturas em uma transação após confirmação da Asaas. */
+  finalizeRefund(id: string): Promise<"CONFIRMADO" | "JA_PROCESSADO" | "REPASSE_CONFLITANTE">;
   /** Efetiva a contratação em uma única transação (função confirm_asaas_payment). */
   confirmPayment(asaasPaymentId: string): Promise<ConfirmPaymentResult>;
 
@@ -70,10 +75,10 @@ export interface PaymentStore {
 }
 
 export interface AsaasGateway {
-  createCustomer(customer: { name: string; cpfCnpj: string; email: string; mobilePhone: string; externalReference: string }): Promise<string>;
+  createCustomer(customer: { name: string; cpfCnpj: string; email: string; externalReference: string }): Promise<string>;
   createPixCharge(charge: { customer: string; value: number; dueDate: string; description: string; externalReference: string }): Promise<string>;
   getPixQrCode(paymentId: string): Promise<{ payload: string; encodedImage: string }>;
-  getPayment(paymentId: string): Promise<{ status: string; value: number } | null>;
+  getPayment(paymentId: string): Promise<{ status: string; value: number; refunds?: Array<{ status: string; value: number }> } | null>;
   cancelCharge(paymentId: string): Promise<void>;
   /** Estorno integral de uma cobrança Pix já recebida. */
   refundPayment(paymentId: string): Promise<void>;

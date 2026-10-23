@@ -1,7 +1,6 @@
-# Credenciais e Variáveis de Ambiente (CRÍTICO)
+# Arquivos de ambiente em qualquer diretório (incluindo exemplos)
 .env*
 *.env
-!.env.example
 
 # Dependências
 node_modules/

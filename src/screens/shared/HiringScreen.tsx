@@ -3,7 +3,7 @@ import { ErrorState, EventStatusPill, Loading } from "../../components/states";
 import { Icon, Secondary } from "../../components/ui";
 import { useAsync } from "../../hooks/useAsync";
 import { errorMessage } from "../../services/api";
-import { cancelHiring, confirmCompletion, fetchHiring, reportNoShow, reviewEvent } from "../../services/events";
+import { cancelHiring, confirmCompletion, fetchHiring, reportNoShow, reviewEvent, type CancellationResult } from "../../services/events";
 import { formatCurrency, formatDateTime, formatDuration } from "../../utils/format";
 import { maskPhone } from "../../utils/validators";
 
@@ -31,6 +31,7 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
   const [notice, setNotice] = useState("");
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
+  const [finished, setFinished] = useState("");
 
   async function run(action: () => Promise<unknown>, done?: (result: unknown) => string) {
     setBusy(true);
@@ -46,7 +47,30 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
     }
   }
 
+  async function runCancellation(action: () => Promise<CancellationResult>) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await action();
+      if (result.situacao === "ESTORNO_PROCESSANDO") {
+        setNotice("Estorno solicitado ao Asaas. A contratação permanece ativa até a confirmação da devolução.");
+        hiring.reload();
+      } else {
+        setFinished(result.situacao === "ESTORNADO"
+          ? "O Asaas confirmou o estorno. A contratação foi encerrada."
+          : "A contratação foi cancelada sem estorno, conforme a regra de prazo. O repasse ao músico será processado.");
+      }
+    } catch (e) {
+      setError(errorMessage(e));
+      hiring.reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const title = "Contratação";
+  if (finished) return <Secondary title={title} subtitle="" onBack={onBack}><div className="confirm-card hiring"><p className="notice success" role="status">{finished}</p><button className="secondary" onClick={onBack}>Voltar aos eventos</button></div></Secondary>;
   if (hiring.error) return <Secondary title={title} subtitle="" onBack={onBack}><ErrorState message={hiring.error} onRetry={hiring.reload}/></Secondary>;
   if (!hiring.data) return <Secondary title={title} subtitle="" onBack={onBack}><Loading/></Secondary>;
 
@@ -56,18 +80,16 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
   const started = new Date(evento.inicio) <= new Date();
   const concluded = evento.status === "CONCLUIDO";
   const active = evento.status === "CONTRATADO";
+  const refundUnresolved = pagamento?.refundStatus === "PROCESSANDO" || pagamento?.refundStatus === "NEGADO";
 
   function cancel() {
     const aviso = isContractor
       ? cancelamento.reembolso
-        ? "Cancelar a contratação? O valor pago será estornado integralmente."
+        ? "Cancelar a contratação e solicitar estorno integral? A devolução será confirmada pelo Asaas."
         : "Faltam menos de 24h para o evento. Ao cancelar agora, não há devolução: o cachê será repassado ao músico. Confirmar?"
-      : "Desistir deste show? O contratante será reembolsado e o evento voltará a receber candidatos.";
+      : "Desistir deste show e solicitar estorno integral? O evento voltará a receber candidatos após a confirmação da devolução.";
     if (!window.confirm(aviso)) return;
-    void run(
-      () => cancelHiring(evento.id),
-      (result) => ((result as { reembolsado: boolean }).reembolsado ? "Contratação cancelada. O valor foi estornado ao contratante." : "Contratação cancelada. O cachê será repassado ao músico."),
-    );
+    void runCancellation(() => cancelHiring(evento.id));
   }
 
   const parties = [
@@ -98,6 +120,8 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
             <p><span>Taxa de serviço</span><b>{formatCurrency(pagamento.comissao)}</b></p>
             <p><span>Total pago pelo contratante</span><b>{formatCurrency(pagamento.total)}</b></p>
             <p className="muted">{paymentLabels[pagamento.status]}{pagamento.repasseStatus ? ` · ${payoutLabels[pagamento.repasseStatus]}` : ""}</p>
+            {pagamento.refundStatus === "PROCESSANDO" && <p className="muted" role="status">Estorno em processamento no Asaas. A devolução ainda não foi confirmada.</p>}
+            {pagamento.refundStatus === "NEGADO" && <p className="form-error" role="alert">O estorno anterior não foi concluído. A contratação continua ativa; consulte o motivo no Asaas antes de tentar novamente.</p>}
           </> : <p className="muted">Sem pagamento registrado.</p>}
         </section>
       </div>
@@ -110,9 +134,11 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
           <h3>{party.title}</h3>
           {party.done && <p>Confirmado.</p>}
           {!party.done && !party.mine && <p>Aguardando a confirmação da outra parte.</p>}
-          {!party.done && party.mine && (started
-            ? <button className="primary" disabled={busy} onClick={() => run(() => confirmCompletion(evento.id))}>{busy ? "Confirmando..." : "Confirmar conclusão"}</button>
-            : <p>Disponível após o início do evento.</p>)}
+          {!party.done && party.mine && (refundUnresolved
+            ? <p>A confirmação fica suspensa até a resolução do estorno.</p>
+            : started
+              ? <button className="primary" disabled={busy} onClick={() => run(() => confirmCompletion(evento.id))}>{busy ? "Confirmando..." : "Confirmar conclusão"}</button>
+              : <p>Disponível após o início do evento.</p>)}
         </div>)}</div>
       </>}
 
@@ -125,17 +151,17 @@ export default function HiringScreen({ eventId, onBack }: { eventId: string; onB
       {concluded && avaliou && <p className="notice success" role="status">Avaliação enviada. Obrigado!</p>}
 
       {naoComparecimento.permitido && <div className="cancel-box">
-        <p className="muted">O músico não apareceu? Enquanto ele não confirmar o show, você pode registrar o não comparecimento e receber o valor integral de volta.</p>
+        <p className="muted">O músico não apareceu? Enquanto ele não confirmar o show, você pode registrar o não comparecimento e solicitar estorno integral.</p>
         <button className="danger-btn" disabled={busy} onClick={() => {
-          if (!window.confirm("Registrar que o músico não compareceu? O valor pago será estornado e a contratação, cancelada.")) return;
-          void run(() => reportNoShow(evento.id), () => "Não comparecimento registrado. O valor foi estornado.");
+          if (!window.confirm("Registrar que o músico não compareceu e solicitar estorno? A devolução será confirmada pelo Asaas.")) return;
+          void runCancellation(() => reportNoShow(evento.id));
         }}>Músico não compareceu</button>
       </div>}
 
       {cancelamento.permitido && <div className="cancel-box">
         <p className="muted">{isContractor
-          ? (cancelamento.reembolso ? "Cancelamento com estorno integral até 24h antes do evento." : "Faltam menos de 24h: ao cancelar, o cachê é repassado ao músico.")
-          : "Ao desistir, o contratante é reembolsado e o evento volta a receber candidatos."}</p>
+          ? (cancelamento.reembolso ? "Até 24h antes do evento, é possível solicitar estorno integral. A contratação termina quando o Asaas confirmar a devolução." : "Faltam menos de 24h: ao cancelar, o cachê é repassado ao músico.")
+          : "Ao desistir, o estorno é solicitado. Após a confirmação da devolução, o evento volta a receber candidatos."}</p>
         <button className="danger-btn" disabled={busy} onClick={cancel}>{isContractor ? "Cancelar contratação" : "Desistir do show"}</button>
       </div>}
 

@@ -110,7 +110,7 @@ export interface Hiring {
   };
   contratante: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
   musico: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
-  pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null } | null;
+  pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null } | null;
   avaliou: boolean;
   naoComparecimento: { permitido: boolean };
   cancelamento: { permitido: boolean; reembolso: boolean };
@@ -149,6 +149,7 @@ const toEvent = (row: Row): EventItem => ({
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
+const CANDIDATE_SELECT = `id, status, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, ${PUBLIC_PROFILE})`;
 
 const toPublicProfile = (row: Row, nameColumn: string): PublicProfile => ({
   id: row.user_id,
@@ -158,6 +159,17 @@ const toPublicProfile = (row: Row, nameColumn: string): PublicProfile => ({
   cidade: row.cidade,
   avaliacaoMedia: Number(row.avaliacao_media),
   totalAvaliacoes: row.total_avaliacoes,
+});
+
+const toCandidate = (row: Row): Candidate => ({
+  id: row.id,
+  status: row.status,
+  musician: {
+    ...toPublicProfile(row.musician, "nome_completo"),
+    bio: row.musician.bio,
+    estilosMusicais: row.musician.estilos_musicais ?? [],
+    portfolioUrl: row.musician.portfolio_url,
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -215,14 +227,22 @@ export async function fetchMyApplication(eventId: string, musicianId: string): P
 export async function fetchCandidates(eventId: string): Promise<Candidate[]> {
   const result = await supabase()
     .from("event_candidates")
-    .select(`id, status, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, ${PUBLIC_PROFILE})`)
+    .select(CANDIDATE_SELECT)
     .eq("event_id", eventId)
     .order("created_at");
-  return unwrap<Row[]>(result).map((row) => ({
-    id: row.id,
-    status: row.status,
-    musician: { ...toPublicProfile(row.musician, "nome_completo"), bio: row.musician.bio, estilosMusicais: row.musician.estilos_musicais, portfolioUrl: row.musician.portfolio_url },
-  }));
+  return unwrap<Row[]>(result).map(toCandidate);
+}
+
+/** Perfil público de uma candidatura específica; a RLS exige o dono do evento ou o próprio músico. */
+export async function fetchCandidateProfile(eventId: string, candidateId: string): Promise<Candidate | null> {
+  const { data, error } = await supabase()
+    .from("event_candidates")
+    .select(CANDIDATE_SELECT)
+    .eq("event_id", eventId)
+    .eq("id", candidateId)
+    .maybeSingle();
+  if (error) unwrap({ data: null, error });
+  return data?.musician ? toCandidate(data) : null;
 }
 
 export async function fetchReviewsOf(userId: string): Promise<Review[]> {
@@ -254,8 +274,10 @@ export const applyToEvent = (id: string) => apiRequest(`/events/${id}/candidatur
 export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candidatura`, { method: "DELETE" });
 
 export const fetchHiring = (id: string) => apiRequest<Hiring>(`/events/${id}/contratacao`);
-export const reportNoShow = (id: string) => apiRequest(`/events/${id}/nao-comparecimento`, { method: "POST" });
-export const cancelHiring = (id: string) => apiRequest<{ reembolsado: boolean }>(`/events/${id}/contratacao`, { method: "DELETE" });
+export type CancellationResult = { situacao: "COBRANCA_CANCELADA" | "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" };
+export const reportNoShow = (id: string) => apiRequest<CancellationResult>(`/events/${id}/nao-comparecimento`, { method: "POST" });
+export const cancelHiring = (id: string) => apiRequest<CancellationResult>(`/events/${id}/contratacao`, { method: "DELETE" });
+export const cancelPendingCheckout = (id: string) => apiRequest<CancellationResult>(`/events/${id}/checkout`, { method: "DELETE" });
 
 export const confirmCompletion = (id: string) =>
   apiRequest<{ status: EventStatus }>(`/events/${id}/confirmacao`, { method: "POST" });
@@ -276,7 +298,7 @@ export function startCheckout(eventId: string, candidateId: string): Promise<Che
   const key = `${eventId}:${candidateId}`;
   let request = checkoutsInFlight.get(key);
   if (!request) {
-    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId } }).finally(() =>
+    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId }, timeoutMs: 60_000 }).finally(() =>
       checkoutsInFlight.delete(key),
     );
     checkoutsInFlight.set(key, request);

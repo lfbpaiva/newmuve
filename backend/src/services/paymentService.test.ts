@@ -25,6 +25,39 @@ beforeEach(() => {
 const checkout = (now = NOW) => t.service.startCheckout(contratante, t.event.id, t.candidate.id, now);
 
 describe("checkout (aprovar candidato)", () => {
+  it("cancela cobrança pendente sem estorno e mantém evento e candidatura abertos", async () => {
+    const payment = await checkout();
+
+    await t.service.cancelPendingCheckout(contratante, t.event.id, NOW);
+
+    expect(t.world.asaasCalls.cancelCharge).toEqual([payment.asaasPaymentId]);
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)?.status).toBe("CANCELADO");
+    expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
+    expect(t.world.candidates.get(t.candidate.id)?.status).toBe("PENDENTE");
+    await expect(t.service.cancelPendingCheckout(outroContratante, t.event.id, NOW)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("não cancela cobrança que o Asaas já recebeu", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await expect(t.service.cancelPendingCheckout(contratante, t.event.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_JA_RECEBIDO" });
+    expect(t.world.events.get(t.event.id)?.status).toBe("CONTRATADO");
+    expect(t.world.asaasCalls.cancelCharge).toHaveLength(0);
+  });
+
+  it("pagamento tardio de cobrança já cancelada não contrata o músico", async () => {
+    const payment = await checkout();
+    await t.service.cancelPendingCheckout(contratante, t.event.id, NOW);
+    t.world.asaasCharges.set(payment.asaasPaymentId, { status: "RECEIVED", value: payment.valor });
+
+    await t.service.handleWebhook({ id: "evt_late", event: "PAYMENT_RECEIVED", payment: { id: payment.asaasPaymentId } });
+
+    expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
+    expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
+    expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
+  });
+
   it("cobra cachê + 10% de comissão, com validade de 15 minutos", async () => {
     const payment = await checkout();
 
@@ -43,6 +76,18 @@ describe("checkout (aprovar candidato)", () => {
     expect(second.id).toBe(first.id);
     expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
     expect(t.world.asaasCalls.createCustomer).toBe(1);
+  });
+
+  it("não envia telefone opcional que a Asaas pode recusar", async () => {
+    t.world.accounts.get(contratante.id)!.telefone = "45322210001";
+    const createCustomer = vi.spyOn(t.world.stores.asaas, "createCustomer");
+
+    const payment = await checkout();
+
+    expect(payment.status).toBe("PENDENTE");
+    expect(createCustomer).toHaveBeenCalledWith(expect.objectContaining({ name: "c1", externalReference: "c1" }));
+    expect(Object.prototype.hasOwnProperty.call(createCustomer.mock.calls[0]![0], "mobilePhone")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(createCustomer.mock.calls[0]![0], "phone")).toBe(false);
   });
 
   it("substitui a cobrança expirada, cancelando a antiga na Asaas", async () => {
@@ -197,9 +242,27 @@ describe("webhook da Asaas", () => {
     payAtAsaas(t.world, payment.asaasPaymentId);
     await t.service.handleWebhook(received(payment.asaasPaymentId));
 
+    t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
     await t.service.handleWebhook({ id: "evt_2", event: "PAYMENT_REFUNDED", payment: { id: payment.asaasPaymentId } });
 
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", repasseStatus: null });
+    expect(t.world.events.get(t.event.id)?.status).toBe("CANCELADO");
+  });
+
+  it("não aceita webhook de estorno antes da confirmação pela Asaas", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.handleWebhook(received(payment.asaasPaymentId));
+
+    const notification = { id: "evt_refund", event: "PAYMENT_REFUNDED", payment: { id: payment.asaasPaymentId } };
+    await t.service.handleWebhook(notification);
+    expect(t.world.payments.get(payment.id)?.status).toBe("PAGO");
+    expect(t.world.events.get(t.event.id)?.status).toBe("CONTRATADO");
+    expect(t.world.webhookEvents.has(notification.id)).toBe(false);
+
+    t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
+    await t.service.handleWebhook(notification);
+    expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
     expect(t.world.events.get(t.event.id)?.status).toBe("CANCELADO");
   });
 
@@ -212,6 +275,21 @@ describe("webhook da Asaas", () => {
 
     expect(t.world.payments.get(payment.id)?.status).toBe("EXPIRADO");
     expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
+  });
+
+  it("cobrança excluída deixa de estar pendente sem alterar o evento", async () => {
+    const payment = await checkout();
+    await t.service.handleWebhook({ id: "evt_deleted", event: "PAYMENT_DELETED", payment: { id: payment.asaasPaymentId } });
+    expect(t.world.payments.get(payment.id)?.status).toBe("CANCELADO");
+    expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
+  });
+
+  it("vencimento atrasado não sobrescreve pagamento confirmado", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.handleWebhook(received(payment.asaasPaymentId));
+    await t.world.stores.payments.setPaymentStatus(payment.id, "EXPIRADO");
+    expect(t.world.payments.get(payment.id)?.status).toBe("PAGO");
   });
 });
 
@@ -285,7 +363,7 @@ describe("estorno da contratação", () => {
     payAtAsaas(t.world, payment.asaasPaymentId);
     await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
 
-    await t.service.refundHiring(t.event.id);
+    await t.service.refundHiring(t.event.id, "CANCELAR");
 
     expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", repasseStatus: null });
@@ -297,7 +375,7 @@ describe("estorno da contratação", () => {
     await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
     await t.service.payout(t.event.id);
 
-    await expect(t.service.refundHiring(t.event.id)).rejects.toMatchObject({ code: "REPASSE_JA_REALIZADO" });
+    await expect(t.service.refundHiring(t.event.id, "CANCELAR")).rejects.toMatchObject({ code: "REPASSE_JA_REALIZADO" });
     expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
   });
 });

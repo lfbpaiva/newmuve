@@ -23,8 +23,8 @@ Requisitos: Node.js 22.18 ou superior e pnpm (`npm i -g pnpm`).
 pnpm install
 ```
 
-1. **Frontend:** copie `.env.example` para `.env.local` e preencha a URL e a chave pública do Supabase.
-2. **Backend:** copie `backend/.env.example` para `backend/.env` e preencha as chaves do Supabase e da Asaas.
+1. **Frontend:** configure `.env` na raiz com `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` e `VITE_API_URL`.
+2. **Backend:** configure `backend/.env` com as credenciais do Supabase e da Asaas. Mantenha `SUPABASE_SERVICE_ROLE_KEY` apenas neste arquivo.
 3. **Banco:** aplique as migrations no projeto Supabase (uma vez, e a cada nova migration):
 
 ```bash
@@ -50,7 +50,7 @@ O frontend abre em `http://localhost:8443` e a API em `http://localhost:3333/api
 O app usa o mesmo backend e o mesmo código de serviços da web. Para rodar no celular:
 
 1. Instale o **Expo Go** no celular (Play Store / App Store).
-2. Copie `mobile/.env.example` para `mobile/.env`. Em `EXPO_PUBLIC_API_URL`, use o IP da máquina que roda a API (no celular, `localhost` é o próprio celular), com o celular na mesma rede Wi-Fi.
+2. Configure `mobile/.env` com `EXPO_PUBLIC_SUPABASE_URL` e `EXPO_PUBLIC_SUPABASE_ANON_KEY`. Em `EXPO_PUBLIC_API_URL`, use o IP da máquina que roda a API (no celular, `localhost` é o próprio celular), com o celular na mesma rede Wi-Fi.
 3. Instale e inicie:
 
 ```bash
@@ -75,7 +75,7 @@ Os links de confirmação de e-mail e de redefinição de senha abrem o app pelo
 | `pnpm test:db` | Testes de banco (pgTAP) no projeto Supabase vinculado; não deixam dados |
 | `pnpm test:e2e` | Fluxo completo contra a API local e o Supabase real, com contas temporárias |
 
-Os avisos por e-mail (contratação confirmada, desistência, não comparecimento) usam as variáveis `SMTP_*` de `backend/.env.example`; sem elas, aparecem apenas no log do servidor.
+Os avisos por e-mail (contratação confirmada, desistência, não comparecimento) usam as variáveis `SMTP_*` de `backend/.env`; sem elas, aparecem apenas no log do servidor.
 
 ## Configuração externa
 
@@ -96,7 +96,7 @@ Estes itens não ficam no repositório e precisam ser feitos uma vez por ambient
 
 **Hospedagem do backend**
 
-- O webhook da Asaas precisa alcançar a API pela internet; em produção, hospede `backend/` em um serviço Node (Render, Railway etc.) com o comando `pnpm start:api` e as variáveis de `backend/.env.example`.
+- O webhook da Asaas precisa alcançar a API pela internet; em produção, hospede `backend/` em um serviço Node (Render, Railway etc.) com o comando `pnpm start:api` e as variáveis de `backend/.env`.
 - Inclua a URL do frontend publicado em `ALLOWED_ORIGINS` e aponte `VITE_API_URL` para a URL da API.
 
 ## Estrutura

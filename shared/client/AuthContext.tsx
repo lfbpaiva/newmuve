@@ -6,6 +6,7 @@ import { supabase } from "./config.ts";
 type AuthState =
   | { status: "loading" }
   | { status: "signedOut"; notice?: string }
+  | { status: "error"; notice: string }
   | { status: "signedIn"; me: Me };
 
 interface AuthContextValue {
@@ -14,6 +15,7 @@ interface AuthContextValue {
   recoveringPassword: boolean;
   finishPasswordRecovery(): void;
   refreshMe(): Promise<void>;
+  retrySession(): Promise<void>;
   signOut(): Promise<void>;
 }
 
@@ -49,11 +51,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!active) return;
           loadedUserId = null;
           const semPerfil = error instanceof ApiError && error.status === 404;
-          await endSession();
-          setState({
-            status: "signedOut",
-            notice: semPerfil ? "Não encontramos um perfil para esta conta. Faça o cadastro novamente." : errorMessage(error),
-          });
+          const sessaoInvalida = error instanceof ApiError && error.status === 401;
+          if (semPerfil || sessaoInvalida) {
+            await endSession();
+            setState({
+              status: "signedOut",
+              notice: semPerfil ? "Não encontramos um perfil para esta conta. Faça o cadastro novamente." : errorMessage(error),
+            });
+          } else {
+            setState({ status: "error", notice: errorMessage(error) });
+          }
         });
     });
 
@@ -68,6 +75,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ status: "signedIn", me });
   }, []);
 
+  const retrySession = useCallback(async () => {
+    setState({ status: "loading" });
+    try {
+      const me = await fetchMe();
+      setState({ status: "signedIn", me });
+    } catch (error) {
+      const semPerfil = error instanceof ApiError && error.status === 404;
+      const sessaoInvalida = error instanceof ApiError && error.status === 401;
+      if (semPerfil || sessaoInvalida) {
+        await endSession();
+        setState({
+          status: "signedOut",
+          notice: semPerfil ? "Não encontramos um perfil para esta conta. Faça o cadastro novamente." : errorMessage(error),
+        });
+      } else {
+        setState({ status: "error", notice: errorMessage(error) });
+      }
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     await endSession();
   }, []);
@@ -75,8 +102,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const finishPasswordRecovery = useCallback(() => setRecoveringPassword(false), []);
 
   const value = useMemo(
-    () => ({ state, recoveringPassword, finishPasswordRecovery, refreshMe, signOut }),
-    [state, recoveringPassword, finishPasswordRecovery, refreshMe, signOut],
+    () => ({ state, recoveringPassword, finishPasswordRecovery, refreshMe, retrySession, signOut }),
+    [state, recoveringPassword, finishPasswordRecovery, refreshMe, retrySession, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -26,10 +26,11 @@ export default function App() {
 }
 
 function AuthGate() {
-  const { state, recoveringPassword } = useAuth();
+  const { state, recoveringPassword, retrySession } = useAuth();
   const [screen, setScreen] = useState<"login" | "signup" | "recover">("login");
 
   if (state.status === "loading") return <div className="splash" role="status"><Logo/><p>Carregando...</p></div>;
+  if (state.status === "error") return <div className="splash" role="alert"><Logo/><p>{state.notice}</p><button type="button" onClick={() => void retrySession()}>Tentar novamente</button></div>;
   if (recoveringPassword) return <ResetPasswordScreen/>;
   // key: trocar de conta descarta todo o estado de navegação da conta anterior.
   if (state.status === "signedIn") return <AuthenticatedApp key={state.me.id} me={state.me}/>;

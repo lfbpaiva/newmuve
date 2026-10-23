@@ -49,6 +49,8 @@ const toPayment = (row: Row): PaymentRecord => ({
   valorCache: Number(row.valor_cache),
   status: row.status,
   repasseStatus: row.repasse_status,
+  refundStatus: row.refund_status ?? null,
+  refundAction: row.refund_action ?? null,
   pixCopiaCola: row.pix_copia_cola,
   pixQrCode: row.pix_qr_code,
   expiraEm: new Date(row.expira_em),
@@ -242,9 +244,33 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     },
 
     async setPaymentStatus(id, status) {
-      const { error } = await admin.from("payments").update({ status }).eq("id", id);
+      let query = admin.from("payments").update({ status }).eq("id", id);
+      // Um webhook de vencimento/exclusão pode chegar junto da confirmação paga.
+      // A transição para PAGO nunca deve ser sobrescrita por uma leitura antiga.
+      if (status === "EXPIRADO" || status === "CANCELADO") query = query.eq("status", "PENDENTE");
+      const { error } = await query;
       if (error) throw error;
     },
+
+      async claimRefund(id, action) {
+        const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action });
+        if (error) throw error;
+        return data === true;
+      },
+
+      async setRefundStatus(id, status) {
+        const { error } = await admin.from("payments")
+          .update({ refund_status: status })
+          .eq("id", id)
+          .eq("refund_status", "PROCESSANDO");
+        if (error) throw error;
+      },
+
+      async finalizeRefund(id) {
+        const { data, error } = await admin.rpc("finalize_asaas_refund", { p_payment_id: id });
+        if (error) throw error;
+        return data as "CONFIRMADO" | "JA_PROCESSADO" | "REPASSE_CONFLITANTE";
+      },
 
     async confirmPayment(asaasPaymentId) {
       const { data, error } = await admin.rpc("confirm_asaas_payment", { p_asaas_payment_id: asaasPaymentId });
@@ -259,6 +285,7 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
         .update({ repasse_status: "PROCESSANDO" })
         .eq("id", id)
         .eq("status", "PAGO")
+          .is("refund_status", null)
         .in("repasse_status", ["RETIDO", "FALHOU"])
         .select("id");
       if (error) throw error;

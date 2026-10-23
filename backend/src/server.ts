@@ -2,6 +2,7 @@
 // Apenas lê a configuração e monta as dependências reais; rotas, regras e
 // acesso a dados ficam em http/, services/ e adapters/.
 import { existsSync } from "node:fs";
+import { networkInterfaces } from "node:os";
 import { serve } from "@hono/node-server";
 import { createAsaasGateway } from "./adapters/asaas.ts";
 import { createLogMailer, createSmtpMailer } from "./adapters/mailer.ts";
@@ -25,7 +26,7 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Variável de ambiente ${name} não definida. Consulte backend/.env.example.`);
+  if (!value) throw new Error(`Variável de ambiente ${name} não definida. Consulte backend/.env.`);
   return value;
 }
 
@@ -37,10 +38,21 @@ const accountStore = createAccountStore(admin);
 const eventStore = createEventStore(admin);
 const images = createImageStore(admin);
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:8443")
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:8443")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+// O IP do Wi-Fi pode mudar por DHCP. Em desenvolvimento, autorize somente
+// endereços da própria máquina nas portas dos clientes web.
+const localOrigins = process.env.NODE_ENV === "production"
+  ? []
+  : [...new Set([
+      "127.0.0.1",
+      ...Object.values(networkInterfaces()).flatMap((addresses) =>
+        (addresses ?? []).filter((address) => address.family === "IPv4" && !address.internal).map((address) => address.address),
+      ),
+    ])].flatMap((host) => [8443, 8081].map((clientPort) => `http://${host}:${clientPort}`));
+const allowedOrigins = [...new Set([...configuredOrigins, ...localOrigins])];
 
 // E-mails transacionais: com SMTP configurado são enviados; sem, só aparecem no log.
 const smtp = process.env.SMTP_HOST

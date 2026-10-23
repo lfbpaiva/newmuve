@@ -172,17 +172,50 @@ export function memoryWorld() {
         status: "PENDENTE" as const,
         valorCache: Math.round((data.valor - data.valorComissao) * 100) / 100,
         repasseStatus: null,
+        refundStatus: null,
+        refundAction: null,
         createdAt: sequence,
       };
       payments.set(payment.id, payment);
       return payment;
     },
-    setPaymentStatus: async (id, status) => void (payments.get(id)!.status = status),
+    setPaymentStatus: async (id, status) => {
+      const payment = payments.get(id)!;
+      if ((status === "EXPIRADO" || status === "CANCELADO") && payment.status !== "PENDENTE") return;
+      payment.status = status;
+    },
+    claimRefund: async (id, action) => {
+      const payment = payments.get(id)!;
+      if (!((payment.status === "PAGO" && (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")) || (action === "NENHUMA" && (payment.status === "PENDENTE" || payment.status === "EXPIRADO" || payment.status === "CANCELADO"))) || (payment.refundStatus !== null && payment.refundStatus !== "NEGADO")) return false;
+      payment.refundStatus = "PROCESSANDO";
+      payment.refundAction = action;
+      return true;
+    },
+    setRefundStatus: async (id, status) => {
+      const payment = payments.get(id)!;
+      if (payment.refundStatus === "PROCESSANDO") payment.refundStatus = status;
+    },
+    finalizeRefund: async (id) => {
+      const payment = payments.get(id)!;
+      if (payment.status === "ESTORNADO") return "JA_PROCESSADO";
+      if (payment.status !== "PAGO" && payment.refundAction !== "NENHUMA") throw new Error("pagamento nao esta elegivel para estorno");
+      const payoutConflict = payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO";
+      const event = payment.eventId ? events.get(payment.eventId) : null;
+      if (event?.status === "CONTRATADO" && payment.refundAction !== "NENHUMA") {
+        if (payment.refundAction === "REABRIR" && !payoutConflict) await eventStore.reopenEvent(event.id);
+        else await eventStore.cancelEvent(event.id);
+      }
+      payment.status = "ESTORNADO";
+      payment.refundStatus = "CONFIRMADO";
+      if (!payoutConflict) payment.repasseStatus = null;
+      return payoutConflict ? "REPASSE_CONFLITANTE" : "CONFIRMADO";
+    },
     // Mesmo comportamento da função confirm_asaas_payment.
     confirmPayment: async (asaasPaymentId) => {
       const payment = [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId);
       if (!payment) return "PAGAMENTO_NAO_ENCONTRADO";
       if (payment.status === "PAGO") return "JA_PROCESSADO";
+      if (payment.status !== "PENDENTE") return "EVENTO_INDISPONIVEL";
       const event = payment.eventId ? events.get(payment.eventId) : undefined;
       const chosen = payment.candidateId ? candidates.get(payment.candidateId) : undefined;
       if (!event || event.status !== "ABERTO" || !chosen) return "EVENTO_INDISPONIVEL";
@@ -197,7 +230,7 @@ export function memoryWorld() {
     },
     claimPayout: async (id) => {
       const payment = payments.get(id)!;
-      if (payment.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
+      if (payment.status !== "PAGO" || payment.refundStatus !== null || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
       payment.repasseStatus = "PROCESSANDO";
       return true;
     },

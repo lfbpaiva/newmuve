@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AccountService } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
+import { AppError } from "../domain/errors.ts";
 import { createApp } from "./app.ts";
 
 const ORIGIN = "http://localhost:8443";
@@ -36,6 +37,7 @@ function setup() {
       expiraEm: new Date("2030-01-01T12:15:00Z"),
     })),
     handleWebhook: vi.fn(async () => {}),
+    cancelPendingCheckout: vi.fn(async () => {}),
   };
   const app = createApp({
     accounts: accounts as unknown as AccountService,
@@ -52,6 +54,18 @@ function setup() {
 const signupBody = (dados: object) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
 
 const contratante = { role: "CONTRACTOR", nome: "Bar do Zé", email: "  Contato@BarDoZe.com.br ", password: "segredo1" };
+
+describe("DELETE /api/events/:id/checkout", () => {
+  it("exige autenticação para cancelar uma cobrança pendente", async () => {
+    const { app, payments } = setup();
+    const anonymous = await app.request("/api/events/e1/checkout", { method: "DELETE" });
+    const authorized = await app.request("/api/events/e1/checkout", { method: "DELETE", headers: { Authorization: "Bearer token-valido" } });
+
+    expect([anonymous.status, authorized.status]).toEqual([401, 200]);
+    expect(await authorized.json()).toEqual({ situacao: "COBRANCA_CANCELADA" });
+    expect(payments.cancelPendingCheckout).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1");
+  });
+});
 
 describe("POST /api/auth/signup", () => {
   it("normaliza os dados e repassa ao serviço", async () => {
@@ -86,6 +100,25 @@ describe("POST /api/auth/signup", () => {
 
     expect(accounts.signup).toHaveBeenNthCalledWith(1, expect.anything(), "muve://auth");
     expect(accounts.signup).toHaveBeenNthCalledWith(2, expect.anything(), undefined);
+  });
+
+  it("não consome o limite com formulários inválidos", async () => {
+    const { app, accounts } = setup();
+    for (let i = 0; i < 11; i++) {
+      expect((await app.request("/api/auth/signup", signupBody({ ...contratante, role: "ADMIN" }))).status).toBe(400);
+    }
+    expect((await app.request("/api/auth/signup", signupBody(contratante))).status).toBe(201);
+    expect(accounts.signup).toHaveBeenCalledTimes(1);
+  });
+
+  it("propaga o 429 e o prazo informado pelo serviço de autenticação", async () => {
+    const { app, accounts } = setup();
+    accounts.signup.mockRejectedValueOnce(new AppError(429, "LIMITE_DE_ENVIO", "Limite temporário do provedor.", "60"));
+
+    const response = await app.request("/api/auth/signup", signupBody(contratante));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(await response.json()).toEqual({ error: { code: "LIMITE_DE_ENVIO", message: "Limite temporário do provedor." } });
   });
 });
 
@@ -143,6 +176,7 @@ describe("erros e CORS", () => {
     const negada = await app.request("/api/health", { headers: { Origin: "https://malicioso.example" } });
 
     expect(permitida.headers.get("Access-Control-Allow-Origin")).toBe(ORIGIN);
+    expect(permitida.headers.get("Access-Control-Expose-Headers")).toBe("Retry-After");
     expect(negada.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });
@@ -251,7 +285,7 @@ describe("POST /api/events/:id/nao-comparecimento", () => {
     const anonimo = await app.request("/api/events/e1/nao-comparecimento", { method: "POST" });
     const autenticado = await app.request("/api/events/e1/nao-comparecimento", { method: "POST", headers: { Authorization: "Bearer token-valido" } });
 
-    expect([anonimo.status, autenticado.status]).toEqual([401, 204]);
+    expect([anonimo.status, autenticado.status]).toEqual([401, 200]);
     expect(events.reportNoShow).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1");
   });
 });
