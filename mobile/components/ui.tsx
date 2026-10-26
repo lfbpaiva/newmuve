@@ -24,10 +24,6 @@ export function Icon({ name, size = 20, color = colors.ink }: { name: IconName; 
   return <Ionicons name={name} size={size} color={color}/>;
 }
 
-// ---------------------------------------------------------------------------
-// Estrutura
-// ---------------------------------------------------------------------------
-
 export function Screen({ children, scroll = true, padded = true }: { children: ReactNode; scroll?: boolean; padded?: boolean }) {
   const content = padded ? styles.content : { paddingBottom: 110, gap: space.xl };
   return <SafeAreaView style={styles.screen} edges={["left", "right"]}>
@@ -37,7 +33,6 @@ export function Screen({ children, scroll = true, padded = true }: { children: R
   </SafeAreaView>;
 }
 
-/** Título de página em caixa alta, com uma linha branca acima: a assinatura editorial das telas. */
 export function Heading({ title, subtitle, size = "headline" }: { title: string; subtitle?: string; size?: "display" | "headline" }) {
   return <View style={{ gap: space.sm }}>
     <View style={styles.rule}/>
@@ -53,21 +48,16 @@ export function Section({ title, action, children }: { title: string; action?: R
   </View>;
 }
 
-// ---------------------------------------------------------------------------
-// Controles
-// ---------------------------------------------------------------------------
-
 type ButtonVariant = "filled" | "tonal" | "outlined" | "text" | "danger";
 
 const buttonColors: Record<ButtonVariant, { bg: string; fg: string; border?: string; pressed: string }> = {
-  filled: { bg: colors.accent, fg: colors.onAccent, pressed: "#b8e22e" },
+  filled: { bg: colors.accent, fg: colors.onAccent, pressed: colors.accentPressed },
   tonal: { bg: colors.ink, fg: colors.bg, pressed: "#dcdce2" },
   outlined: { bg: "transparent", fg: colors.ink, border: colors.ink, pressed: colors.surface2 },
   text: { bg: "transparent", fg: colors.ink, pressed: colors.surface },
   danger: { bg: "transparent", fg: colors.error, border: colors.error, pressed: colors.errorBg },
 };
 
-/** Botões: filled (lima, ação principal), tonal (branco), outlined, text e danger. Caixa alta, cantos retos, 48 dp. */
 export function Button({ title, onPress, variant = "filled", icon, disabled, loading, block = true }: {
   title: string; onPress: () => void; variant?: ButtonVariant; icon?: IconName; disabled?: boolean; loading?: boolean; block?: boolean;
 }) {
@@ -91,32 +81,34 @@ export function Button({ title, onPress, variant = "filled", icon, disabled, loa
   </Pressable>;
 }
 
-/** Botão flutuante: a única ação principal da tela. */
 export function Fab({ label, icon, onPress }: { label: string; icon: IconName; onPress: () => void }) {
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={label}
     onPress={onPress}
-    style={({ pressed }) => ({ position: "absolute", right: space.lg, bottom: space.xl, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: pressed ? "#b8e22e" : colors.accent, borderRadius: radius.sm, paddingHorizontal: 18, height: 52, elevation: 8, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 8 } })}
+    style={({ pressed }) => ({ position: "absolute", right: space.lg, bottom: space.xl, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: pressed ? colors.accentPressed : colors.accent, borderRadius: radius.sm, paddingHorizontal: 18, height: 52, elevation: 8, shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 12, shadowOffset: { width: 0, height: 8 } })}
   >
     <Text style={[type.label, { color: colors.onAccent }]}>{label}</Text>
     <Icon name={icon} size={18} color={colors.onAccent}/>
   </Pressable>;
 }
 
-export function Field({ label, error, hint, style, ...input }: TextInputProps & { label: string; error?: string; hint?: string }) {
+export function Field({ label, error, hint, trailing, style, ...input }: TextInputProps & { label: string; error?: string; hint?: string; trailing?: ReactNode }) {
   const [focused, setFocused] = useState(false);
   return <View style={{ gap: 4 }}>
-    <Text style={[type.labelSmall, focused ? { color: colors.accent } : null]}>{label}</Text>
-    <TextInput
-      placeholderTextColor={colors.ink3}
-      selectionColor={colors.accent}
-      cursorColor={colors.accent}
-      {...input}
-      onFocus={(e) => { setFocused(true); input.onFocus?.(e); }}
-      onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
-      style={[styles.input, focused ? styles.inputFocused : null, error ? styles.inputError : null, input.multiline ? { minHeight: 96, textAlignVertical: "top" } : null, input.editable === false ? { opacity: 0.55 } : null, style]}
-    />
+    <Text style={[type.labelSmall, focused ? { color: colors.accentText } : null]}>{label}</Text>
+    <View>
+      <TextInput
+        placeholderTextColor={colors.ink3}
+        selectionColor={colors.accentText}
+        cursorColor={colors.accentText}
+        {...input}
+        onFocus={(e) => { setFocused(true); input.onFocus?.(e); }}
+        onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
+        style={[styles.input, focused ? styles.inputFocused : null, error ? styles.inputError : null, input.multiline ? { minHeight: 96, textAlignVertical: "top" } : null, input.editable === false ? { opacity: 0.55 } : null, trailing ? { paddingRight: 48 } : null, style]}
+      />
+      {trailing ? <View style={{ position: "absolute", right: 0, top: 0, width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>{trailing}</View> : null}
+    </View>
     {hint && !error ? <Text style={[type.bodySmall, { marginTop: 4 }]}>{hint}</Text> : null}
     {error ? <Text style={[type.bodySmall, { color: colors.error, marginTop: 4 }]}>{error}</Text> : null}
   </View>;
@@ -124,16 +116,17 @@ export function Field({ label, error, hint, style, ...input }: TextInputProps & 
 
 export function PasswordField({ label = "Senha", value, onChangeText }: { label?: string; value: string; onChangeText: (value: string) => void }) {
   const [visible, setVisible] = useState(false);
-  const [focused, setFocused] = useState(false);
-  return <View style={{ gap: 4 }}>
-    <Text style={[type.labelSmall, focused ? { color: colors.accent } : null]}>{label}</Text>
-    <View>
-      <TextInput value={value} onChangeText={onChangeText} secureTextEntry={!visible} placeholder="Mínimo de 6 caracteres" placeholderTextColor={colors.ink3} selectionColor={colors.accent} autoCapitalize="none" onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={[styles.input, focused ? styles.inputFocused : null, { paddingRight: 48 }]}/>
-      <Pressable onPress={() => setVisible(!visible)} accessibilityRole="button" accessibilityLabel={visible ? "Ocultar senha" : "Mostrar senha"} hitSlop={8} style={{ position: "absolute", right: 0, top: 0, width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
-        <Icon name={visible ? "eye-off-outline" : "eye-outline"} color={colors.ink2}/>
-      </Pressable>
-    </View>
-  </View>;
+  return <Field
+    label={label}
+    value={value}
+    onChangeText={onChangeText}
+    secureTextEntry={!visible}
+    placeholder="Mínimo de 6 caracteres"
+    autoCapitalize="none"
+    trailing={<Pressable onPress={() => setVisible(!visible)} accessibilityRole="button" accessibilityLabel={visible ? "Ocultar senha" : "Mostrar senha"} hitSlop={8} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
+      <Icon name={visible ? "eye-off-outline" : "eye-outline"} color={colors.ink2}/>
+    </Pressable>}
+  />;
 }
 
 export function Checkbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -147,7 +140,6 @@ export function Checkbox({ label, checked, onChange }: { label: string; checked:
 
 export interface Option { value: string; label: string }
 
-/** Campo de seleção: abre uma lista pesquisável em tela cheia (UFs, cidades, estilos...). */
 export function Select({ label, value, options, placeholder = "Selecionar", disabled, searchable, onChange }: { label: string; value: string; options: Option[]; placeholder?: string; disabled?: boolean; searchable?: boolean; onChange: (value: string) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -166,14 +158,14 @@ export function Select({ label, value, options, placeholder = "Selecionar", disa
           <Text style={type.title}>{label}</Text>
           <Pressable onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel="Fechar" hitSlop={10} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}><Icon name="close"/></Pressable>
         </View>
-        {searchable && <TextInput value={query} onChangeText={setQuery} placeholder="Buscar..." placeholderTextColor={colors.ink3} selectionColor={colors.accent} autoFocus style={[styles.input, { marginHorizontal: space.lg, marginBottom: space.sm }]}/>}
+        {searchable && <TextInput value={query} onChangeText={setQuery} placeholder="Buscar..." placeholderTextColor={colors.ink3} selectionColor={colors.accentText} autoFocus style={[styles.input, { marginHorizontal: space.lg, marginBottom: space.sm }]}/>}
         <FlatList
           data={filtered}
           keyExtractor={(o) => o.value}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => <Pressable onPress={() => { onChange(item.value); setOpen(false); }} android_ripple={{ color: colors.surface3 }} style={({ pressed }) => [styles.between, { minHeight: 52, paddingHorizontal: space.lg, borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: pressed ? colors.surface2 : "transparent" }]}>
-            <Text style={[type.body, item.value === value ? { color: colors.accent } : null]}>{item.label}</Text>
-            {item.value === value && <Icon name="checkmark" color={colors.accent}/>}
+            <Text style={[type.body, item.value === value ? { color: colors.accentText } : null]}>{item.label}</Text>
+            {item.value === value && <Icon name="checkmark" color={colors.accentText}/>}
           </Pressable>}
           ListEmptyComponent={<Text style={[type.bodySmall, { padding: space.lg }]}>Nenhuma opção encontrada.</Text>}
         />
@@ -182,14 +174,12 @@ export function Select({ label, value, options, placeholder = "Selecionar", disa
   </View>;
 }
 
-/** Chips de seleção múltipla (estilos musicais) ou única (raio do feed). */
-/** "scroll": uma única linha rolável, para filtros curtos como a distância do feed. */
 export function Chips({ options, selected, onToggle, labels, scroll }: { options: readonly string[]; selected: string[]; onToggle: (value: string) => void; labels?: (value: string) => string; scroll?: boolean }) {
   const items = options.map((option) => {
-      const on = selected.includes(option);
-      return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => onToggle(option)} style={({ pressed }) => ({ minHeight: 38, borderRadius: radius.sm, paddingHorizontal: 14, justifyContent: "center", backgroundColor: on ? colors.ink : pressed ? colors.surface2 : "transparent", borderWidth: 1, borderColor: on ? colors.ink : colors.line })}>
-        <Text style={[type.label, { color: on ? colors.bg : colors.ink2 }]}>{labels ? labels(option) : option}</Text>
-      </Pressable>;
+    const on = selected.includes(option);
+    return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => onToggle(option)} style={({ pressed }) => ({ minHeight: 38, borderRadius: radius.sm, paddingHorizontal: 14, justifyContent: "center", backgroundColor: on ? colors.ink : pressed ? colors.surface2 : "transparent", borderWidth: 1, borderColor: on ? colors.ink : colors.line })}>
+      <Text style={[type.label, { color: on ? colors.bg : colors.ink2 }]}>{labels ? labels(option) : option}</Text>
+    </Pressable>;
   });
   if (scroll) return <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -space.lg, flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: space.lg }}>{items}</ScrollView>;
   return <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{items}</View>;
@@ -203,10 +193,6 @@ export function ListItem({ icon, title, subtitle, onPress, tone = "default", tra
     {trailing && <Icon name={trailing} size={18} color={colors.ink3}/>}
   </Pressable>;
 }
-
-// ---------------------------------------------------------------------------
-// Estados e feedback
-// ---------------------------------------------------------------------------
 
 export function Pill({ text, tone = "primary" }: { text: string; tone?: "primary" | "success" | "muted" | "accent" }) {
   const palette = {
@@ -222,7 +208,6 @@ export function Tag({ text, onImage }: { text: string; onImage?: boolean }) {
   return <View style={{ backgroundColor: onImage ? "#0a0a0ccc" : colors.surface2, borderRadius: radius.xs, paddingHorizontal: 8, paddingVertical: 5 }}><Text style={[type.labelSmall, { color: onImage ? colors.ink : colors.ink2 }]}>{text}</Text></View>;
 }
 
-/** Esqueleto animado no lugar do conteúdo que ainda está carregando. */
 export function Skeleton({ height = 16, width = "100%", style }: { height?: number; width?: number | `${number}%`; style?: ViewStyle }) {
   const opacity = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
@@ -254,7 +239,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
   </View>;
 }
 
-export function EmptyState({ title, children, action }: { icon?: IconName; title: string; children?: ReactNode; action?: ReactNode }) {
+export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return <View style={styles.empty}>
     <View style={styles.rule}/>
     <Text style={type.headline}>{title}</Text>
@@ -263,7 +248,6 @@ export function EmptyState({ title, children, action }: { icon?: IconName; title
   </View>;
 }
 
-/** Sem foto, mostra a inicial do nome. */
 export function Avatar({ uri, name = "", size = 48, square = false }: { uri?: string | null; name?: string; size?: number; square?: boolean }) {
   const shape = { width: size, height: size, borderRadius: square ? radius.sm : size / 2, backgroundColor: colors.surface2 };
   if (!uri) return <View style={[shape, { alignItems: "center", justifyContent: "center" }]} accessibilityLabel={name}><Text style={[type.title, { fontSize: size * 0.42, lineHeight: size * 0.5 }]}>{name.trim().charAt(0) || "?"}</Text></View>;
@@ -292,7 +276,6 @@ export function Alert({ tone, children }: { tone: "error" | "success" | "info"; 
   </View>;
 }
 
-/** Aviso transitório na base da tela (snackbar), para confirmações como "código copiado". */
 export function Snackbar({ message, onHide }: { message: string; onHide: () => void }) {
   const translate = useRef(new Animated.Value(80)).current;
   useEffect(() => {

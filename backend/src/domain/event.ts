@@ -25,15 +25,12 @@ export const eventSchema = z.object({
     .max(1440, "A duração deve ser de no máximo 24 horas."),
   uf,
   cidade,
-  // Revelado ao músico somente após a contratação.
   endereco: texto("Informe o endereço do evento.").min(5, "Informe o endereço do evento.").max(200, "O endereço deve ter no máximo 200 caracteres."),
-  // Um ou mais estilos, ou "Qualquer estilo" (que dispensa os demais).
   estilosMusicais: z
     .array(z.enum(ESTILOS_EVENTO, { error: "Estilo musical inválido." }), { error: "Selecione ao menos um estilo musical." })
     .min(1, "Selecione ao menos um estilo musical.")
     .transform((estilos) => (estilos.includes(QUALQUER_ESTILO) ? [QUALQUER_ESTILO] : [...new Set(estilos)])),
   formacao: z.enum(FORMACOES, { error: "Formação inválida." }).default("Indiferente"),
-  // O local oferece equipamento de som?
   somDisponivel: z.boolean().default(false),
   cache: z
     .number({ error: "O cachê mínimo é de R$ 100,00." })
@@ -54,7 +51,6 @@ export const reviewSchema = z.object({
 });
 export type ReviewInput = z.infer<typeof reviewSchema>;
 
-// Notificação enviada pela Asaas (cobranças e transferências). Só os campos usados são validados.
 export const asaasWebhookSchema = z.object({
   id: z.string().min(1),
   event: z.string().min(1),
@@ -96,21 +92,19 @@ export interface PaymentRecord {
   eventId: string | null;
   candidateId: string | null;
   asaasPaymentId: string;
-  /** Total cobrado do contratante: cachê + comissão. */
   valor: number;
   valorComissao: number;
-  /** Parte repassada ao músico. */
   valorCache: number;
   status: PaymentStatus;
   repasseStatus: PayoutStatus | null;
   refundStatus: RefundStatus | null;
   refundAction: RefundAction | null;
+  refundRequestedAt: Date | null;
   pixCopiaCola: string | null;
   pixQrCode: string | null;
   expiraEm: Date;
 }
 
-/** Cobrança como devolvida ao contratante (sem identificadores internos da Asaas). */
 export function toCheckoutView(payment: PaymentRecord) {
   return {
     id: payment.id,

@@ -1,8 +1,3 @@
-// Regras de domínio compartilhadas entre o backend e o frontend.
-// Módulo puro: sem dependências de Node, do navegador ou de bibliotecas.
-
-// Gêneros que se contratam no Brasil. A lista vive aqui (não no banco) para
-// crescer sem migration; "Outros" cobre o que não está nela.
 export const ESTILOS_MUSICAIS = [
   "MPB", "Bossa nova", "Samba", "Pagode", "Sertanejo", "Forró", "Axé", "Funk", "Rap / Hip-hop", "Gospel",
   "Pop", "Rock", "Indie", "Metal", "Reggae", "Eletrônico / DJ", "Jazz", "Blues", "Soul / R&B", "Clássico / Erudito",
@@ -10,7 +5,6 @@ export const ESTILOS_MUSICAIS = [
 ] as const;
 export type EstiloMusical = (typeof ESTILOS_MUSICAIS)[number];
 
-/** Opção do contratante: o evento aparece para músicos de qualquer estilo. */
 export const QUALQUER_ESTILO = "Qualquer estilo";
 export const ESTILOS_EVENTO = [QUALQUER_ESTILO, ...ESTILOS_MUSICAIS] as const;
 
@@ -25,9 +19,7 @@ export const UFS = [
 export const FORMACOES = ["Indiferente", "Solo", "Dupla", "Trio", "Banda"] as const;
 export type Formacao = (typeof FORMACOES)[number];
 
-/** Raios disponíveis no feed do músico (km). 0 = apenas a mesma cidade. */
 export const RAIOS_FEED_KM = [0, 50, 100, 200] as const;
-/** Maior raio aceito em uma candidatura: o mesmo máximo oferecido no feed. */
 export const RAIO_MAXIMO_KM = 200;
 
 export const TIPOS_CHAVE_PIX = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"] as const;
@@ -45,12 +37,9 @@ export const SENHA_TAMANHO_MINIMO = 6;
 export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
 export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
-/** Taxa de serviço da plataforma, somada ao cachê e paga pelo contratante. */
 export const COMISSAO_PERCENTUAL = 10;
-/** Antecedência mínima para cancelar: a inscrição (músico) ou a contratação com reembolso (contratante). */
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
-/** Com apenas uma confirmação, o show é dado como concluído após este prazo. */
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const onlyDigits = (value: string) => value.replace(/\D/g, "");
@@ -88,7 +77,6 @@ export function isValidCNPJ(value: string): boolean {
   );
 }
 
-/** Músicos e contratantes podem se cadastrar com CPF ou CNPJ. */
 export const isValidDocumento = (value: string) => isValidCPF(value) || isValidCNPJ(value);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -110,7 +98,6 @@ export function isValidChavePix(tipo: string, chave: string): boolean {
   }
 }
 
-/** Formato em que a chave é guardada e enviada à Asaas (documentos e telefone só com dígitos). */
 export function normalizeChavePix(tipo: string, chave: string): string {
   if (tipo === "CPF" || tipo === "CNPJ" || tipo === "PHONE") return onlyDigits(chave);
   return chave.trim().toLowerCase();
@@ -124,7 +111,6 @@ export function imageProblem(file: { type: string; size: number }): string | nul
   return null;
 }
 
-/** Compara cidades ignorando caixa, acentuação e espaços nas pontas. */
 export const normalizeCidade = (value: string) =>
   value
     .normalize("NFD")
@@ -132,10 +118,6 @@ export const normalizeCidade = (value: string) =>
     .trim()
     .toLowerCase();
 
-/**
- * O músico só vê e se candidata a eventos de um dos seus estilos, na sua cidade
- * ou dentro do raio máximo (distância em km entre as sedes dos municípios).
- */
 export function eventMatchesMusician(
   event: { uf: string; cidade: string; estilosMusicais: readonly string[] },
   musician: { uf: string; cidade: string; estilosMusicais: readonly string[] },
@@ -146,24 +128,17 @@ export function eventMatchesMusician(
   return mesmaCidade || (distanciaKm !== null && distanciaKm <= RAIO_MAXIMO_KM);
 }
 
-/** O evento aceita qualquer estilo, ou há ao menos um estilo em comum. */
 export const estilosCompativeis = (doEvento: readonly string[], doMusico: readonly string[]) =>
   doEvento.includes(QUALQUER_ESTILO) || doEvento.some((estilo) => doMusico.includes(estilo));
 
-/** Verdadeiro enquanto faltam mais de 24 horas para o início do evento. */
 export const hasCancellationNotice = (inicio: Date, now: Date) =>
   inicio.getTime() - now.getTime() > CANCELAMENTO_ANTECEDENCIA_MINIMA_MS;
 
-/** Valores da contratação: o contratante paga cachê + comissão; o músico recebe o cachê. */
 export function calcularCobranca(cache: number): { cache: number; comissao: number; total: number } {
   const centavos = Math.round(cache * 100);
   const comissao = Math.round((centavos * COMISSAO_PERCENTUAL) / 100);
   return { cache: centavos / 100, comissao: comissao / 100, total: (centavos + comissao) / 100 };
 }
-
-// ---------------------------------------------------------------------------
-// Cadastro progressivo: cada dado do perfil é exigido só quando faz falta.
-// ---------------------------------------------------------------------------
 
 export type AcaoPerfil = "feed" | "candidatar" | "criarEvento" | "pagar";
 export type CampoPerfil = "foto" | "documento" | "telefone" | "cidade" | "estilos" | "chavePix";
@@ -188,7 +163,6 @@ export interface PerfilParaChecagem {
   chavePix?: string | null;
 }
 
-/** Campos ainda vazios que a ação exige, na ordem em que devem ser pedidos. */
 export function camposFaltantes(perfil: PerfilParaChecagem, acao: AcaoPerfil): CampoPerfil[] {
   const exigidos: CampoPerfil[] =
     acao === "feed" ? ["cidade", "estilos"]

@@ -1,16 +1,15 @@
 import { useRouter } from "expo-router";
 import { Linking, Text, View } from "react-native";
-import { fetchMyEvents, fetchReviewsOf } from "../../../shared/client/events.ts";
+import { fetchMyEvents } from "../../../shared/client/events.ts";
 import { formatDateTime } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts";
-import { EventStatusPill } from "../../components/events";
-import { Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Section, Stars, Tag, type IconName } from "../../components/ui";
+import { EventStatusPill, ReviewsSection } from "../../components/events";
+import { Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
-// "Meu perfil": exibe exclusivamente os dados da conta autenticada.
 export default function ProfileScreen() {
   const me = useMe();
   const router = useRouter();
@@ -47,21 +46,9 @@ export default function ProfileScreen() {
         <Icon name={row.icon} size={18} color={colors.ink2}/><Text style={[type.body, { flex: 1 }]}>{row.text}</Text>
       </View>)}
     </View>
-    <ReviewsReceived userId={me.id}/>
+    <ReviewsSection userId={me.id} empty="Depois do primeiro show concluído, a avaliação da outra parte aparece aqui."/>
     {!isMusician && <EventHistory contractorId={me.id}/>}
   </Screen>;
-}
-
-function ReviewsReceived({ userId }: { userId: string }) {
-  const reviews = useAsync(`my-reviews:${userId}`, () => fetchReviewsOf(userId));
-  return <Section title="Avaliações recebidas">
-    {reviews.error && <ErrorState message={reviews.error} onRetry={reviews.reload}/>}
-    {reviews.data?.length === 0 && <Text style={type.bodySmall}>Depois do primeiro show concluído, a avaliação da outra parte aparece aqui.</Text>}
-    {reviews.data?.map((review) => <View key={review.id} style={styles.card}>
-      <View style={styles.between}><Stars rating={review.rating}/><Text style={type.bodySmall}>{new Date(review.createdAt).toLocaleDateString("pt-BR")}</Text></View>
-      {review.comment && <Text style={type.body}>{review.comment}</Text>}
-    </View>)}
-  </Section>;
 }
 
 function EventHistory({ contractorId }: { contractorId: string }) {

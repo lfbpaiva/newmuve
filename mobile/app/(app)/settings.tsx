@@ -1,22 +1,19 @@
 import { useRouter } from "expo-router";
-import { Alert as NativeAlert, Text, View } from "react-native";
+import type { ReactNode } from "react";
+import { Text, View } from "react-native";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { Heading, ListItem, Screen } from "../../components/ui";
+import { confirmAction } from "../../lib/confirm";
 import { colors, space, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
-// Ajustes em grupos. A exclusão da conta fica dentro de "Conta e privacidade",
-// atrás de uma tela explicativa: ações irreversíveis não ficam a um toque da lista.
 export default function SettingsScreen() {
   const me = useMe();
   const { signOut } = useAuth();
   const router = useRouter();
 
   function confirmSignOut() {
-    NativeAlert.alert("Sair da conta", "Você precisará entrar de novo para usar o app.", [
-      { text: "Ficar", style: "cancel" },
-      { text: "Sair", onPress: () => void signOut() },
-    ]);
+    confirmAction({ title: "Sair da conta", message: "Você precisará entrar de novo para usar o app.", confirmLabel: "Sair", cancelLabel: "Ficar", destructive: false, onConfirm: () => void signOut() });
   }
 
   return <Screen>
@@ -33,7 +30,7 @@ export default function SettingsScreen() {
   </Screen>;
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
+function Group({ title, children }: { title: string; children: ReactNode }) {
   return <View style={{ gap: space.sm }}>
     <Text style={[type.labelSmall, { paddingHorizontal: space.lg }]}>{title.toUpperCase()}</Text>
     <View style={{ backgroundColor: colors.surface, borderRadius: 20, overflow: "hidden" }}>{children}</View>

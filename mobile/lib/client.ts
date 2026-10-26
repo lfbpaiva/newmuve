@@ -10,15 +10,12 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
-/** Os links de confirmação de e-mail e de redefinição de senha abrem o app neste endereço. */
 export const AUTH_REDIRECT_URL = "muve://auth";
 
 function apiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (configured) return configured;
 
-  // Durante o desenvolvimento, Expo informa o host acessível pelo aparelho.
-  // No navegador, a API fica no mesmo computador que serviu o app web.
   const devHost = Platform.OS === "web" ? window.location.hostname : Constants.expoConfig?.hostUri;
   if (devHost) {
     const host = new URL(devHost.includes("://") ? devHost : `http://${devHost}`).hostname;
@@ -29,7 +26,6 @@ function apiUrl(): string {
   throw new Error("Defina EXPO_PUBLIC_API_URL para esta execução do app.");
 }
 
-// Sessão guardada no AsyncStorage do aparelho e renovada pelo SDK.
 export const supabase = createClient(
   required("EXPO_PUBLIC_SUPABASE_URL", process.env.EXPO_PUBLIC_SUPABASE_URL),
   required("EXPO_PUBLIC_SUPABASE_ANON_KEY", process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY),

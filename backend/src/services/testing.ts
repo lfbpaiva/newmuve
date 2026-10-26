@@ -5,8 +5,6 @@ import type { AccountStore, ImageStore } from "./accountService.ts";
 import type { Mailer } from "./notifications.ts";
 import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
 
-// Implementações em memória das portas, usadas apenas pelos testes dos serviços.
-
 export const NOW = new Date("2030-06-10T12:00:00Z");
 export const hoursFromNow = (hours: number) => new Date(NOW.getTime() + hours * 60 * 60 * 1000);
 
@@ -44,7 +42,6 @@ export function memoryWorld() {
   const images = new Set<string>();
   const customers = new Map<string, string>();
   const webhookEvents = new Set<string>();
-  // Estado da "Asaas": cobranças, estornos e transferências.
   const asaasCharges = new Map<string, { status: string; value: number }>();
   const asaasCalls = {
     createCustomer: 0,
@@ -61,7 +58,6 @@ export function memoryWorld() {
     findAccount: async (id: string) => accounts.get(id) ?? null,
     findEmail: async (id: string) => (accounts.has(id) ? `${id}@exemplo.com` : null),
   } as unknown as AccountStore;
-  // Distâncias entre cidades (km), por "uf/cidade" normalizada; ausente = desconhecida.
   const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430]]);
   const sent: { to: string; subject: string; text: string }[] = [];
   const mailer: Mailer = { send: async (message) => void sent.push(message) };
@@ -74,6 +70,15 @@ export function memoryWorld() {
     },
     removeByUrl: async (_bucket, url) => void images.delete(url),
     removeAllOf: async () => {},
+  };
+
+  const reopenEvent = (event: EventRecord) => {
+    for (const [id, candidate] of candidates) {
+      if (candidate.eventId !== event.id) continue;
+      if (candidate.musicianId === event.musicoContratadoId) candidates.delete(id);
+      else candidate.status = "PENDENTE";
+    }
+    Object.assign(event, { status: "ABERTO", musicoContratadoId: null, confirmacaoMusico: false, confirmacaoContratante: false });
   };
 
   const eventStore: EventStore = {
@@ -106,7 +111,6 @@ export function memoryWorld() {
       const event = events.get(eventId)!;
       if (party === "musico") event.confirmacaoMusico = true;
       else event.confirmacaoContratante = true;
-      // Mesmo comportamento da trigger events_conclude_when_both_confirm.
       if (event.status === "CONTRATADO" && event.confirmacaoMusico && event.confirmacaoContratante) event.status = "CONCLUIDO";
       return event;
     },
@@ -117,16 +121,6 @@ export function memoryWorld() {
       return event;
     },
     cancelEvent: async (eventId) => void (events.get(eventId)!.status = "CANCELADO"),
-    // Mesmo comportamento da função reopen_event.
-    reopenEvent: async (eventId) => {
-      const event = events.get(eventId)!;
-      for (const [id, candidate] of candidates) {
-        if (candidate.eventId !== eventId) continue;
-        if (candidate.musicianId === event.musicoContratadoId) candidates.delete(id);
-        else candidate.status = "PENDENTE";
-      }
-      Object.assign(event, { status: "ABERTO", musicoContratadoId: null, confirmacaoMusico: false, confirmacaoContratante: false });
-    },
     distanceKm: async (eventId, musicianId) => {
       const event = events.get(eventId)!;
       const musician = accounts.get(musicianId)!;
@@ -174,6 +168,7 @@ export function memoryWorld() {
         repasseStatus: null,
         refundStatus: null,
         refundAction: null,
+        refundRequestedAt: null,
         createdAt: sequence,
       };
       payments.set(payment.id, payment);
@@ -189,11 +184,18 @@ export function memoryWorld() {
       if (!((payment.status === "PAGO" && (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")) || (action === "NENHUMA" && (payment.status === "PENDENTE" || payment.status === "EXPIRADO" || payment.status === "CANCELADO"))) || (payment.refundStatus !== null && payment.refundStatus !== "NEGADO")) return false;
       payment.refundStatus = "PROCESSANDO";
       payment.refundAction = action;
+      payment.refundRequestedAt = new Date();
       return true;
     },
     setRefundStatus: async (id, status) => {
       const payment = payments.get(id)!;
       if (payment.refundStatus === "PROCESSANDO") payment.refundStatus = status;
+    },
+    releaseRefund: async (id, previous) => {
+      const payment = payments.get(id)!;
+      if (payment.refundStatus !== "PROCESSANDO") return;
+      payment.refundStatus = previous.refundStatus;
+      payment.refundAction = previous.refundAction;
     },
     finalizeRefund: async (id) => {
       const payment = payments.get(id)!;
@@ -202,7 +204,7 @@ export function memoryWorld() {
       const payoutConflict = payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO";
       const event = payment.eventId ? events.get(payment.eventId) : null;
       if (event?.status === "CONTRATADO" && payment.refundAction !== "NENHUMA") {
-        if (payment.refundAction === "REABRIR" && !payoutConflict) await eventStore.reopenEvent(event.id);
+        if (payment.refundAction === "REABRIR" && !payoutConflict) reopenEvent(event);
         else await eventStore.cancelEvent(event.id);
       }
       payment.status = "ESTORNADO";
@@ -210,12 +212,11 @@ export function memoryWorld() {
       if (!payoutConflict) payment.repasseStatus = null;
       return payoutConflict ? "REPASSE_CONFLITANTE" : "CONFIRMADO";
     },
-    // Mesmo comportamento da função confirm_asaas_payment.
     confirmPayment: async (asaasPaymentId) => {
       const payment = [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId);
       if (!payment) return "PAGAMENTO_NAO_ENCONTRADO";
       if (payment.status === "PAGO") return "JA_PROCESSADO";
-      if (payment.status !== "PENDENTE") return "EVENTO_INDISPONIVEL";
+      if (payment.status !== "PENDENTE" || payment.refundStatus !== null) return "EVENTO_INDISPONIVEL";
       const event = payment.eventId ? events.get(payment.eventId) : undefined;
       const chosen = payment.candidateId ? candidates.get(payment.candidateId) : undefined;
       if (!event || event.status !== "ABERTO" || !chosen) return "EVENTO_INDISPONIVEL";
@@ -230,7 +231,7 @@ export function memoryWorld() {
     },
     claimPayout: async (id) => {
       const payment = payments.get(id)!;
-      if (payment.status !== "PAGO" || payment.refundStatus !== null || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
+      if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
       payment.repasseStatus = "PROCESSANDO";
       return true;
     },
@@ -288,7 +289,6 @@ export function memoryWorld() {
     failures,
     sent,
     stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer },
-    /** Atalho: evento aberto de c1, compatível com os músicos m1 e m2. */
     seedEvent(overrides: Partial<EventRecord> = {}): EventRecord {
       const event: EventRecord = {
         id: nextId("e"),
@@ -323,7 +323,6 @@ export function memoryWorld() {
   };
 }
 
-/** Marca na "Asaas" que a cobrança foi paga, como aconteceria após o Pix do contratante. */
 export function payAtAsaas(world: ReturnType<typeof memoryWorld>, asaasPaymentId: string): void {
   const charge = world.asaasCharges.get(asaasPaymentId)!;
   world.asaasCharges.set(asaasPaymentId, { ...charge, status: "RECEIVED" });

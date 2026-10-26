@@ -7,9 +7,6 @@ export interface Mailer {
   send(message: { to: string; subject: string; text: string }): Promise<void>;
 }
 
-// Avisos por e-mail nos três momentos que mudam a situação de alguém:
-// aprovação/pagamento, desistência da outra parte e não comparecimento.
-// Nunca lançam: uma falha de envio não pode desfazer a operação que a disparou.
 export function createNotifier(deps: { accounts: AccountStore; events: EventStore; mailer: Mailer; appUrl: string }) {
   const { accounts, events, mailer, appUrl } = deps;
 
@@ -27,7 +24,6 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
   const when = (event: EventRecord) => `${formatDateTime(event.inicio)} em ${event.cidade}, ${event.uf}`;
 
   return {
-    /** Pagamento confirmado: o músico foi aprovado e o contratante tem o show garantido. */
     async hiringConfirmed(eventId: string): Promise<void> {
       const event = await events.findEvent(eventId).catch(() => null);
       if (!event) return;
@@ -45,7 +41,6 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       ]);
     },
 
-    /** A outra parte cancelou a contratação. */
     async hiringCancelled(event: EventRecord, cancelledBy: "contratante" | "musico", refunded: boolean): Promise<void> {
       if (cancelledBy === "musico") {
         await notify(
@@ -64,7 +59,6 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       );
     },
 
-    /** O contratante registrou que o músico não compareceu. */
     async noShowReported(event: EventRecord): Promise<void> {
       await notify(
         event.musicoContratadoId,

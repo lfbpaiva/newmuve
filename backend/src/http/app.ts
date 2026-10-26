@@ -17,9 +17,7 @@ export interface AppDeps {
   payments: PaymentService;
   verifyToken(token: string): Promise<AuthUser | null>;
   allowedOrigins: string[];
-  /** Destinos autorizados para os links de e-mail além das origens web (ex.: esquema do app: muve://auth). */
   allowedRedirects?: string[];
-  /** Token configurado no webhook da Asaas; sem ele, toda notificação é recusada. */
   asaasWebhookToken: string | undefined;
 }
 
@@ -27,7 +25,6 @@ type Env = { Variables: { user: AuthUser; signupInput: SignupInput } };
 
 const requisicaoInvalida = () => new AppError(400, "REQUISICAO_INVALIDA", "Requisição inválida.");
 
-// Formulários com imagem chegam como multipart: os campos em "dados" (JSON) e o arquivo à parte.
 async function readMultipart(c: Context, fileField: string): Promise<{ dados: unknown; file: File | null }> {
   const form = await c.req.formData().catch(() => null);
   if (!form) throw requisicaoInvalida();
@@ -47,7 +44,6 @@ async function readJson(c: Context): Promise<unknown> {
   });
 }
 
-// Comparação em tempo constante, para não revelar o token pelo tempo de resposta.
 function sameToken(received: string | undefined, expected: string | undefined): boolean {
   if (!received || !expected) return false;
   const a = new TextEncoder().encode(received);
@@ -72,7 +68,6 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     }),
   );
   app.use("*", secureHeaders());
-  // Um pouco acima do limite de 5 MB das imagens, para acomodar os demais campos.
   app.use(
     "*",
     bodyLimit({
@@ -83,7 +78,6 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     }),
   );
 
-  // Rotas que criam contas ou conferem senha: limite por IP contra abuso e força bruta.
   const sensitive = rateLimit({ limit: 10, windowMs: 10 * 60 * 1000 });
 
   app.onError((error, c) => {
@@ -94,16 +88,11 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     if (error instanceof ZodError) {
       return c.json({ error: { code: "DADOS_INVALIDOS", message: error.issues[0]?.message ?? "Dados inválidos." } }, 400);
     }
-    // Detalhes internos ficam apenas no log do servidor.
     console.error(`${c.req.method} ${c.req.path}`, error);
     return c.json({ error: { code: "ERRO_INTERNO", message: "Não foi possível concluir a operação. Tente novamente." } }, 500);
   });
 
   app.notFound((c) => c.json({ error: { code: "NAO_ENCONTRADO", message: "Recurso não encontrado." } }, 404));
-
-  // -------------------------------------------------------------------------
-  // Rotas públicas
-  // -------------------------------------------------------------------------
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -113,14 +102,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     await next();
   }, sensitive, async (c) => {
     const input = c.get("signupInput");
-    // Destino do link: o informado pelo cliente (site ou app), se autorizado; senão a origem da requisição.
     const origin = c.req.header("Origin");
     const redirectTo = redirectAllowed(input.redirectTo) ? input.redirectTo : redirectAllowed(origin) ? origin : undefined;
     await accounts.signup(input, redirectTo);
     return c.json({ needsEmailConfirmation: true }, 201);
   });
 
-  // Chamado pela Asaas, que se identifica pelo token cadastrado no webhook.
   app.post("/webhooks/asaas", async (c) => {
     if (!sameToken(c.req.header("asaas-access-token"), asaasWebhookToken)) {
       throw new AppError(401, "NAO_AUTENTICADO", "Token do webhook inválido.");
@@ -128,10 +115,6 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     await payments.handleWebhook(asaasWebhookSchema.parse(await readJson(c)));
     return c.json({ received: true });
   });
-
-  // -------------------------------------------------------------------------
-  // Rotas autenticadas
-  // -------------------------------------------------------------------------
 
   async function requireUser(c: Context<Env>, next: () => Promise<void>) {
     const token = c.req.header("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -188,14 +171,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.body(null, 204);
   });
 
-  // Aprovar um candidato = gerar a cobrança Pix (cachê + comissão).
   app.post("/events/:id/checkout", async (c) => {
     const { candidateId } = checkoutSchema.parse(await readJson(c));
     const payment = await payments.startCheckout(c.get("user"), c.req.param("id"), candidateId);
     return c.json(toCheckoutView(payment), 201);
   });
 
-  // Situação da cobrança, conferida na Asaas (a tela de checkout consulta periodicamente).
   app.get("/events/:id/checkout", async (c) => {
     const payment = await payments.syncCheckout(c.get("user"), c.req.param("id"));
     return c.json(payment && toCheckoutView(payment));
@@ -206,12 +187,10 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.json({ situacao: "COBRANCA_CANCELADA" });
   });
 
-  // Comprovante da contratação: endereço, contatos, valores e situação do repasse.
   app.get("/events/:id/contratacao", async (c) => c.json(await events.getHiring(c.get("user"), c.req.param("id"))));
 
   app.delete("/events/:id/contratacao", async (c) => c.json(await events.cancelHiring(c.get("user"), c.req.param("id"))));
 
-  // Garantia do contratante: músico não compareceu → estorno integral.
   app.post("/events/:id/nao-comparecimento", async (c) => {
     return c.json(await events.reportNoShow(c.get("user"), c.req.param("id")));
   });

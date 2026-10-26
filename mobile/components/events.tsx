@@ -1,10 +1,12 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import type { ReactNode } from "react";
 import { Image, Pressable, Text, View } from "react-native";
-import type { EventItem, EventStatus } from "../../shared/client/events.ts";
+import { fetchReviewsOf, type EventItem, type EventStatus } from "../../shared/client/events.ts";
 import { formatCurrency } from "../../shared/client/format.ts";
+import { useAsync } from "../../shared/client/useAsync.ts";
 import { colors, radius, space, styles, type } from "../lib/theme";
-import { Icon, Pill, Tag } from "./ui";
+import { ErrorState, Icon, Pill, Section, Stars, Tag } from "./ui";
 
 const statusLabels: Record<EventStatus, string> = {
   ABERTO: "Inscrições abertas",
@@ -13,7 +15,8 @@ const statusLabels: Record<EventStatus, string> = {
   CANCELADO: "Cancelado",
 };
 
-/** Evento aberto cuja data já passou aparece como encerrado, embora o status no banco continue ABERTO. */
+export const withEncerrado = (event: EventItem, now = Date.now()) => ({ ...event, encerrado: event.status === "ABERTO" && new Date(event.inicio).getTime() <= now });
+
 export function EventStatusPill({ status, encerrado }: { status: EventStatus; encerrado?: boolean }) {
   if (status === "ABERTO" && encerrado) return <Pill text="Encerrado" tone="muted"/>;
   if (status === "CANCELADO") return <Pill text={statusLabels[status]} tone="muted"/>;
@@ -30,7 +33,6 @@ const dateParts = (iso: string) => {
   };
 };
 
-/** Card do feed: foto grande e quase sem bordas, título em caixa alta, cachê em destaque. */
 export function EventCard({ event }: { event: EventItem }) {
   const router = useRouter();
   const { day, month, time } = dateParts(event.inicio);
@@ -55,16 +57,14 @@ export function EventCard({ event }: { event: EventItem }) {
       <View style={[styles.row, { gap: 6 }]}>
         {event.formacao !== "Indiferente" && <Tag text={event.formacao}/>}
         {event.somDisponivel && <Tag text="Som no local"/>}
-        <Icon name="arrow-forward" size={20} color={colors.accent}/>
+        <Icon name="arrow-forward" size={20} color={colors.accentText}/>
       </View>
     </View>
     <View style={styles.divider}/>
   </Pressable>;
 }
 
-/** Linha de lista (eventos do contratante e inscrições do músico): data grande à esquerda, linha fina abaixo. */
-/** "detail": informação extra na linha de horário e cidade (ex.: número de candidatos). */
-export function EventRow({ event, trailing, detail, onPress }: { event: EventItem; trailing: React.ReactNode; detail?: string; onPress: () => void }) {
+export function EventRow({ event, trailing, detail, onPress }: { event: EventItem; trailing: ReactNode; detail?: string; onPress: () => void }) {
   const { day, month, time } = dateParts(event.inicio);
   return <Pressable accessibilityRole="button" onPress={onPress} android_ripple={{ color: colors.surface2 }} style={({ pressed }) => [styles.row, { gap: 14, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line, opacity: pressed ? 0.7 : 1 }]}>
     <View style={{ width: 56, alignItems: "center" }}>
@@ -79,4 +79,17 @@ export function EventRow({ event, trailing, detail, onPress }: { event: EventIte
     </View>
     <Icon name="arrow-forward" size={18} color={colors.ink3}/>
   </Pressable>;
+}
+
+export function ReviewsSection({ userId, empty }: { userId: string; empty: string }) {
+  const reviews = useAsync(`reviews:${userId}`, () => fetchReviewsOf(userId));
+  return <Section title="Avaliações recebidas">
+    {reviews.error && <ErrorState message={reviews.error} onRetry={reviews.reload}/>}
+    {!reviews.error && !reviews.data && <Text style={type.bodySmall}>Carregando avaliações...</Text>}
+    {reviews.data?.length === 0 && <Text style={type.bodySmall}>{empty}</Text>}
+    {reviews.data?.map((review) => <View key={review.id} style={styles.card}>
+      <View style={styles.between}><Stars rating={review.rating}/><Text style={type.bodySmall}>{new Date(review.createdAt).toLocaleDateString("pt-BR")}</Text></View>
+      {review.comment ? <Text style={type.body}>{review.comment}</Text> : null}
+    </View>)}
+  </Section>;
 }

@@ -1,9 +1,3 @@
-// Executa os testes pgTAP de supabase/tests/database no projeto Supabase vinculado,
-// sem Docker (alternativa a `supabase test db`, que exige Docker).
-//
-// Cada arquivo roda em uma única transação que termina com uma exceção proposital:
-// isso garante o rollback (nenhum dado de teste permanece no banco) e traz o
-// resultado TAP de volta na mensagem de erro.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

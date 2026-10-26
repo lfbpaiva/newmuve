@@ -30,7 +30,6 @@ export default function RecoverScreen() {
   return <Screen>
     <Heading title="Recupere seu acesso" subtitle="Enviaremos um link de redefinição para o e-mail cadastrado. O link abre o app."/>
     {sent
-      // A mesma mensagem para qualquer e-mail: não revela quais endereços têm conta.
       ? <Alert tone="success">Se este e-mail estiver cadastrado, você receberá as instruções em instantes.</Alert>
       : <>
         <Field label="E-mail da conta" value={email} onChangeText={(v) => { setEmail(sanitizeEmail(v)); setError(""); }} autoCapitalize="none" autoComplete="email" keyboardType="email-address"/>

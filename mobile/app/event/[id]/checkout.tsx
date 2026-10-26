@@ -3,11 +3,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
+import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
 import { formatCountdown, formatCurrency, formatDateTime } from "../../../../shared/client/format.ts";
-import { calcularCobranca } from "../../../../shared/dominio.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
+import { calcularCobranca } from "../../../../shared/dominio.ts";
 import { Alert, Button, ErrorState, Icon, Loading, Screen, Snackbar } from "../../../components/ui";
+import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
 
 const POLLING_INTERVAL_MS = 5000;
@@ -23,8 +24,11 @@ export default function CheckoutScreen() {
   const [seconds, setSeconds] = useState(0);
   const [snack, setSnack] = useState("");
   const hideSnack = useCallback(() => setSnack(""), []);
+  const [statusError, setStatusError] = useState("");
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [cancelled, setCancelled] = useState(false);
 
-  // Gera a cobrança na API (ou recupera a que ainda está válida para este candidato).
   const load = useCallback(
     () =>
       startCheckout(eventId, candidateId)
@@ -35,6 +39,12 @@ export default function CheckoutScreen() {
   );
   useEffect(() => { void load(); }, [load]);
 
+  function generate() {
+    setGenerating(true);
+    setError("");
+    void load();
+  }
+
   const expiraEm = checkout?.expiraEm;
   useEffect(() => {
     if (!expiraEm) return;
@@ -42,14 +52,23 @@ export default function CheckoutScreen() {
     return () => clearInterval(timer);
   }, [expiraEm]);
 
-  // A API confere a cobrança na Asaas a cada consulta: funciona mesmo sem o webhook.
   const waiting = checkout?.status === "PENDENTE";
   useEffect(() => {
     if (!waiting) return;
+    let inFlight = false;
     const poll = setInterval(async () => {
-      const latest = await fetchCheckoutStatus(eventId).catch(() => null);
-      if (latest?.status === "PAGO") router.replace(`/event/${eventId}/hiring`);
-      else if (latest && latest.status !== "PENDENTE") setCheckout(latest);
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const latest = await fetchCheckoutStatus(eventId);
+        setStatusError("");
+        if (latest?.status === "PAGO") router.replace(`/event/${eventId}/hiring`);
+        else if (latest && latest.status !== "PENDENTE") setCheckout(latest);
+      } catch (e) {
+        setStatusError(errorMessage(e));
+      } finally {
+        inFlight = false;
+      }
     }, POLLING_INTERVAL_MS);
     return () => clearInterval(poll);
   }, [waiting, eventId, router]);
@@ -60,20 +79,52 @@ export default function CheckoutScreen() {
     setSnack("Código Pix copiado. Cole no app do seu banco.");
   }
 
+  function cancelCharge() {
+    if (canceling) return;
+    confirmAction({
+      title: "Cancelar cobrança",
+      message: "Cancelar esta cobrança Pix pendente? Nenhum valor foi recebido, portanto não haverá reembolso.",
+      confirmLabel: "Cancelar cobrança",
+      onConfirm: async () => {
+        setCanceling(true);
+        setCancelError("");
+        try {
+          await cancelPendingCheckout(eventId);
+          setCheckout(null);
+          setCancelled(true);
+        } catch (e) {
+          setCancelError(errorMessage(e));
+        } finally {
+          setCanceling(false);
+        }
+      },
+    });
+  }
+
   const expired = Boolean(checkout) && (seconds === 0 || checkout?.status !== "PENDENTE");
+
+  if (cancelled) return <Screen>
+    <Alert tone="success">Cobrança pendente cancelada. Não houve reembolso porque o pagamento não foi recebido.</Alert>
+    <Button title="Voltar ao evento" variant="outlined" onPress={() => router.back()}/>
+  </Screen>;
 
   return <View style={styles.screen}>
     <Screen>
       {generating && <Loading label="Gerando cobrança Pix..." cards={1}/>}
-      {!generating && error && <ErrorState message={error} onRetry={() => { setGenerating(true); setError(""); void load(); }}/>}
+      {!generating && error && <ErrorState message={error} onRetry={generate}/>}
       {!generating && !error && checkout && <View style={[styles.cardRaised, { alignItems: "center", gap: space.md }]}>
         <Text style={type.title}>{expired ? "Cobrança expirada" : "Pague com Pix"}</Text>
-        {checkout.pixQrCode && <View style={{ padding: 10, backgroundColor: "#fff", borderRadius: radius.md, opacity: expired ? 0.25 : 1 }}><Image source={{ uri: `data:image/png;base64,${checkout.pixQrCode}` }} style={{ width: 196, height: 196 }} accessibilityLabel="QR Code Pix"/></View>}
+        {checkout.pixQrCode ? <View style={{ padding: 10, backgroundColor: "#fff", borderRadius: radius.md, opacity: expired ? 0.25 : 1 }}><Image source={{ uri: `data:image/png;base64,${checkout.pixQrCode}` }} style={{ width: 196, height: 196 }} accessibilityLabel="QR Code Pix"/></View> : null}
         <View style={styles.row}><Icon name="time-outline" size={16} color={colors.ink2}/><Text style={type.bodySmall}>Expira em <Text style={[type.label, { color: colors.ink }]}>{formatCountdown(seconds)}</Text></Text></View>
         {expired
-          ? <Button title="Gerar nova cobrança" icon="refresh" onPress={() => { setGenerating(true); void load(); }}/>
-          : <Button title="Copiar código Pix" icon="copy-outline" onPress={copy}/>}
-        {!expired && <Text style={[type.bodySmall, { textAlign: "center" }]}>No celular, copie o código e cole em "Pix copia e cola" no app do seu banco. Assim que o pagamento cair, esta tela avança sozinha.</Text>}
+          ? <Button title="Gerar nova cobrança" icon="refresh" onPress={generate}/>
+          : <>
+            <Button title="Copiar código Pix" icon="copy-outline" onPress={copy}/>
+            <Text style={[type.bodySmall, { textAlign: "center" }]}>No celular, copie o código e cole em "Pix copia e cola" no app do seu banco. Assim que o pagamento cair, esta tela avança sozinha.</Text>
+            <Button title="Cancelar cobrança pendente" variant="text" loading={canceling} onPress={cancelCharge}/>
+          </>}
+        {cancelError ? <Alert tone="error">{cancelError}</Alert> : null}
+        {statusError ? <Alert tone="info">Não foi possível atualizar o pagamento: {statusError}</Alert> : null}
       </View>}
       <View style={[styles.card, { gap: 6 }]}>
         {event.data ? <>

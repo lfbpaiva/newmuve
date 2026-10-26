@@ -7,7 +7,7 @@ import { fetchFeed, fetchMyEvents } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { camposFaltantes, descreverFaltantes, RAIOS_FEED_KM } from "../../../shared/dominio.ts";
-import { EventCard, EventRow, EventStatusPill } from "../../components/events";
+import { EventCard, EventRow, EventStatusPill, withEncerrado } from "../../components/events";
 import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Loading, Screen, Section } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
@@ -59,7 +59,7 @@ function Feed() {
       {!setupPending && <Chips scroll options={RAIOS_FEED_KM.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
       {!setupPending && feed.error && <ErrorState message={feed.error} onRetry={feed.reload}/>}
       {!setupPending && !feed.error && !feed.data && <Loading label="Buscando eventos..."/>}
-      {!setupPending && feed.data?.length === 0 && <EmptyState icon="musical-notes-outline" title={radius === 0 ? "Nada na sua cidade por enquanto" : `Nada até ${radius} km por enquanto`} action={radius < 200 ? <Button title="Aumentar a distância" variant="tonal" block={false} onPress={() => changeRadius(String(RAIOS_FEED_KM[RAIOS_FEED_KM.indexOf(radius as 0) + 1] ?? 200))}/> : undefined}>
+      {!setupPending && feed.data?.length === 0 && <EmptyState title={radius === 0 ? "Nada na sua cidade por enquanto" : `Nada até ${radius} km por enquanto`} action={radius < 200 ? <Button title="Aumentar a distância" variant="tonal" block={false} onPress={() => changeRadius(String(RAIOS_FEED_KM[RAIOS_FEED_KM.indexOf(radius as 0) + 1] ?? 200))}/> : undefined}>
         <Text style={[type.bodySmall, { textAlign: "center" }]}>Os eventos são filtrados pelos seus estilos ({(me.estilosMusicais ?? []).join(", ")}). Novos shows compatíveis aparecem aqui assim que forem publicados.</Text>
       </EmptyState>}
       {feed.data?.map((event) => <EventCard key={event.id} event={event}/>)}
@@ -70,10 +70,7 @@ function Feed() {
 function Dashboard() {
   const me = useMe();
   const router = useRouter();
-  const events = useAsync(`my-events:${me.id}`, async () => {
-    const now = Date.now();
-    return (await fetchMyEvents(me.id)).map((event) => ({ ...event, encerrado: event.status === "ABERTO" && new Date(event.inicio).getTime() <= now }));
-  });
+  const events = useAsync(`my-events:${me.id}`, async () => (await fetchMyEvents(me.id)).map((event) => withEncerrado(event)));
   const all = events.data ?? [];
   const active = all.filter((event) => (event.status === "ABERTO" && !event.encerrado) || event.status === "CONTRATADO");
   const candidaturas = active.filter((e) => e.status === "ABERTO").reduce((sum, e) => sum + (e.totalCandidatos ?? 0), 0);
@@ -95,7 +92,7 @@ function Dashboard() {
       <Section title="Em andamento" action={all.length > 0 ? <Button title="Ver todos" variant="text" block={false} onPress={() => router.push("/(app)/events")}/> : undefined}>
         {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
         {!events.error && !events.data && <Loading cards={1}/>}
-        {events.data && active.length === 0 && <EmptyState icon="calendar-outline" title={all.length ? "Nenhum evento em andamento" : "Publique seu primeiro evento"} action={<Button title="Criar evento" icon="add" block={false} onPress={create}/>}>
+        {events.data && active.length === 0 && <EmptyState title={all.length ? "Nenhum evento em andamento" : "Publique seu primeiro evento"} action={<Button title="Criar evento" icon="add" block={false} onPress={create}/>}>
           <Text style={[type.bodySmall, { textAlign: "center" }]}>Descreva o show, o cachê e o estilo. Músicos da região se candidatam e você escolhe quem aprovar.</Text>
         </EmptyState>}
         {active.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} detail={`${event.totalCandidatos ?? 0} ${event.totalCandidatos === 1 ? "candidato" : "candidatos"}`} trailing={<EventStatusPill status={event.status} encerrado={event.encerrado}/>}/>)}

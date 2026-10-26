@@ -20,7 +20,6 @@ export default function DeleteAccountScreen() {
     if (email !== me.email || !password) return setError("E-mail ou senha não correspondem à conta atual.");
     setSubmitting(true);
     try {
-      // A API confere a senha novamente; ao concluir, a sessão é encerrada e o AuthGate volta ao login.
       await deleteAccount(email, password);
     } catch (e) {
       setError(errorMessage(e));

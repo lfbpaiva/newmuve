@@ -3,7 +3,6 @@ import type { Account, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, createAccountService, type AccountStore, type AuthGateway, type ImageStore } from "./accountService.ts";
 
-// Implementações em memória das portas do serviço.
 function fakes() {
   const accounts = new Map<string, Account>();
   const users = new Map<string, { email: string; password: string }>();
@@ -131,7 +130,6 @@ describe("perfil progressivo", () => {
 
     const completo: Account = { ...account, uf: "PR", cidade: "Cascavel", estilosMusicais: ["Rock"], fotoPerfilUrl: "x", documento: "1", telefone: "1", chavePix: "k" };
     expect(() => assertProfileComplete(completo, "candidatar")).not.toThrow();
-    // Contratante não precisa de estilos nem de chave Pix.
     expect(() => assertProfileComplete({ ...completo, role: "CONTRACTOR", estilosMusicais: null, chavePix: null }, "criarEvento")).not.toThrow();
   });
 });

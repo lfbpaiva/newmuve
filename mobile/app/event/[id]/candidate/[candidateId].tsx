@@ -1,0 +1,48 @@
+import { useLocalSearchParams } from "expo-router";
+import { Linking, Text, View } from "react-native";
+import { fetchCandidateProfile, type CandidateStatus } from "../../../../../shared/client/events.ts";
+import { useAsync } from "../../../../../shared/client/useAsync.ts";
+import { isValidUrl } from "../../../../../shared/dominio.ts";
+import { ReviewsSection } from "../../../../components/events";
+import { Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Section, Tag } from "../../../../components/ui";
+import { space, styles, type } from "../../../../lib/theme";
+
+const statusPill: Record<CandidateStatus, { text: string; tone: "accent" | "success" | "muted" }> = {
+  PENDENTE: { text: "Candidatura pendente", tone: "accent" },
+  APROVADO: { text: "Contratado", tone: "success" },
+  RECUSADO: { text: "Não selecionado", tone: "muted" },
+};
+
+export default function CandidateProfileScreen() {
+  const { id: eventId, candidateId } = useLocalSearchParams<{ id: string; candidateId: string }>();
+  const profile = useAsync(`candidate-profile:${eventId}:${candidateId}`, () => fetchCandidateProfile(eventId, candidateId));
+
+  if (profile.error) return <Screen><ErrorState message={profile.error} onRetry={profile.reload}/></Screen>;
+  if (profile.loading && !profile.data) return <Screen><Loading cards={1}/></Screen>;
+  if (!profile.data) return <Screen>
+    <EmptyState title="Perfil indisponível"><Text style={type.bodySmall}>A candidatura ou o perfil deste músico não está mais disponível para este evento.</Text></EmptyState>
+  </Screen>;
+
+  const { status, musician } = profile.data;
+  const pill = statusPill[status];
+  return <Screen>
+    <View style={{ gap: space.lg }}>
+      <View style={styles.rule}/>
+      <View style={[styles.row, { gap: space.lg }]}>
+        <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={88}/>
+        <View style={{ flex: 1, gap: space.sm }}>
+          <Pill text={pill.text} tone={pill.tone}/>
+          <Text style={type.headline} accessibilityRole="header">{musician.nome}</Text>
+          <Text style={type.bodySmall}>{musician.cidade && musician.uf ? `${musician.cidade}, ${musician.uf}` : "Cidade não informada"}</Text>
+          <RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/>
+        </View>
+      </View>
+    </View>
+    <Section title="Apresentação">
+      <Text style={musician.bio ? type.body : type.bodySmall}>{musician.bio || "Descrição não informada."}</Text>
+      {musician.estilosMusicais.length > 0 && <View style={[styles.row, { flexWrap: "wrap" }]}>{musician.estilosMusicais.map((estilo) => <Tag key={estilo} text={estilo}/>)}</View>}
+      {musician.portfolioUrl && isValidUrl(musician.portfolioUrl) ? <Button title="Ver trabalho do músico" variant="outlined" icon="play-circle-outline" onPress={() => Linking.openURL(musician.portfolioUrl!)}/> : null}
+    </Section>
+    <ReviewsSection userId={musician.id} empty="Nenhuma avaliação recebida."/>
+  </Screen>;
+}

@@ -11,7 +11,6 @@ import { Alert, Button, Checkbox, Chips, Field, Section, Select } from "./ui";
 
 type EditableEvent = EventItem & { endereco: string };
 
-/** "DD/MM/AAAA" ↔ "AAAA-MM-DD"; a data é digitada, sem seletor nativo. */
 const maskDate = (v: string) => v.replace(/\D/g, "").slice(0, 8).replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})\/(\d{2})(\d)/, "$1/$2/$3");
 const maskTime = (v: string) => v.replace(/\D/g, "").slice(0, 4).replace(/(\d{2})(\d)/, "$1:$2");
 const toIsoDate = (br: string) => br.split("/").reverse().join("-");
@@ -103,7 +102,6 @@ export default function EventForm({ event, onSaved }: { event: EditableEvent | n
     <Section title="Quem você procura">
       <Chips options={ESTILOS_EVENTO} selected={form.estilosMusicais} onToggle={(estilo) => {
         const selected = form.estilosMusicais.includes(estilo);
-        // "Qualquer estilo" é exclusivo: marca-lo limpa os demais, e vice-versa.
         set({ estilosMusicais: estilo === QUALQUER_ESTILO ? (selected ? [] : [QUALQUER_ESTILO]) : selected ? form.estilosMusicais.filter((x) => x !== estilo) : [...form.estilosMusicais.filter((x) => x !== QUALQUER_ESTILO), estilo] });
       }}/>
       <Select label="Formação" value={form.formacao} options={options(FORMACOES)} onChange={(formacao) => set({ formacao })}/>

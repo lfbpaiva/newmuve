@@ -203,7 +203,6 @@ describe("conclusão e avaliação", () => {
   });
 });
 
-// Evento de c1 já pago: m1 contratado, valor retido.
 async function hired(inicio = hoursFromNow(72)) {
   const event = t.world.seedEvent({ inicio });
   const candidate = t.world.seedCandidate(event.id, "m1");
@@ -229,7 +228,6 @@ describe("comprovante da contratação", () => {
       cancelamento: { permitido: true, reembolso: true },
     });
     expect(paraContratante).toMatchObject({ papel: "contratante", musico: { nome: "m1", telefone: "45999990000" } });
-    // Documento e chave Pix nunca são expostos à outra parte.
     expect(JSON.stringify(paraContratante)).not.toMatch(/52998224725|m1@exemplo\.com/);
   });
 
@@ -265,7 +263,7 @@ describe("cancelamento da contratação", () => {
     t.world.stores.asaas.refundPayment = original;
   });
 
-  it("suspende confirmação, conclusão automática e repasse até resolver um estorno contestado", async () => {
+  it("suspende confirmação, conclusão automática e repasse enquanto o estorno está em processamento", async () => {
     const { event, payment } = await hired(hoursFromNow(1));
     await t.service.confirmCompletion(contratante, event.id, hoursFromNow(2));
     t.world.stores.asaas.refundPayment = async (id) => {
@@ -278,15 +276,46 @@ describe("cancelamento da contratação", () => {
     expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8))).evento.status).toBe("CONTRATADO");
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
-    await t.world.stores.payments.setRefundStatus(payment.id, "NEGADO");
-    await expect(t.service.confirmCompletion(musico, event.id, hoursFromNow(24 * 8))).rejects.toMatchObject({ code: "ESTORNO_PENDENTE" });
-    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8))).evento.status).toBe("CONTRATADO");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
-
     t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
     await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(24 * 8))).resolves.toEqual({ situacao: "ESTORNADO" });
     expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
     expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
+  });
+
+  it("estorno negado fica visível, mas não impede a confirmação nem o repasse", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    t.world.stores.asaas.refundPayment = async () => {
+      throw new AppError(409, "ESTORNO_RECUSADO", "Estorno recusado.");
+    };
+
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(2))).rejects.toMatchObject({ code: "ESTORNO_RECUSADO" });
+    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(2))).pagamento?.refundStatus).toBe("NEGADO");
+
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(3));
+    const concluido = await t.service.confirmCompletion(musico, event.id, hoursFromNow(3));
+
+    expect(concluido.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500 })]);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", repasseStatus: "PROCESSANDO", refundStatus: "NEGADO" });
+  });
+
+  it("estorno negado não impede a conclusão automática por prazo", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(2));
+    t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
+
+    const comprovante = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8));
+
+    expect(comprovante.evento.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("estorno negado permite cancelar sem estorno com menos de 24h", async () => {
+    const { event, payment } = await hired(hoursFromNow(12));
+    t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
+
+    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
   it("registra recusa por saldo sem desfazer o contrato e permite nova tentativa segura", async () => {
@@ -356,13 +385,37 @@ describe("cancelamento da contratação", () => {
     expect([...t.world.candidates.values()].some((c) => c.musicianId === "m1")).toBe(false);
   });
 
-  it("se o estorno falhar, a contratação permanece intacta", async () => {
-    const { event } = await hired(hoursFromNow(48));
+  it("se o pedido de estorno não chegar à Asaas, libera a reserva e permite nova tentativa", async () => {
+    const { event, payment } = await hired(hoursFromNow(48));
     t.world.failures.refund = true;
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).rejects.toMatchObject({ code: "ESTORNO_VERIFICACAO" });
+    await expect(t.service.cancelHiring(contratante, event.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
     expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
-    expect((await t.world.stores.payments.findLatestPayment(event.id))?.refundStatus).toBe("PROCESSANDO");
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: null, refundAction: null });
+
+    t.world.failures.refund = false;
+    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
+    expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
+  });
+
+  it("se a chamada falhar mas a Asaas registrou o estorno, mantém a reserva", async () => {
+    const { event, payment } = await hired(hoursFromNow(48));
+    t.world.stores.asaas.refundPayment = async (id) => {
+      t.world.asaasCharges.set(id, { status: "REFUND_REQUESTED", value: payment.valor });
+      throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada depois do pedido");
+    };
+
+    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
+    expect(t.world.payments.get(payment.id)?.refundStatus).toBe("PROCESSANDO");
+  });
+
+  it("depois de uma recusa, falha de rede volta o estorno para NEGADO", async () => {
+    const { event, payment } = await hired(hoursFromNow(48));
+    Object.assign(t.world.payments.get(payment.id)!, { refundStatus: "NEGADO", refundAction: "CANCELAR" });
+    t.world.failures.refund = true;
+
+    await expect(t.service.cancelHiring(contratante, event.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ refundStatus: "NEGADO", refundAction: "CANCELAR" });
   });
 
   it("não vale depois do início do evento, nem para terceiros", async () => {

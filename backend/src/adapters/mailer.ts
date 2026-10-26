@@ -9,7 +9,6 @@ export interface SmtpConfig {
   from: string;
 }
 
-/** Envio por SMTP (Resend, Brevo, Gmail...), o mesmo provedor configurado no Supabase Auth. */
 export function createSmtpMailer(config: SmtpConfig): Mailer {
   const transport = nodemailer.createTransport({
     host: config.host,
@@ -24,7 +23,6 @@ export function createSmtpMailer(config: SmtpConfig): Mailer {
   };
 }
 
-/** Sem SMTP configurado, os e-mails só aparecem no log do servidor. */
 export function createLogMailer(): Mailer {
   return {
     async send(message) {

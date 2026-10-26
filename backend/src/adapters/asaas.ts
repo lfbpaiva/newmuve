@@ -1,12 +1,11 @@
 import { AppError } from "../domain/errors.ts";
-import type { AsaasGateway } from "../services/ports.ts";
+import type { AsaasGateway, AsaasPayment } from "../services/ports.ts";
 
 const indisponivel = () =>
   new AppError(502, "PAGAMENTO_INDISPONIVEL", "Não foi possível falar com o serviço de pagamentos. Tente novamente em instantes.");
 const respostaInvalida = () =>
   new AppError(502, "PAGAMENTO_RESPOSTA_INVALIDA", "O serviço de pagamentos respondeu de forma inesperada. Tente novamente.");
 
-// Cliente da API v3 da Asaas. A chave fica apenas nas variáveis de ambiente do servidor.
 export function createAsaasGateway(config: { apiUrl: string; apiKey: string | undefined }): AsaasGateway {
   async function request<T>(method: string, path: string, body?: unknown, options: { allowNotFound?: boolean } = {}): Promise<T | null> {
     if (!config.apiKey) {
@@ -27,7 +26,6 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
     if (response.status === 404 && options.allowNotFound) return null;
     if (!response.ok) {
       const detail = await response.json().catch(() => null) as { errors?: Array<{ code?: string; description?: string }> } | null;
-      // Só códigos e status no log: descrições podem conter dados pessoais.
       console.error(`Asaas ${method} ${path}: HTTP ${response.status}`, detail?.errors?.map((item) => item.code) ?? []);
       if (path.endsWith("/pixQrCode") && response.status === 400 && detail?.errors?.some((item) => item.code === "invalid_action")) {
         throw new AppError(503, "PAGAMENTO_QR_INDISPONIVEL", "O QR Code Pix ainda não está disponível. Tente novamente em instantes.");
@@ -104,7 +102,7 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
     },
 
     async getPayment(paymentId) {
-      const payment = await request<{ status: string; value: number; refunds?: Array<{ status: string; value: number }> }>("GET", paymentPath(paymentId), undefined, { allowNotFound: true });
+      const payment = await request<AsaasPayment>("GET", paymentPath(paymentId), undefined, { allowNotFound: true });
       return payment && { status: payment.status, value: payment.value, refunds: payment.refunds };
     },
 
@@ -112,7 +110,6 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
       await request("DELETE", paymentPath(paymentId), undefined, { allowNotFound: true });
     },
 
-    // Sem "value": estorno integral.
     async refundPayment(paymentId) {
       await request("POST", `${paymentPath(paymentId)}/refund`, { description: "Contratação cancelada no Muve" });
     },

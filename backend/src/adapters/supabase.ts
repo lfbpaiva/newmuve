@@ -71,7 +71,6 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       return data.user?.email ?? null;
     },
 
-    // Só grava o que veio na requisição; campo ausente não apaga o valor atual.
     async updateProfile(userId, role, changes) {
       const row: Record<string, unknown> = { [nameColumn(role)]: changes.nome };
       if (changes.documento !== undefined) row.documento = changes.documento;
@@ -95,8 +94,6 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
   };
 }
 
-// signUp e signInWithPassword usam a chave pública: assim valem as mesmas regras
-// do Supabase Auth aplicadas a qualquer cliente (e-mail de confirmação, limites de tentativas).
 export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: string): AuthGateway {
   const publicClient = () => createClient(url, anonKey, serverOnly);
 
@@ -125,7 +122,6 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       if (error?.code === "weak_password") throw new AppError(400, "SENHA_FRACA", "Escolha uma senha mais forte.");
       if (error?.code === "email_address_invalid") throw new AppError(400, "EMAIL_INVALIDO", "Informe um e-mail válido.");
       if (error) throw error;
-      // Com confirmação de e-mail ativa, um e-mail já confirmado volta como usuário sem identidades.
       if (!data.user || (data.user.identities ?? []).length === 0) return { emailTaken: true };
       return { userId: data.user.id };
     },

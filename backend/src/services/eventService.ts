@@ -38,7 +38,6 @@ export function createEventService(deps: {
     if (inicio <= now) throw new AppError(400, "DATA_NO_PASSADO", "O horário de início não pode ser inferior ao horário atual.");
   }
 
-  /** Evento do próprio contratante, ainda aberto e sem cobrança em andamento. */
   async function findEditableEvent(user: AuthUser, eventId: string, now: Date): Promise<EventRecord> {
     const event = await events.findEvent(eventId);
     if (!event || event.contractorId !== user.id) throw naoEncontrado();
@@ -53,7 +52,6 @@ export function createEventService(deps: {
     return event;
   }
 
-  /** Evento em que o usuário é parte (contratante ou músico contratado). */
   async function findEventAsParty(user: AuthUser, eventId: string): Promise<{ event: EventRecord; party: Party }> {
     const event = await events.findEvent(eventId);
     const party = event && partyOf(event, user);
@@ -132,13 +130,8 @@ export function createEventService(deps: {
       await events.deleteCandidate(candidate.id);
     },
 
-    /**
-     * Comprovante da contratação, visível apenas às duas partes: dados do evento,
-     * endereço, contato de cada lado, valores e situação do pagamento e do repasse.
-     */
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
       await findEventAsParty(user, eventId);
-      // Reconcilia estornos em andamento mesmo quando o webhook atrasar.
       await payments.refreshRefund(eventId).catch((error: unknown) => {
         console.error("Falha ao consultar estorno da contratação", error instanceof AppError ? error.code : "falha inesperada");
       });
@@ -147,9 +140,8 @@ export function createEventService(deps: {
       let { event } = found;
       if (event.status === "ABERTO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento ainda não tem um músico contratado.");
 
-      // Sem agendador de tarefas, a conclusão por prazo é avaliada quando uma das partes consulta.
       const umaConfirmacao = event.confirmacaoMusico || event.confirmacaoContratante;
-      const estornoPendente = Boolean((await payments.findPayment(eventId))?.refundStatus);
+      const estornoPendente = (await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO";
       if (event.status === "CONTRATADO" && !estornoPendente && umaConfirmacao && now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS) {
         event = await events.concludeEvent(eventId);
       }
@@ -193,22 +185,14 @@ export function createEventService(deps: {
           refundStatus: payment.refundStatus,
         },
         avaliou,
-        // Garantia: após o horário do evento, enquanto o músico não confirmar, o contratante pode registrar o não comparecimento.
         naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
           permitido: event.status === "CONTRATADO" && antesDoInicio && payment?.refundStatus !== "PROCESSANDO",
-          // O músico sempre devolve o valor ao desistir; o contratante só é reembolsado com 24h de antecedência.
           reembolso: party === "musico" || hasCancellationNotice(event.inicio, now),
         },
       };
     },
 
-    /**
-     * Cancela uma contratação antes do início do evento.
-     *   - Contratante, com mais de 24h de antecedência: estorno integral; evento cancelado.
-     *   - Contratante, com menos de 24h: sem estorno; o cachê é repassado ao músico.
-     *   - Músico contratado: estorno integral ao contratante; o evento volta a ficar aberto.
-     */
     async cancelHiring(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" }> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
@@ -232,11 +216,6 @@ export function createEventService(deps: {
       return { situacao: "SEM_ESTORNO" };
     },
 
-    /**
-     * Garantia do contratante: se o músico não compareceu (e não confirmou o show),
-     * o valor é devolvido integralmente. Se o músico já confirmou, há conflito de
-     * versões, que o MVP não arbitra.
-     */
     async reportNoShow(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" }> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (party !== "contratante") throw naoEncontrado();
@@ -249,13 +228,12 @@ export function createEventService(deps: {
       return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
     },
 
-    /** Cada parte confirma, pelo próprio acesso, que o show aconteceu. A conclusão libera o repasse. */
     async confirmCompletion(user: AuthUser, eventId: string, now = new Date()): Promise<EventRecord> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (event.status === "CONCLUIDO") return event;
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem um músico contratado.");
       if (event.inicio > now) throw new AppError(409, "EVENTO_NAO_INICIADO", "A confirmação fica disponível após o início do evento.");
-      if ((await payments.findPayment(eventId))?.refundStatus) {
+      if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO") {
         throw new AppError(409, "ESTORNO_PENDENTE", "A confirmação do show fica suspensa até a resolução do estorno.");
       }
 
@@ -264,7 +242,6 @@ export function createEventService(deps: {
       return updated;
     },
 
-    /** Avaliação mútua, liberada após a conclusão: cada parte avalia a outra uma única vez. */
     async review(user: AuthUser, eventId: string, input: ReviewInput): Promise<void> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (event.status !== "CONCLUIDO") {

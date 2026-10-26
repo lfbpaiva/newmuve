@@ -1,13 +1,3 @@
-// Verificação ponta a ponta: exercita a API local (pnpm dev:api) contra o projeto
-// Supabase configurado em backend/.env, com contas de teste temporárias criadas
-// já confirmadas (nenhum e-mail é enviado). Ao final de "run", duas contas de
-// teste permanecem para inspeção manual; "cleanup" remove tudo.
-//
-//   node scripts/e2e-api.mjs run       (ou: pnpm test:e2e)
-//   node scripts/e2e-api.mjs cleanup
-//
-// A API limita cadastros e exclusões a 10 por IP a cada 10 minutos: rodar o
-// script várias vezes seguidas faz essas verificações falharem com 429.
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
@@ -88,7 +78,6 @@ async function run() {
   const m = await createUser("musician");
   const m2 = await createUser("musician2");
 
-  // --- conta
   let r = await api(c, "GET", "/me");
   check("GET /me devolve o perfil com documento", r.status === 200 && r.json.documento === DOCS.contractor && r.json.email === USERS.contractor.email, JSON.stringify(r));
   r = await api(null, "GET", "/me");
@@ -98,7 +87,6 @@ async function run() {
   r = await api(c, "PATCH", "/me", patch);
   check("PATCH /me atualiza nome e telefone", r.status === 200 && r.json.nome === "Bar Teste Editado" && r.json.telefone === "4532221100", JSON.stringify(r));
 
-  // --- eventos
   r = await api(m, "POST", "/events", eventForm());
   check("músico não cria evento: 403", r.status === 403, JSON.stringify(r));
   r = await api(c, "POST", "/events", eventForm({ cache: 50 }));
@@ -116,7 +104,6 @@ async function run() {
   const banner = await fetch(stored.imagem_url);
   check("URL pública do banner responde", banner.ok, String(banner.status));
 
-  // --- feed (RLS + função de match, com o cliente do músico)
   let feed = await m.db.rpc("musician_feed", { p_raio_km: 0 });
   check("feed do músico traz o evento (cidade em caixa diferente)", feed.data?.some((e) => e.event_id === eventId), JSON.stringify(feed.error ?? feed.data));
   r = await api(c, "POST", "/events", eventForm({ titulo: "Rock em Toledo (teste)", cidade: "Toledo" }));
@@ -138,7 +125,6 @@ async function run() {
   const direct = await m.db.from("event_candidates").insert({ event_id: eventId, musician_id: m.id });
   check("cliente não grava candidatura direto no banco", Boolean(direct.error));
 
-  // --- candidaturas
   r = await api(m, "POST", `/events/${eventId}/candidatura`);
   check("músico se inscreve: 204", r.status === 204, JSON.stringify(r));
   r = await api(m, "POST", `/events/${eventId}/candidatura`);
@@ -152,7 +138,6 @@ async function run() {
   check("contratante vê os 2 candidatos com perfil", cands.data?.length === 2 && cands.data.every((x) => x.musician?.nome_completo), JSON.stringify(cands.error ?? cands.data));
   const candidateId = cands.data.find((x) => x.musician.user_id === m.id).id;
 
-  // --- checkout (sem chave da Asaas configurada)
   r = await api(m, "POST", `/events/${eventId}/checkout`, { candidateId });
   check("músico não aprova candidato: 404", r.status === 404, JSON.stringify(r));
   r = await api(c, "POST", `/events/${eventId}/checkout`, { candidateId });
@@ -162,7 +147,6 @@ async function run() {
   r = await api(null, "POST", "/webhooks/asaas", { id: "evt", event: "PAYMENT_RECEIVED", payment: { id: "x" } });
   check("webhook sem token: 401", r.status === 401);
 
-  // --- pagamento confirmado (simulado direto no banco, como faria o webhook)
   await admin.from("payments").delete().eq("event_id", eventId);
   await admin.from("payments").insert({ event_id: eventId, candidate_id: candidateId, contractor_id: c.id, asaas_payment_id: "pay_e2e_1", valor: 495.55, valor_comissao: 45.05, expira_em: new Date(Date.now() + 9e5).toISOString() }).throwOnError();
   const confirmed = await admin.rpc("confirm_asaas_payment", { p_asaas_payment_id: "pay_e2e_1" });
@@ -172,7 +156,6 @@ async function run() {
   feed = await m2.db.rpc("musician_feed", { p_raio_km: 0 });
   check("evento contratado some do feed", !feed.data?.some((e) => e.event_id === eventId));
 
-  // --- comprovante da contratação
   r = await api(m, "GET", `/events/${eventId}/contratacao`);
   check("músico contratado vê endereço, contato e valores", r.json?.evento?.endereco === "Rua das Flores, 123 - Centro" && r.json?.contratante?.telefone === "4532221100" && r.json?.pagamento?.cache === 450.5 && r.json?.pagamento?.comissao === 45.05 && r.json?.pagamento?.repasseStatus === "RETIDO", JSON.stringify(r.json));
   check("comprovante não expõe documento nem chave Pix", !JSON.stringify(r.json).includes(DOCS.contractor) && !JSON.stringify(r.json).includes("chave"), JSON.stringify(r.json));
@@ -185,7 +168,6 @@ async function run() {
   r = await api(m, "DELETE", `/events/${eventId}/contratacao`);
   check(env.ASAAS_API_KEY ? "músico desiste: estorno e evento reaberto" : "desistência sem Asaas: falha controlada, contratação intacta", env.ASAAS_API_KEY ? r.json?.reembolsado === true : r.status === 503, JSON.stringify(r));
 
-  // --- conclusão e avaliação
   r = await api(c, "POST", `/events/${eventId}/confirmacao`);
   check("confirmação antes do evento: 409", r.code === "EVENTO_NAO_INICIADO", JSON.stringify(r));
   await admin.from("events").update({ inicio: new Date(Date.now() - 36e5).toISOString() }).eq("id", eventId).throwOnError();
@@ -210,7 +192,6 @@ async function run() {
   r = await api(c, "GET", `/events/${eventId}/contratacao`);
   check(env.ASAAS_API_KEY ? "repasse ao músico solicitado após a conclusão" : "repasse sem Asaas: registrado como FALHOU para nova tentativa", env.ASAAS_API_KEY ? ["PROCESSANDO", "REPASSADO"].includes(r.json?.pagamento?.repasseStatus) : r.json?.pagamento?.repasseStatus === "FALHOU", JSON.stringify(r.json?.pagamento));
 
-  // --- exclusão de conta (músico 2, sem contratação em andamento)
   r = await api(m2, "DELETE", "/me", { email: USERS.musician2.email, password: "senha-errada" });
   check("exclusão com senha errada: 400", r.code === "CREDENCIAIS_NAO_CONFEREM", JSON.stringify(r));
   r = await api(m2, "DELETE", "/me", { email: USERS.musician2.email, password: PASSWORD });

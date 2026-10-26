@@ -1,17 +1,57 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, EventInput, EventRecord, PaymentRecord } from "../domain/event.ts";
+import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
-
-// Acesso a dados de eventos, candidaturas, avaliações e pagamentos.
 
 const UNIQUE_VIOLATION = "23505";
 
-// Linha crua devolvida pelo PostgREST.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Row = Record<string, any>;
+interface EventRow {
+  id: string;
+  contractor_id: string;
+  musico_contratado_id: string | null;
+  titulo: string;
+  tipo_evento: string;
+  inicio: string;
+  duracao_minutos: number;
+  uf: string;
+  cidade: string;
+  estilos_musicais: string[];
+  formacao: string;
+  som_disponivel: boolean;
+  cache: number | string;
+  imagem_url: string;
+  descricao: string | null;
+  status: EventStatus;
+  confirmacao_musico: boolean;
+  confirmacao_contratante: boolean;
+}
 
-const toEvent = (row: Row): EventRecord => ({
+interface CandidateRow {
+  id: string;
+  event_id: string;
+  musician_id: string;
+  status: CandidateStatus;
+}
+
+interface PaymentRow {
+  id: string;
+  event_id: string | null;
+  candidate_id: string | null;
+  asaas_payment_id: string;
+  valor: number | string;
+  valor_comissao: number | string;
+  valor_cache: number | string;
+  status: PaymentStatus;
+  repasse_status: PayoutStatus | null;
+  refund_status: RefundStatus | null;
+  refund_action: RefundAction | null;
+  refund_requested_at: string | null;
+  pix_copia_cola: string | null;
+  pix_qr_code: string | null;
+  expira_em: string;
+}
+
+const toEvent = (row: EventRow): EventRecord => ({
   id: row.id,
   contractorId: row.contractor_id,
   musicoContratadoId: row.musico_contratado_id,
@@ -32,14 +72,14 @@ const toEvent = (row: Row): EventRecord => ({
   confirmacaoContratante: row.confirmacao_contratante,
 });
 
-const toCandidate = (row: Row): CandidateRecord => ({
+const toCandidate = (row: CandidateRow): CandidateRecord => ({
   id: row.id,
   eventId: row.event_id,
   musicianId: row.musician_id,
   status: row.status,
 });
 
-const toPayment = (row: Row): PaymentRecord => ({
+const toPayment = (row: PaymentRow): PaymentRecord => ({
   id: row.id,
   eventId: row.event_id,
   candidateId: row.candidate_id,
@@ -51,6 +91,7 @@ const toPayment = (row: Row): PaymentRecord => ({
   repasseStatus: row.repasse_status,
   refundStatus: row.refund_status ?? null,
   refundAction: row.refund_action ?? null,
+  refundRequestedAt: row.refund_requested_at ? new Date(row.refund_requested_at) : null,
   pixCopiaCola: row.pix_copia_cola,
   pixQrCode: row.pix_qr_code,
   expiraEm: new Date(row.expira_em),
@@ -72,7 +113,7 @@ const eventColumns = (data: EventInput & { imagemUrl?: string }) => ({
 });
 
 export function createEventStore(admin: SupabaseClient): EventStore {
-  async function updateReturning(id: string, changes: Row): Promise<EventRecord> {
+  async function updateReturning(id: string, changes: Record<string, unknown>): Promise<EventRecord> {
     const { data, error } = await admin.from("events").update(changes).eq("id", id).select().single();
     if (error) throw error;
     return toEvent(data);
@@ -96,7 +137,6 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       if (error) throw error;
       const location = await admin.from("event_locations").insert({ event_id: data.id, endereco: input.endereco });
       if (location.error) {
-        // O evento não pode existir sem endereço.
         await admin.from("events").delete().eq("id", data.id);
         throw location.error;
       }
@@ -117,16 +157,10 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     setConfirmation: (eventId, party) =>
       updateReturning(eventId, { [party === "musico" ? "confirmacao_musico" : "confirmacao_contratante"]: true }),
 
-    // A trigger events_conclude_when_both_confirm muda o status para CONCLUIDO.
     concludeEvent: (eventId) => updateReturning(eventId, { confirmacao_musico: true, confirmacao_contratante: true }),
 
     async cancelEvent(eventId) {
       const { error } = await admin.from("events").update({ status: "CANCELADO" }).eq("id", eventId);
-      if (error) throw error;
-    },
-
-    async reopenEvent(eventId) {
-      const { error } = await admin.rpc("reopen_event", { p_event_id: eventId });
       if (error) throw error;
     },
 
@@ -245,32 +279,36 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
 
     async setPaymentStatus(id, status) {
       let query = admin.from("payments").update({ status }).eq("id", id);
-      // Um webhook de vencimento/exclusão pode chegar junto da confirmação paga.
-      // A transição para PAGO nunca deve ser sobrescrita por uma leitura antiga.
       if (status === "EXPIRADO" || status === "CANCELADO") query = query.eq("status", "PENDENTE");
       const { error } = await query;
       if (error) throw error;
     },
 
-      async claimRefund(id, action) {
-        const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action });
-        if (error) throw error;
-        return data === true;
-      },
+    async claimRefund(id, action) {
+      const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action });
+      if (error) throw error;
+      return data === true;
+    },
 
-      async setRefundStatus(id, status) {
-        const { error } = await admin.from("payments")
-          .update({ refund_status: status })
-          .eq("id", id)
-          .eq("refund_status", "PROCESSANDO");
-        if (error) throw error;
-      },
+    async setRefundStatus(id, status) {
+      const { error } = await admin.from("payments").update({ refund_status: status }).eq("id", id).eq("refund_status", "PROCESSANDO");
+      if (error) throw error;
+    },
 
-      async finalizeRefund(id) {
-        const { data, error } = await admin.rpc("finalize_asaas_refund", { p_payment_id: id });
-        if (error) throw error;
-        return data as "CONFIRMADO" | "JA_PROCESSADO" | "REPASSE_CONFLITANTE";
-      },
+    async releaseRefund(id, previous) {
+      const { error } = await admin
+        .from("payments")
+        .update({ refund_status: previous.refundStatus, refund_action: previous.refundAction })
+        .eq("id", id)
+        .eq("refund_status", "PROCESSANDO");
+      if (error) throw error;
+    },
+
+    async finalizeRefund(id) {
+      const { data, error } = await admin.rpc("finalize_asaas_refund", { p_payment_id: id });
+      if (error) throw error;
+      return data as "CONFIRMADO" | "JA_PROCESSADO" | "REPASSE_CONFLITANTE";
+    },
 
     async confirmPayment(asaasPaymentId) {
       const { data, error } = await admin.rpc("confirm_asaas_payment", { p_asaas_payment_id: asaasPaymentId });
@@ -278,14 +316,13 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       return data as ConfirmPaymentResult;
     },
 
-    // Um único UPDATE condicional: só uma execução concorrente recebe a linha de volta.
     async claimPayout(id) {
       const { data, error } = await admin
         .from("payments")
         .update({ repasse_status: "PROCESSANDO" })
         .eq("id", id)
         .eq("status", "PAGO")
-          .is("refund_status", null)
+        .or("refund_status.is.null,refund_status.neq.PROCESSANDO")
         .in("repasse_status", ["RETIDO", "FALHOU"])
         .select("id");
       if (error) throw error;

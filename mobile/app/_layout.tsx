@@ -9,7 +9,7 @@ import { useEffect, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { supabase } from "../lib/client";
-import { colors } from "../lib/theme";
+import { colors, stackOptions } from "../lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -22,11 +22,6 @@ export default function RootLayout() {
   </AuthProvider>;
 }
 
-/**
- * No navegador, o app fica numa coluna com largura de celular, centralizada.
- * Sem isso, em uma tela de computador as fotos e listas esticam até as bordas.
- * No celular (iOS/Android) não muda nada.
- */
 function WebFrame({ children }: { children: ReactNode }) {
   if (Platform.OS !== "web") return children;
   return <View style={{ flex: 1, alignItems: "center", backgroundColor: "#050506" }}>
@@ -36,7 +31,6 @@ function WebFrame({ children }: { children: ReactNode }) {
   </View>;
 }
 
-/** Abre a sessão a partir dos links de confirmação de e-mail e de redefinição de senha (muve://auth#access_token=...). */
 function useAuthLinks() {
   useEffect(() => {
     async function handle(url: string | null) {
@@ -52,8 +46,6 @@ function useAuthLinks() {
   }, []);
 }
 
-// Decide entre as telas públicas e as autenticadas; a sessão vem do AuthContext compartilhado com a web.
-// Stack.Protected garante que nenhuma tela interna seja montada sem sessão (nem por link direto).
 function AuthGate() {
   const { state, recoveringPassword, retrySession } = useAuth();
   const router = useRouter();
@@ -67,25 +59,16 @@ function AuthGate() {
     if (recoveringPassword) router.replace("/(auth)/reset");
   }, [loading, recoveringPassword, router]);
 
-  // Enquanto a sessão é lida do armazenamento, a splash continua visível.
   if (loading) return null;
 
   if (state.status === "error") return <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, backgroundColor: colors.bg }}>
     <Text style={{ color: colors.ink, textAlign: "center", marginBottom: 20 }}>{state.notice}</Text>
-    <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={{ padding: 14, backgroundColor: colors.accent, borderRadius: 8 }}>
-      <Text style={{ color: colors.bg, fontWeight: "700" }}>Tentar novamente</Text>
+    <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 20, backgroundColor: pressed ? colors.accentPressed : colors.accent, borderRadius: 4 })}>
+      <Text style={{ color: colors.onAccent, fontWeight: "700" }}>Tentar novamente</Text>
     </Pressable>
   </View>;
 
-  return <Stack screenOptions={{
-    headerStyle: { backgroundColor: colors.bg },
-    headerShadowVisible: false,
-    headerTintColor: colors.ink,
-    headerTitleStyle: { fontFamily: "Archivo_800ExtraBold", fontSize: 15 },
-    headerBackButtonDisplayMode: "minimal",
-    contentStyle: { backgroundColor: colors.bg },
-    animation: "slide_from_right",
-  }}>
+  return <Stack screenOptions={{ ...stackOptions, animation: "slide_from_right" }}>
     <Stack.Protected guard={!signedIn}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
     </Stack.Protected>
@@ -96,6 +79,7 @@ function AuthGate() {
       <Stack.Screen name="event/[id]/edit" options={{ title: "EDITAR EVENTO" }}/>
       <Stack.Screen name="event/[id]/checkout" options={{ title: "PAGAMENTO" }}/>
       <Stack.Screen name="event/[id]/hiring" options={{ title: "CONTRATAÇÃO" }}/>
+      <Stack.Screen name="event/[id]/candidate/[candidateId]" options={{ title: "PERFIL DO MÚSICO" }}/>
       <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
       <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
       <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>

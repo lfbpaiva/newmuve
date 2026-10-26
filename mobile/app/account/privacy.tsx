@@ -4,8 +4,6 @@ import { Button, Heading, Icon, Screen, type IconName } from "../../components/u
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
-// Explica o que a plataforma guarda e por quê. A exclusão fica no fim, como
-// ação secundária, e ainda exige e-mail e senha na tela seguinte.
 export default function PrivacyScreen() {
   const me = useMe();
   const router = useRouter();
@@ -21,7 +19,7 @@ export default function PrivacyScreen() {
     <Heading title="Conta e privacidade" subtitle="O que a Muve guarda sobre você e para que cada dado serve."/>
     <View style={[styles.card, { gap: space.lg }]}>
       {items.map((item) => <View key={item.title} style={[styles.row, { alignItems: "flex-start", gap: 14 }]}>
-        <Icon name={item.icon} size={20} color={colors.accent}/>
+        <Icon name={item.icon} size={20} color={colors.accentText}/>
         <View style={{ flex: 1, gap: 2 }}><Text style={type.titleSmall}>{item.title}</Text><Text style={type.bodySmall}>{item.text}</Text></View>
       </View>)}
     </View>

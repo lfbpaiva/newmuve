@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev:api": "node --watch backend/src/server.ts",
-    "start:api": "node backend/src/server.ts",
+    "start:api": "NODE_ENV=production node backend/src/server.ts",
     "dev:app": "npm --prefix mobile start",
     "typecheck": "tsc --noEmit && npm --prefix mobile run typecheck",
     "lint": "eslint .",

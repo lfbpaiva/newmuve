@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { Alert as NativeAlert, Image, Linking, Text, View } from "react-native";
+import { useState, type ReactNode } from "react";
+import { Image, Linking, Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
 import {
   applyToEvent,
@@ -18,8 +18,9 @@ import {
 import { formatCurrency, formatDateTime, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, camposFaltantes, descreverFaltantes, hasCancellationNotice } from "../../../../shared/dominio.ts";
-import { EventStatusPill } from "../../../components/events";
+import { EventStatusPill, withEncerrado } from "../../../components/events";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, RatingSummary, Screen, Section, Tag, type IconName } from "../../../components/ui";
+import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
 import { useMe } from "../../../lib/useMe";
 
@@ -47,11 +48,10 @@ function useAction(onDone: () => void) {
   return { busy, error, run };
 }
 
-/** Foto do evento com o título sobre ela: a imagem lidera a tela. */
-function Hero({ event, children }: { event: EventItem; children?: React.ReactNode }) {
+function Hero({ event, children }: { event: EventItem; children?: ReactNode }) {
   return <View style={{ height: 260, borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.surface }}>
     <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }} accessibilityLabel={`Foto do evento ${event.titulo}`}/>
-    <LinearGradient colors={["transparent", "#0f1016f5"]} locations={[0.25, 1]} style={{ position: "absolute", inset: 0 }}/>
+    <LinearGradient colors={["transparent", "#0a0a0cf5"]} locations={[0.25, 1]} style={{ position: "absolute", inset: 0 }}/>
     <View style={{ position: "absolute", left: 16, right: 16, bottom: 16, gap: 8 }}>
       {children}
       <Text style={type.headline}>{event.titulo}</Text>
@@ -68,10 +68,6 @@ function Facts({ event }: { event: EventItem }) {
   ];
   return <View style={{ gap: 8 }}>{facts.map((f) => <View key={f.text} style={[styles.row, { gap: 10 }]}><Icon name={f.icon} size={18} color={colors.ink2}/><Text style={type.body}>{f.text}</Text></View>)}</View>;
 }
-
-// ---------------------------------------------------------------------------
-// Músico: detalhes da oportunidade e candidatura
-// ---------------------------------------------------------------------------
 
 function Opportunity({ eventId }: { eventId: string }) {
   const me = useMe();
@@ -127,15 +123,11 @@ function Opportunity({ eventId }: { eventId: string }) {
   </Screen>;
 }
 
-// ---------------------------------------------------------------------------
-// Contratante: gestão do evento e dos candidatos
-// ---------------------------------------------------------------------------
-
 function Manage({ eventId }: { eventId: string }) {
   const router = useRouter();
   const details = useAsync(`manage:${eventId}`, async () => {
     const [raw, candidates, checkout] = await Promise.all([fetchEvent(eventId), fetchCandidates(eventId), fetchCheckoutStatus(eventId).catch(() => null)]);
-    return { event: { ...raw, encerrado: raw.status === "ABERTO" && new Date(raw.inicio).getTime() <= Date.now() }, candidates, checkout };
+    return { event: withEncerrado(raw), candidates, checkout };
   });
   const { busy, error, run } = useAction(() => router.back());
 
@@ -147,10 +139,7 @@ function Manage({ eventId }: { eventId: string }) {
   const hired = candidates.find((c) => c.status === "APROVADO");
 
   function remove() {
-    NativeAlert.alert("Excluir evento", `Excluir "${event.titulo}"? As candidaturas recebidas serão perdidas.`, [
-      { text: "Manter", style: "cancel" },
-      { text: "Excluir", style: "destructive", onPress: () => void run(() => deleteEvent(event.id)) },
-    ]);
+    confirmAction({ title: "Excluir evento", message: `Excluir "${event.titulo}"? As candidaturas recebidas serão perdidas.`, confirmLabel: "Excluir", cancelLabel: "Manter", onConfirm: () => void run(() => deleteEvent(event.id)) });
   }
 
   return <Screen>
@@ -171,22 +160,23 @@ function Manage({ eventId }: { eventId: string }) {
 
     <Section title={candidates.length === 0 ? "Candidatos" : `${candidates.length} ${candidates.length === 1 ? "candidato" : "candidatos"}`}>
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
-      {candidates.length === 0 && <EmptyState icon="people-outline" title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. Você recebe um aviso quando alguém se inscrever.</Text></EmptyState>}
-      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked} approveLabel={paymentInProgress ? "Continuar pagamento" : "Aprovar e pagar"} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
+      {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. Você recebe um aviso quando alguém se inscrever.</Text></EmptyState>}
+      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked} approveLabel={paymentInProgress ? "Continuar pagamento" : "Aprovar e pagar"} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
     </Section>
   </Screen>;
 }
 
-function CandidateCard({ candidate, canApprove, approveLabel, onApprove }: { candidate: Candidate; canApprove: boolean; approveLabel: string; onApprove: () => void }) {
+function CandidateCard({ candidate, canApprove, approveLabel, onProfile, onApprove }: { candidate: Candidate; canApprove: boolean; approveLabel: string; onProfile: () => void; onApprove: () => void }) {
   const { musician } = candidate;
   return <View style={[styles.card, { gap: space.md }]}>
-    <View style={[styles.row, { gap: 12 }]}>
-      <Avatar uri={musician.fotoPerfilUrl} size={56}/>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
+      <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={56}/>
       <View style={{ flex: 1 }}><Text style={type.titleSmall}>{musician.nome}</Text><Text style={type.bodySmall}>{musician.cidade}, {musician.uf} · {musician.estilosMusicais.join(", ")}</Text><RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/></View>
-    </View>
+      <Icon name="chevron-forward" size={18} color={colors.ink3}/>
+    </Pressable>
     {musician.bio ? <Text style={type.bodySmall}>{musician.bio}</Text> : null}
     <View style={{ flexDirection: "row", gap: space.sm }}>
-      {musician.portfolioUrl && <View style={{ flex: 1 }}><Button variant="outlined" icon="play-circle-outline" title="Ver trabalho" onPress={() => Linking.openURL(musician.portfolioUrl!)}/></View>}
+      {musician.portfolioUrl ? <View style={{ flex: 1 }}><Button variant="outlined" icon="play-circle-outline" title="Ver trabalho" onPress={() => Linking.openURL(musician.portfolioUrl!)}/></View> : null}
       {candidate.status === "PENDENTE" && canApprove && <View style={{ flex: 1 }}><Button icon="checkmark" title={approveLabel} onPress={onApprove}/></View>}
     </View>
     {candidate.status === "APROVADO" && <Alert tone="success">Contratado</Alert>}

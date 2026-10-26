@@ -11,7 +11,6 @@ type AuthState =
 
 interface AuthContextValue {
   state: AuthState;
-  /** Verdadeiro quando o usuário chegou pelo link de redefinição de senha. */
   recoveringPassword: boolean;
   finishPasswordRecovery(): void;
   refreshMe(): Promise<void>;
@@ -29,8 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     let loadedUserId: string | null = null;
 
-    // Dispara INITIAL_SESSION ao assinar: cobre tanto a sessão salva quanto os
-    // links de confirmação de e-mail e de redefinição de senha.
     const { data } = supabase().auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") setRecoveringPassword(true);
 
@@ -39,7 +36,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState((current) => (current.status === "signedOut" ? current : { status: "signedOut" }));
         return;
       }
-      // Renovação de token e afins não exigem recarregar o perfil.
       if (session.user.id === loadedUserId) return;
       loadedUserId = session.user.id;
 

@@ -1,6 +1,3 @@
-// Ponto de entrada da API do Muve (Node.js).
-// Apenas lê a configuração e monta as dependências reais; rotas, regras e
-// acesso a dados ficam em http/, services/ e adapters/.
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { serve } from "@hono/node-server";
@@ -20,18 +17,16 @@ import { createEventService } from "./services/eventService.ts";
 import { createNotifier } from "./services/notifications.ts";
 import { createPaymentService } from "./services/paymentService.ts";
 
-// Em desenvolvimento, as variáveis vêm de backend/.env; em produção, do provedor de hospedagem.
 const envFile = new URL("../.env", import.meta.url);
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`Variável de ambiente ${name} não definida. Consulte backend/.env.`);
+  if (!value) throw new Error(`Variável de ambiente ${name} não definida. Consulte backend/.env.example.`);
   return value;
 }
 
 const supabaseUrl = requiredEnv("SUPABASE_URL");
-// service_role: ignora o RLS. Existe apenas neste servidor, nunca no frontend.
 const admin = createAdminClient(supabaseUrl, requiredEnv("SUPABASE_SERVICE_ROLE_KEY"));
 
 const accountStore = createAccountStore(admin);
@@ -42,8 +37,6 @@ const configuredOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:8443
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
-// O IP do Wi-Fi pode mudar por DHCP. Em desenvolvimento, autorize somente
-// endereços da própria máquina nas portas dos clientes web.
 const localOrigins = process.env.NODE_ENV === "production"
   ? []
   : [...new Set([
@@ -54,7 +47,6 @@ const localOrigins = process.env.NODE_ENV === "production"
     ])].flatMap((host) => [8443, 8081].map((clientPort) => `http://${host}:${clientPort}`));
 const allowedOrigins = [...new Set([...configuredOrigins, ...localOrigins])];
 
-// E-mails transacionais: com SMTP configurado são enviados; sem, só aparecem no log.
 const smtp = process.env.SMTP_HOST
   ? createSmtpMailer({
       host: process.env.SMTP_HOST,
@@ -72,7 +64,6 @@ const payments = createPaymentService({
   accounts: accountStore,
   notifier,
   asaas: createAsaasGateway({
-    // Sandbox por padrão; em produção, ASAAS_API_URL=https://api.asaas.com/v3
     apiUrl: process.env.ASAAS_API_URL || "https://api-sandbox.asaas.com/v3",
     apiKey: process.env.ASAAS_API_KEY || undefined,
   }),
@@ -89,9 +80,7 @@ const app = createApp({
   payments,
   verifyToken: createTokenVerifier(admin),
   asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || undefined,
-  // Origens do frontend autorizadas a chamar a API, separadas por vírgula.
   allowedOrigins,
-  // Esquema do app mobile para os links de e-mail (precisa estar também na lista de redirecionamento do Supabase).
   allowedRedirects: (process.env.ALLOWED_REDIRECTS || "muve://auth").split(",").map((u) => u.trim()).filter(Boolean),
 });
 

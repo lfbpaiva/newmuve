@@ -1,12 +1,10 @@
-// Cria (ou recria) as contas de demonstração, já confirmadas e com perfil completo.
-// Uso: node scripts/contas-demo.mjs        (usa backend/.env)
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
 const env = Object.fromEntries(readFileSync("backend/.env", "utf8").split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]));
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const PASSWORD = "teste123";
-const FOTO = "https://placehold.co/400x400/0a0a0c/d4ff3f/png?text=M";
+const FOTO = "https://placehold.co/400x400/0a0a0c/a58bff/png?text=M";
 
 const contas = [
   { email: "teste@teste.com", role: "MUSICIAN", perfil: { nome_completo: "Músico Teste", documento: "52998224725", telefone: "45999990001", foto_perfil_url: FOTO, uf: "PR", cidade: "Cascavel", estilos_musicais: ["Rock", "MPB", "Sertanejo"], bio: "Conta de demonstração. Voz e violão, repertório variado.", chave_pix_tipo: "EMAIL", chave_pix: "teste@teste.com" } },

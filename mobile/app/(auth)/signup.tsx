@@ -13,7 +13,6 @@ const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
   { value: "CONTRACTOR", icon: "storefront-outline", title: "Sou contratante", sub: "Quero contratar talentos" },
 ];
 
-// Cadastro mínimo: o resto do perfil é pedido quando fizer falta (feed, candidatura, evento).
 export default function SignupScreen() {
   const router = useRouter();
   const [role, setRole] = useState<Role>("MUSICIAN");
@@ -57,7 +56,7 @@ export default function SignupScreen() {
 
   if (sentTo) return <Screen>
     <View style={{ gap: space.md, paddingTop: space.xl }}>
-      <Icon name="mail-unread-outline" size={36} color={colors.accent}/>
+      <Icon name="mail-unread-outline" size={36} color={colors.accentText}/>
       <Text style={type.display}>Confira{"\n"}seu e-mail</Text>
       <Text style={type.body}>Enviamos um link para <Text style={type.label}>{sentTo}</Text>. Abra a mensagem no celular e toque no link para ativar sua conta.</Text>
       <Button title="Voltar para o login" variant="outlined" onPress={() => router.replace("/(auth)/login")}/>
@@ -69,8 +68,8 @@ export default function SignupScreen() {
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;
-        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => setRole(option.value)} style={({ pressed }) => ({ flex: 1, borderRadius: radius.md, padding: space.lg, gap: 10, borderWidth: 1, borderColor: on ? colors.accent : colors.line, backgroundColor: pressed ? colors.surface2 : on ? colors.surface : "transparent" })}>
-          <Icon name={option.icon} size={24} color={on ? colors.accent : colors.ink2}/>
+        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => setRole(option.value)} style={({ pressed }) => ({ flex: 1, borderRadius: radius.md, padding: space.lg, gap: 10, borderWidth: 1, borderColor: on ? colors.accentText : colors.line, backgroundColor: pressed ? colors.surface2 : on ? colors.surface : "transparent" })}>
+          <Icon name={option.icon} size={24} color={on ? colors.accentText : colors.ink2}/>
           <Text style={type.titleSmall}>{option.title}</Text>
           <Text style={type.bodySmall}>{option.sub}</Text>
         </Pressable>;
@@ -80,6 +79,7 @@ export default function SignupScreen() {
     <Field label="E-mail" value={form.email} onChangeText={(v) => set({ email: sanitizeEmail(v) })} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="voce@exemplo.com"/>
     <PasswordField value={form.password} onChangeText={(password) => set({ password })}/>
     {error ? <Alert tone="error">{error}</Alert> : null}
+    {waiting && !error ? <Alert tone="info">Muitas tentativas de cadastro em pouco tempo. Aguarde alguns instantes; o botão volta a funcionar sozinho.</Alert> : null}
     <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting}/>
   </Screen>;
 }
