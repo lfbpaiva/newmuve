@@ -15,7 +15,7 @@ function toRemoteScript(sql) {
     .replace(/^select (throws_ok|results_eq|is|ok|isnt|lives_ok)\(/gm, "insert into _tap(line) select $1(")
     .replace(
       /^select \* from finish\(\);\s*rollback;\s*$/m,
-      "insert into _tap(line) select * from finish();\nreset role;\ndo $do$ begin raise exception 'TAP>> %', (select string_agg(line, E'\\n' order by ts) from _tap); end $do$;\n",
+      "insert into _tap(line) select * from finish();\nreset role;\ndo $do$ begin raise exception 'TAP>> %', (select string_agg(case when line like 'ok %' then 'ok' else line end, E'\n' order by ts) from _tap); end $do$;\n",
     );
 }
 
@@ -37,7 +37,7 @@ function run(file) {
 
   const lines = tap.split("\n").filter(Boolean);
   const planned = Number(lines[0]?.match(/^1\.\.(\d+)/)?.[1] ?? 0);
-  const passed = lines.filter((line) => line.startsWith("ok ")).length;
+  const passed = lines.filter((line) => line.startsWith("ok")).length;
   const failures = lines.filter((line) => line.startsWith("not ok") || line.startsWith("#"));
   return { failed: planned - passed, report: `${file}: ${passed}/${planned} ok${failures.length ? `\n${failures.join("\n")}` : ""}` };
 }
