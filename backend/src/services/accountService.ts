@@ -20,6 +20,10 @@ export interface AuthGateway {
   recordTermsAcceptance(userId: string, termosVersao: string): Promise<void>;
 }
 
+export interface CnpjLookup {
+  situacao(cnpj: string): Promise<"ATIVA" | "INATIVA" | "INEXISTENTE" | null>;
+}
+
 export type ImageBucket = "avatars" | "event-banners";
 
 export interface ImageStore {
@@ -49,6 +53,7 @@ export function createAccountService(deps: {
   hasOngoingHiring(userId: string): Promise<boolean>;
   inbox: Pick<Inbox, "markAllRead">;
   releaseAccount(user: AuthUser, role: Role): Promise<void>;
+  cnpj: CnpjLookup;
 }) {
   const { store, auth, images } = deps;
 
@@ -90,6 +95,11 @@ export function createAccountService(deps: {
       if (!current) throw contaNaoEncontrada();
       if (changes.documento && changes.documento !== current.documento && (await store.documentExists(changes.documento, user.id))) {
         throw new AppError(409, "DOCUMENTO_EM_USO", "Este CPF/CNPJ já está vinculado a outra conta.");
+      }
+      if (changes.documento && changes.documento !== current.documento && changes.documento.length === 14) {
+        const situacao = await deps.cnpj.situacao(changes.documento);
+        if (situacao === "INEXISTENTE") throw new AppError(400, "CNPJ_INEXISTENTE", "Este CNPJ não foi encontrado na Receita Federal.");
+        if (situacao === "INATIVA") throw new AppError(400, "CNPJ_INATIVO", "Este CNPJ não está ativo na Receita Federal.");
       }
 
       if (role === "CONTRACTOR" && (changes.nome !== current.nome || (changes.documento && changes.documento !== current.documento))) {

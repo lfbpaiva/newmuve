@@ -10,6 +10,7 @@ import {
   createImageStore,
   createTokenVerifier,
 } from "./adapters/supabase.ts";
+import { createCnpjLookup } from "./adapters/receita.ts";
 import { createEventStore, createInbox, createPaymentStore } from "./adapters/supabaseMarket.ts";
 import { createApp } from "./http/app.ts";
 import { createAccountService } from "./services/accountService.ts";
@@ -80,6 +81,7 @@ const app = createApp({
     hasOngoingHiring: eventStore.hasOngoingHiring,
     inbox,
     releaseAccount: (user, role) => events.releaseAccount(user, role),
+    cnpj: createCnpjLookup(),
   }),
   events,
   payments,

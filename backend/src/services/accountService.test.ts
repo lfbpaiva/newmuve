@@ -8,7 +8,7 @@ function fakes() {
   const accounts = new Map<string, Account>();
   const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
-  const state = { failCreateProfile: false, ongoingHiring: false, customerResets: [] as string[] };
+  const state = { failCreateProfile: false, ongoingHiring: false, customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
   let nextId = 1;
 
   const store: AccountStore = {
@@ -64,7 +64,7 @@ function fakes() {
     users,
     images,
     state,
-    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} }, releaseAccount: async () => {} }),
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} }, releaseAccount: async () => {}, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
   };
 }
 
@@ -124,6 +124,16 @@ describe("perfil progressivo", () => {
     await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: null, portfolioUrl: null }, null);
 
     expect(t.accounts.get("user-1")).toMatchObject({ bio: null, portfolioUrl: null });
+  });
+
+  it("confere o CNPJ na Receita: recusa inexistente ou inativo e aceita quando a consulta está fora do ar", async () => {
+    t.state.cnpjs = { "11444777000161": "INEXISTENTE", "11222333000181": "INATIVA", "45997418000153": null };
+
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "11444777000161" }, null)).rejects.toMatchObject({ code: "CNPJ_INEXISTENTE" });
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "11222333000181" }, null)).rejects.toMatchObject({ code: "CNPJ_INATIVO" });
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "45997418000153" }, null);
+
+    expect(t.accounts.get("user-1")?.documento).toBe("45997418000153");
   });
 
   it("recusa documento já usado por outra conta", async () => {
