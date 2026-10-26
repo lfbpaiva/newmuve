@@ -16,12 +16,13 @@ insert into public.contractor_profiles (user_id, nome_fantasia, documento, telef
   ('00000000-0000-0000-0000-0000000000f2', 'Bar Aviso', '44444444000144', '4532220004', 'https://x/f2.png', 'PR', 'Cascavel'),
   ('00000000-0000-0000-0000-0000000000f3', 'Pessoa Sem Evento', '55555555000155', '4532220005', 'https://x/f3.png', 'PR', 'Cascavel');
 insert into public.events (id, contractor_id, titulo, tipo_evento, inicio, duracao_minutos, uf, cidade, estilos_musicais, cache, imagem_url, status) values
-  ('00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000f2', 'Show concluido', 'Bar e restaurante', now() - interval '2 days', 120, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e9.png', 'ABERTO');
+  ('00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000f2', 'Show concluido', 'Bar e restaurante', now() + interval '2 days', 120, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e9.png', 'ABERTO');
 insert into public.event_candidates (id, event_id, musician_id) values
   ('00000000-0000-0000-0000-0000000000d9', '00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000f1');
 insert into public.payments (id, event_id, candidate_id, contractor_id, asaas_payment_id, valor, expira_em) values
   ('00000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000d9', '00000000-0000-0000-0000-0000000000f2', 'pay_aviso', 550, now() + interval '15 minutes');
 select public.confirm_asaas_payment('pay_aviso');
+update public.events set inicio = now() - interval '2 days' where id = '00000000-0000-0000-0000-0000000000e9';
 update public.events set confirmacao_musico = true, confirmacao_contratante = true where id = '00000000-0000-0000-0000-0000000000e9';
 insert into public.notifications (user_id, titulo, texto, link) values
   ('00000000-0000-0000-0000-0000000000f1', 'Voce foi contratado', 'Texto', '/event/x'),

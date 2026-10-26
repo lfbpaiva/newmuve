@@ -5,7 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import { asaasWebhookSchema, candidaturaSchema, inscricoesSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
+import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, inscricoesSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
@@ -223,7 +223,10 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.get("/events/:id/contratacao", async (c) => c.json(await events.getHiring(c.get("user"), c.req.param("id"))));
 
-  app.delete("/events/:id/contratacao", async (c) => c.json(await events.cancelHiring(c.get("user"), c.req.param("id"))));
+  app.delete("/events/:id/contratacao", async (c) => {
+    const { esperado } = cancelamentoSchema.parse({ esperado: c.req.query("esperado") });
+    return c.json(await events.cancelHiring(c.get("user"), c.req.param("id"), esperado));
+  });
 
   app.post("/events/:id/nao-comparecimento", async (c) => {
     return c.json(await events.reportNoShow(c.get("user"), c.req.param("id")));

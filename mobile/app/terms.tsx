@@ -40,7 +40,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
     titulo: "5. Pagamento retido e repasse",
     paragrafos: [
       "O valor pago fica retido pela Muve até o show acontecer. Depois do início do evento, músico e contratante confirmam a realização, cada um na própria conta.",
-      "Com as duas confirmações, o cachê é transferido por Pix para a chave cadastrada pelo músico. Se ninguém registrar o não comparecimento em até 7 dias após a data, o show é dado como realizado e o cachê é repassado, mesmo sem as confirmações.",
+      "Com as duas confirmações, o cachê é transferido por Pix para a chave cadastrada pelo músico; se a chave estiver errada, a transferência falha e o músico é avisado para corrigi-la. Se ninguém registrar o não comparecimento em até 7 dias após a data, o show é dado como realizado e o cachê é repassado, mesmo sem as confirmações.",
     ],
   },
   {
@@ -55,7 +55,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
   {
     titulo: "7. Avaliações",
     paragrafos: [
-      "Depois que o show é concluído, músico e contratante se avaliam com notas de 1 a 5. As notas são públicas no perfil e não podem ser alteradas.",
+      "Depois que o show é concluído, músico e contratante se avaliam com notas de 1 a 5, sem possibilidade de alteração. A média aparece no perfil; os comentários sobre um músico ficam visíveis para os contratantes dos eventos em que ele se inscreve.",
     ],
   },
   {

@@ -1,4 +1,4 @@
-import type { CandidateRecord, EventInput, EventRecord, MessageRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, EventInput, EventRecord, MessageRecord, MotivoRecusa, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 
 export type ConfirmPaymentResult = "CONTRATADO" | "JA_PROCESSADO" | "PAGAMENTO_NAO_ENCONTRADO" | "EVENTO_INDISPONIVEL";
 
@@ -17,8 +17,10 @@ export interface EventStore {
   findCandidate(eventId: string, musicianId: string): Promise<CandidateRecord | null>;
   findCandidateById(id: string): Promise<CandidateRecord | null>;
   listCandidates(eventId: string): Promise<CandidateRecord[]>;
+  listEventsOf(userId: string, role: "MUSICIAN" | "CONTRACTOR"): Promise<EventRecord[]>;
   setApplicationsClosed(eventId: string, closed: boolean): Promise<void>;
-  declineCandidate(id: string): Promise<boolean>;
+  declineCandidate(id: string, motivo: MotivoRecusa): Promise<boolean>;
+  musicianHasConflict(musicianId: string, eventId: string): Promise<boolean>;
   insertCandidate(eventId: string, musicianId: string, valorProposto: number | null): Promise<CandidateRecord>;
   updateCandidateProposal(id: string, valorProposto: number | null): Promise<void>;
   deleteCandidate(id: string): Promise<void>;
@@ -33,6 +35,7 @@ export interface PaymentStore {
   findLatestPayment(eventId: string): Promise<PaymentRecord | null>;
   findPaymentByAsaasId(asaasPaymentId: string): Promise<PaymentRecord | null>;
   findPaymentByTransferId(asaasTransferId: string): Promise<PaymentRecord | null>;
+  findLateRefundsToRetry(eventId: string): Promise<PaymentRecord[]>;
   insertPayment(payment: {
     eventId: string;
     candidateId: string;

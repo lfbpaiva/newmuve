@@ -18,7 +18,7 @@ export function createPaymentService(deps: {
   payments: PaymentStore;
   accounts: AccountStore;
   asaas: AsaasGateway;
-  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported" | "payoutDone">;
+  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported" | "payoutDone" | "payoutFailed" | "latePayment" | "refundDenied">;
 }) {
   const { events, payments, accounts, asaas, notifier } = deps;
 
@@ -28,7 +28,24 @@ export function createPaymentService(deps: {
       const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
       if (event) void notifier.payoutDone(event);
     }
-    if (transferStatus === "FAILED" || transferStatus === "CANCELLED") await payments.setPayout(payment.id, { status: "FALHOU" });
+    if (transferStatus === "FAILED" || transferStatus === "CANCELLED") {
+      await payments.setPayout(payment.id, { status: "FALHOU" });
+      await warnPayoutFailed(payment);
+    }
+  }
+
+  async function warnPayoutFailed(payment: PaymentRecord): Promise<void> {
+    if (payment.repasseStatus === "FALHOU") return;
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    if (event) void notifier.payoutFailed(event);
+  }
+
+  async function markRefundDenied(payment: PaymentRecord): Promise<void> {
+    await payments.setRefundStatus(payment.id, "NEGADO");
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    if (!event) return;
+    if (payment.refundAction === "NENHUMA") void notifier.latePayment(event, true);
+    else void notifier.refundDenied(event, payment.refundAction === "REABRIR" ? "musico" : "contratante");
   }
 
   async function completeRefund(payment: PaymentRecord): Promise<void> {
@@ -55,7 +72,7 @@ export function createPaymentService(deps: {
     if (remote?.status === "REFUNDED" && remote.value >= payment.valor) {
       await completeRefund(payment);
     } else if (remote?.refunds?.length && remote.refunds.every((refund) => refund.status === "CANCELLED")) {
-      await payments.setRefundStatus(payment.id, "NEGADO");
+      await markRefundDenied(payment);
     } else if (requestSettled && isIdleAtAsaas(remote)) {
       await payments.releaseRefund(payment.id, { refundStatus: null, refundAction: null });
     }
@@ -64,7 +81,7 @@ export function createPaymentService(deps: {
 
   async function undoFailedRefund(claimed: PaymentRecord, previous: RefundState, error: unknown): Promise<PaymentRecord> {
     if (error instanceof AppError && error.code.startsWith("ESTORNO_")) {
-      await payments.setRefundStatus(claimed.id, "NEGADO");
+      await markRefundDenied(claimed);
       return reload(claimed);
     }
     const remote = await asaas.getPayment(claimed.asaasPaymentId).catch(() => null);
@@ -75,8 +92,8 @@ export function createPaymentService(deps: {
 
   async function refundLatePayment(payment: PaymentRecord): Promise<void> {
     const current = await refreshRefund(payment);
-    if (current.refundStatus !== null) return;
-    const previous: RefundState = { refundStatus: null, refundAction: current.refundAction };
+    if (current.refundStatus === "PROCESSANDO" || current.refundStatus === "CONFIRMADO") return;
+    const previous: RefundState = { refundStatus: current.refundStatus, refundAction: "NENHUMA" };
     if (!(await payments.claimRefund(current.id, "NENHUMA"))) return;
     const claimed: PaymentRecord = { ...current, refundStatus: "PROCESSANDO", refundAction: "NENHUMA", refundRequestedAt: new Date() };
     try {
@@ -95,7 +112,12 @@ export function createPaymentService(deps: {
     if (!payment) return;
 
     if (result === "EVENTO_INDISPONIVEL") {
-      await refundLatePayment(payment);
+      if (payment.status === "PENDENTE" && payment.refundStatus === null) {
+        await payments.setPaymentStatus(payment.id, "CANCELADO");
+        const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+        if (event) void notifier.latePayment(event, false);
+      }
+      await refundLatePayment(await reload(payment));
       return;
     }
     if (result !== "CONTRATADO" || !payment.eventId) return;
@@ -150,6 +172,9 @@ export function createPaymentService(deps: {
       const candidate = await events.findCandidateById(candidateId);
       if (!candidate || candidate.eventId !== eventId) throw new AppError(404, "CANDIDATURA_NAO_ENCONTRADA", "Candidatura não encontrada.");
       if (candidate.status !== "PENDENTE") throw new AppError(409, "CANDIDATURA_INDISPONIVEL", "Esta candidatura não está mais disponível.");
+      if (await events.musicianHasConflict(candidate.musicianId, eventId)) {
+        throw new AppError(409, "MUSICO_OCUPADO", "Este músico já tem um show contratado nesse horário.");
+      }
 
       const pending = await payments.findPendingPayment(eventId);
       if (pending) {
@@ -187,6 +212,7 @@ export function createPaymentService(deps: {
 
     async syncCheckout(user: AuthUser, eventId: string, now = new Date()): Promise<PaymentRecord | null> {
       await findOwnedEvent(user, eventId);
+      for (const late of await payments.findLateRefundsToRetry(eventId)) await refundLatePayment(late).catch(() => {});
       const latest = await payments.findLatestPayment(eventId);
       if (latest?.status !== "PENDENTE") return latest;
 
@@ -233,6 +259,7 @@ export function createPaymentService(deps: {
       } catch (error) {
         console.error("Falha no repasse do pagamento", payment.id, error);
         await payments.setPayout(payment.id, { status: "FALHOU" }).catch(() => {});
+        await warnPayoutFailed(payment).catch(() => {});
       }
     },
 

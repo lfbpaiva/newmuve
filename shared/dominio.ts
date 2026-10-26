@@ -53,7 +53,7 @@ export const fusoDaUf = (uf: string) => FUSOS_FORA_DE_BRASILIA[uf]?.fuso ?? "Ame
 
 export const horarioLocalDoEvento = (data: string, horario: string, uf: string) =>
   new Date(`${data}T${horario}:00${FUSOS_FORA_DE_BRASILIA[uf]?.offset ?? "-03:00"}`);
-export const TERMOS_VERSAO = "2026-10-27";
+export const TERMOS_VERSAO = "2026-10-28";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;

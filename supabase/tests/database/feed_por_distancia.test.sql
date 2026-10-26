@@ -36,7 +36,7 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
 
 select results_eq(
-  $$ select event_id, distancia_km from public.musician_feed(0) where event_id::text like '00000000-%' $$,
+  $$ select event_id, distancia_km from public.musician_feed(0) where event_id::text like '00000000-%' order by event_id $$,
   $$ values ('00000000-0000-0000-0000-0000000000e1'::uuid, 0::numeric), ('00000000-0000-0000-0000-0000000000e7'::uuid, 0::numeric), ('00000000-0000-0000-0000-0000000000e8'::uuid, 0::numeric) $$,
   'raio 0: só a mesma cidade; entra evento com estilo em comum ou aberto a qualquer estilo');
 

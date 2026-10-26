@@ -8,7 +8,7 @@ function fakes() {
   const accounts = new Map<string, Account>();
   const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
-  const state = { failCreateProfile: false, ongoingHiring: false };
+  const state = { failCreateProfile: false, ongoingHiring: false, customerResets: [] as string[] };
   let nextId = 1;
 
   const store: AccountStore = {
@@ -19,6 +19,7 @@ function fakes() {
     },
     findAccount: async (userId) => accounts.get(userId) ?? null,
     findEmail: async (userId) => users.get(userId)?.email ?? null,
+    resetPaymentCustomer: async (userId) => void state.customerResets.push(userId),
     updateProfile: async (userId, _role: Role, changes) => {
       const current = accounts.get(userId)!;
       const next = { ...current };
@@ -58,7 +59,7 @@ function fakes() {
     users,
     images,
     state,
-    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} } }),
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} }, releaseAccount: async () => {} }),
   };
 }
 
@@ -111,6 +112,13 @@ describe("perfil progressivo", () => {
 
     expect(t.accounts.get(user.id)).toMatchObject({ cidade: "Cascavel", estilosMusicais: ["MPB"], documento: "52998224725", chavePix: "52998224725" });
     expect(t.accounts.get(user.id)?.fotoPerfilUrl).toContain("foto.png");
+  });
+
+  it("apaga a bio e o link do trabalho quando o músico limpa os campos", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: "Voz e violão", portfolioUrl: "https://youtube.com/ana" }, null);
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: null, portfolioUrl: null }, null);
+
+    expect(t.accounts.get("user-1")).toMatchObject({ bio: null, portfolioUrl: null });
   });
 
   it("recusa documento já usado por outra conta", async () => {

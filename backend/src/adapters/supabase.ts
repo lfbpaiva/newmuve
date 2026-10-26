@@ -91,6 +91,11 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       if (error?.code === UNIQUE_VIOLATION) throw new AppError(409, "DOCUMENTO_EM_USO", "Este CPF/CNPJ já está vinculado a outra conta.");
       if (error) throw error;
     },
+
+    async resetPaymentCustomer(userId) {
+      const { error } = await admin.from("contractor_profiles").update({ asaas_customer_id: null }).eq("user_id", userId);
+      if (error) throw error;
+    },
   };
 }
 

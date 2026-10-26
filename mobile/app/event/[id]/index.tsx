@@ -103,10 +103,12 @@ function Opportunity({ eventId }: { eventId: string }) {
     <Facts event={event}/>
     {event.descricao ? <Section title="Sobre o evento"><Text style={type.body}>{event.descricao}</Text></Section> : null}
     <Section title="Quem está contratando">
-      <View style={[styles.card, styles.row, { gap: 12 }]}>
-        <Avatar uri={contractor.fotoPerfilUrl} name={contractor.nome}/>
-        <View style={{ flex: 1 }}><Text style={type.titleSmall}>{contractor.nome}</Text><RatingSummary media={contractor.avaliacaoMedia} total={contractor.totalAvaliacoes}/></View>
-      </View>
+      {contractor
+        ? <View style={[styles.card, styles.row, { gap: 12 }]}>
+          <Avatar uri={contractor.fotoPerfilUrl} name={contractor.nome}/>
+          <View style={{ flex: 1 }}><Text style={type.titleSmall}>{contractor.nome}</Text><RatingSummary media={contractor.avaliacaoMedia} total={contractor.totalAvaliacoes}/></View>
+        </View>
+        : <Text style={type.bodySmall}>O contratante excluiu a conta.</Text>}
       <Text style={type.bodySmall}>Endereço completo e telefone são liberados após a contratação.</Text>
     </Section>
     <View style={{ gap: space.md }}>
@@ -162,6 +164,7 @@ function Manage({ eventId }: { eventId: string }) {
   const deletable = event.status === "ABERTO" && !event.musicoContratadoId;
   const pendentes = candidates.filter((c) => c.status === "PENDENTE").length;
   const paymentInProgress = checkout?.status === "PENDENTE" && new Date(checkout.expiraEm) > new Date();
+  const payingFor = paymentInProgress ? checkout?.candidateId ?? null : null;
   const hired = candidates.find((c) => c.status === "APROVADO");
 
   function remove() {
@@ -191,19 +194,20 @@ function Manage({ eventId }: { eventId: string }) {
     />}
     {!locked && event.inscricoesEncerradas && <Text style={type.bodySmall}>O evento não aparece mais para novos músicos. Você ainda pode aprovar quem já se inscreveu.</Text>}
     {!locked && pendentes > 0 && <Text style={type.bodySmall}>Se você mudar data, local, estilos ou cachê, {pendentes === 1 ? "o inscrito será avisado" : `os ${pendentes} inscritos serão avisados`}.</Text>}
-    {event.status !== "ABERTO" && checkout?.status === "PAGO" && <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>}
+    {event.status !== "ABERTO" && <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     {decline.error ? <Alert tone="error">{decline.error}</Alert> : null}
 
     <Section title={candidates.length === 0 ? "Candidatos" : `${candidates.length} ${candidates.length === 1 ? "candidato" : "candidatos"}`}>
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
       {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. As inscrições aparecem aqui.</Text></EmptyState>}
-      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked} approveLabel={paymentInProgress ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
+      {payingFor && <Alert tone="info">Há um Pix em andamento para um dos candidatos. Conclua ou cancele esse pagamento antes de escolher outro.</Alert>}
+      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked && (!payingFor || payingFor === candidate.id)} canDecline={!locked && !payingFor} approveLabel={payingFor === candidate.id ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
     </Section>
   </Screen>;
 }
 
-function CandidateCard({ candidate, canApprove, approveLabel, cacheOferecido, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; approveLabel: string; cacheOferecido: number; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
+function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheOferecido, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; canDecline: boolean; approveLabel: string; cacheOferecido: number; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
   const { musician } = candidate;
   return <View style={[styles.card, { gap: space.md }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
@@ -222,7 +226,7 @@ function CandidateCard({ candidate, canApprove, approveLabel, cacheOferecido, on
       {candidate.status === "PENDENTE" && canApprove && <View style={{ flex: 1 }}><Button icon="checkmark" title={approveLabel} onPress={onApprove}/></View>}
     </View>
     {candidate.status === "APROVADO" && <Alert tone="success">Contratado</Alert>}
-    {candidate.status === "PENDENTE" && canApprove && <Button variant="text" title="Recusar inscrição" onPress={onDecline}/>}
+    {candidate.status === "PENDENTE" && canDecline && <Button variant="text" title="Recusar inscrição" onPress={onDecline}/>}
     {candidate.status === "RECUSADO" && <Alert tone="info">Não selecionado</Alert>}
   </View>;
 }

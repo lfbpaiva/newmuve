@@ -9,6 +9,7 @@ export interface AccountStore {
   findAccount(userId: string): Promise<Account | null>;
   findEmail(userId: string): Promise<string | null>;
   updateProfile(userId: string, role: Role, changes: ProfileChanges & { fotoPerfilUrl?: string }): Promise<void>;
+  resetPaymentCustomer(userId: string): Promise<void>;
 }
 
 export interface AuthGateway {
@@ -45,6 +46,7 @@ export function createAccountService(deps: {
   images: ImageStore;
   hasOngoingHiring(userId: string): Promise<boolean>;
   inbox: Pick<Inbox, "markAllRead">;
+  releaseAccount(user: AuthUser, role: Role): Promise<void>;
 }) {
   const { store, auth, images } = deps;
 
@@ -82,6 +84,9 @@ export function createAccountService(deps: {
         throw new AppError(409, "DOCUMENTO_EM_USO", "Este CPF/CNPJ já está vinculado a outra conta.");
       }
 
+      if (role === "CONTRACTOR" && (changes.nome !== current.nome || (changes.documento && changes.documento !== current.documento))) {
+        await store.resetPaymentCustomer(user.id);
+      }
       if (!avatar) {
         await store.updateProfile(user.id, role, changes);
         return;
@@ -111,6 +116,8 @@ export function createAccountService(deps: {
         );
       }
 
+      const account = await store.findAccount(user.id);
+      if (account) await deps.releaseAccount(user, account.role);
       await auth.deleteUser(user.id);
       await images.removeAllOf("avatars", user.id).catch(() => {});
       await images.removeAllOf("event-banners", user.id).catch(() => {});

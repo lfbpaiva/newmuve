@@ -98,20 +98,23 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Cachê mínimo | R$ 100,00 |
 | Taxa da plataforma | 10%, somada ao cachê e paga pelo contratante; o músico recebe o cachê inteiro |
 | Valor cobrado | Proposta do músico, se houver; senão, o cachê oferecido. Sempre lido do banco. |
-| Revisão da proposta | Só com a inscrição pendente e sem cobrança em andamento |
-| Validade do Pix | 15 minutos |
+| Revisão da proposta | Só com a inscrição pendente, sem cobrança em andamento e antes da data do evento |
+| Cachê alterado pelo contratante | Quem tinha aceitado o valor antigo continua com ele; a proposta de quem pediu outro valor não muda |
+| Evento editado | Inscritos que deixam de combinar (cidade ou estilos) são recusados e avisados; os demais são avisados da mudança |
+| Show duplo | Um músico não se inscreve, não é cobrado nem é contratado para um show que se sobrepõe a outro em que já foi contratado |
+| Validade do Pix | 15 minutos; um Pix pago quando a cobrança já não vale (expirada, trocada, músico indisponível ou show já iniciado) não contrata e é devolvido, com nova tentativa se a Asaas recusar |
 | Alcance do evento | Mesmos estilos (ou "Qualquer estilo"); mesma cidade ou até 200 km |
 | Cancelar inscrição | Até 24h antes do evento |
 | Encerrar inscrições | O contratante pode encerrar e reabrir antes da contratação; encerrado, o evento sai do feed, mas os inscritos continuam podendo ser aprovados |
 | Horário do evento | Digitado e exibido no fuso do estado do evento (Acre, Amazonas, Rondônia, Roraima, Mato Grosso e Mato Grosso do Sul fora do horário de Brasília) |
-| Cancelamento pelo contratante | Mais de 24h antes: estorno integral. Menos de 24h: sem estorno, cachê vai ao músico. |
-| Desistência do músico contratado | Antes do início: estorno integral e o evento reabre |
+| Cancelamento pelo contratante | Mais de 24h antes: estorno integral. Menos de 24h: sem estorno, cachê vai ao músico. Se o prazo virar enquanto a tela está aberta, a API pede nova confirmação. |
+| Desistência do músico contratado | Antes do início: estorno integral e o evento reabre; só voltam a concorrer os inscritos que perderam para ele (os recusados pelo contratante continuam recusados) |
 | Não comparecimento | Depois do horário, até 7 dias, se ninguém confirmou o show: estorno integral |
 | Conclusão | Duas confirmações, ou 7 dias após a data sem registro de ausência |
 | Avaliação | 1 a 5 estrelas, uma por pessoa por evento, só depois de concluído |
 | Conversa | Entre o músico e o dono do evento; fecha quando a inscrição é recusada ou o evento termina |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
-| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento; as avaliações que a pessoa deixou ficam, sem autoria |
+| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
 
 ## 5. Notificações
 
@@ -120,6 +123,11 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Nova inscrição (com o valor proposto) | Contratante | não |
 | Nova mensagem | A outra parte da conversa | não |
 | Inscrição recusada | Músico | não |
+| Evento mudou e não combina mais / evento excluído | Músico inscrito | não |
+| Voltou a concorrer (o contratado desistiu) | Inscritos que tinham perdido para ele | não |
+| Pix recebido fora de hora / devolução pendente | Contratante | sim |
+| Devolução recusada pela Asaas | Contratante (e o músico, se foi ele quem desistiu) | sim |
+| Repasse falhou (conferir chave Pix) | Músico | sim |
 | Pagamento confirmado | Músico contratado e contratante | sim |
 | Outro músico foi escolhido | Demais inscritos | não |
 | Evento alterado (data, local, estilos ou cachê) | Inscritos pendentes | não |

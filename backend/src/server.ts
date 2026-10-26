@@ -70,6 +70,8 @@ const payments = createPaymentService({
   }),
 });
 
+const events = createEventService({ events: eventStore, accounts: accountStore, images, payments, notifier });
+
 const app = createApp({
   accounts: createAccountService({
     store: accountStore,
@@ -77,8 +79,9 @@ const app = createApp({
     images,
     hasOngoingHiring: eventStore.hasOngoingHiring,
     inbox,
+    releaseAccount: (user, role) => events.releaseAccount(user, role),
   }),
-  events: createEventService({ events: eventStore, accounts: accountStore, images, payments, notifier }),
+  events,
   payments,
   verifyToken: createTokenVerifier(admin),
   asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || undefined,

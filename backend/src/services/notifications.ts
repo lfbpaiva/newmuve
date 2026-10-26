@@ -1,3 +1,4 @@
+import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import { formatCurrency, formatDateTime } from "../../../shared/formato.ts";
 import type { CandidateRecord, EventRecord } from "../domain/event.ts";
 import type { AccountStore } from "./accountService.ts";
@@ -47,7 +48,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
     async hiringConfirmed(eventId: string, cache: number): Promise<void> {
       const event = await events.findEvent(eventId).catch(() => null);
       if (!event) return;
-      const others = (await events.listCandidates(eventId).catch(() => [] as CandidateRecord[])).filter((c) => c.musicianId !== event.musicoContratadoId);
+      const others = (await events.listCandidates(eventId).catch(() => [] as CandidateRecord[])).filter((c) => c.motivoRecusa === "OUTRO_CONTRATADO");
       await Promise.all([
         notify(
           event.musicoContratadoId,
@@ -73,12 +74,23 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
 
     async hiringCancelled(event: EventRecord, cancelledBy: "contratante" | "musico", refunded: boolean): Promise<void> {
       if (cancelledBy === "musico") {
-        await notify(
-          event.contractorId,
-          `O músico desistiu de "${event.titulo}"`,
-          `O músico contratado cancelou a participação no show de ${when(event)}. O valor pago foi devolvido integralmente e o evento voltou a receber inscrições.`,
-          eventLink(event),
-        );
+        const reopened = await events.findEvent(event.id).catch(() => null);
+        const back = (await events.listCandidates(event.id).catch(() => [] as CandidateRecord[])).filter((c) => c.status === "PENDENTE");
+        await Promise.all([
+          notify(
+            event.contractorId,
+            `O músico desistiu de "${event.titulo}"`,
+            `O músico contratado cancelou a participação no show de ${when(event)}. O valor pago foi devolvido integralmente e o evento voltou a ficar aberto${reopened?.inscricoesEncerradas ? ", com as inscrições ainda encerradas" : ""}. ${back.length > 0 ? "Os demais inscritos voltaram a concorrer." : ""}`.trim(),
+            eventLink(event),
+          ),
+          ...back.map((candidate) => notify(
+            candidate.musicianId,
+            `Você voltou a concorrer em "${event.titulo}"`,
+            "O músico escolhido desistiu. Sua inscrição voltou a aguardar a resposta do contratante.",
+            eventLink(event),
+            { email: false },
+          )),
+        ]);
         return;
       }
       await notify(
@@ -131,7 +143,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       await Promise.all(musicianIds.map((musicianId) => notify(
         musicianId,
         `"${event.titulo}" foi alterado`,
-        `O contratante mudou os dados do evento. Confira data, local e cachê: agora é ${when(event)}, com cachê oferecido de ${formatCurrency(event.cache)}.`,
+        `O contratante mudou os dados do evento: agora é ${when(event)}, com cachê oferecido de ${formatCurrency(event.cache)}. O valor da sua inscrição continua o mesmo; você pode alterá-lo no evento.`,
         eventLink(event),
         { email: false },
       )));
@@ -142,6 +154,69 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
         by === "contratante" ? event.musicoContratadoId : event.contractorId,
         `Show confirmado pela outra parte: "${event.titulo}"`,
         "Confirme você também para concluir a contratação. Sem a sua confirmação, o show é dado como realizado 7 dias após a data.",
+        hiringLink(event),
+      );
+    },
+
+    async eventDeleted(event: EventRecord, musicianIds: string[]): Promise<void> {
+      await Promise.all(musicianIds.map((musicianId) => notify(
+        musicianId,
+        `"${event.titulo}" foi excluído`,
+        `O contratante excluiu o evento de ${when(event)}. Sua inscrição foi encerrada.`,
+        null,
+        { email: false },
+      )));
+    },
+
+    async candidateOutOfRange(event: EventRecord, musicianId: string): Promise<void> {
+      await notify(
+        musicianId,
+        `"${event.titulo}" mudou e não combina mais com seu perfil`,
+        "O contratante mudou a cidade ou os estilos do evento. Sua inscrição foi encerrada.",
+        eventLink(event),
+        { email: false },
+      );
+    },
+
+    async applicantLeft(event: EventRecord): Promise<void> {
+      await notify(event.contractorId, `Um inscrito saiu de "${event.titulo}"`, "Um músico inscrito excluiu a conta; a inscrição dele foi removida.", eventLink(event), { email: false });
+    },
+
+    async latePayment(event: EventRecord, refundDenied: boolean): Promise<void> {
+      await notify(
+        event.contractorId,
+        refundDenied ? `Devolução pendente: "${event.titulo}"` : `Pix recebido fora de hora: "${event.titulo}"`,
+        refundDenied
+          ? `A Asaas recusou a devolução de um Pix pago depois que a cobrança deixou de valer. Vamos tentar de novo quando você abrir o evento. Se persistir, escreva para ${EMAIL_SUPORTE}.`
+          : "Recebemos um Pix depois que a cobrança deixou de valer (ela expirou, foi trocada ou o músico não está mais disponível). O valor será devolvido integralmente.",
+        eventLink(event),
+      );
+    },
+
+    async refundDenied(event: EventRecord, requestedBy: "contratante" | "musico"): Promise<void> {
+      await Promise.all([
+        notify(
+          event.contractorId,
+          `Devolução recusada: "${event.titulo}"`,
+          `A Asaas recusou a devolução do valor. A contratação continua ativa; tente de novo pelo comprovante ou escreva para ${EMAIL_SUPORTE}.`,
+          hiringLink(event),
+        ),
+        requestedBy === "musico"
+          ? notify(
+            event.musicoContratadoId,
+            `Sua desistência não foi concluída: "${event.titulo}"`,
+            "A Asaas recusou a devolução ao contratante, então você continua contratado. Tente desistir de novo pelo comprovante.",
+            hiringLink(event),
+          )
+          : Promise.resolve(),
+      ]);
+    },
+
+    async payoutFailed(event: EventRecord): Promise<void> {
+      await notify(
+        event.musicoContratadoId,
+        `Repasse não concluído: "${event.titulo}"`,
+        "A transferência do cachê falhou. Confira sua chave Pix em Editar perfil; tentaremos de novo quando o comprovante for aberto.",
         hiringLink(event),
       );
     },

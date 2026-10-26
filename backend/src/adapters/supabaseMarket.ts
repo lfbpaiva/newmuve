@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 import type { Inbox } from "../services/notifications.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
 
@@ -8,7 +8,7 @@ const UNIQUE_VIOLATION = "23505";
 
 interface EventRow {
   id: string;
-  contractor_id: string;
+  contractor_id: string | null;
   musico_contratado_id: string | null;
   titulo: string;
   tipo_evento: string;
@@ -34,6 +34,7 @@ interface CandidateRow {
   musician_id: string;
   status: CandidateStatus;
   valor_proposto: number | string | null;
+  motivo_recusa: MotivoRecusa | null;
 }
 
 interface MessageRow {
@@ -91,6 +92,7 @@ const toCandidate = (row: CandidateRow): CandidateRecord => ({
   musicianId: row.musician_id,
   status: row.status,
   valorProposto: row.valor_proposto === null ? null : Number(row.valor_proposto),
+  motivoRecusa: row.motivo_recusa ?? null,
 });
 
 const toMessage = (row: MessageRow): MessageRecord => ({
@@ -222,10 +224,27 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       return data.map(toCandidate);
     },
 
-    async declineCandidate(id) {
-      const { data, error } = await admin.from("event_candidates").update({ status: "RECUSADO" }).eq("id", id).eq("status", "PENDENTE").select("id");
+    async declineCandidate(id, motivo) {
+      const { data, error } = await admin.from("event_candidates").update({ status: "RECUSADO", motivo_recusa: motivo }).eq("id", id).eq("status", "PENDENTE").select("id");
       if (error) throw error;
       return data.length > 0;
+    },
+
+    async listEventsOf(userId, role) {
+      if (role === "CONTRACTOR") {
+        const { data, error } = await admin.from("events").select("*").eq("contractor_id", userId);
+        if (error) throw error;
+        return data.map(toEvent);
+      }
+      const { data, error } = await admin.from("event_candidates").select("event:events(*)").eq("musician_id", userId).eq("status", "PENDENTE");
+      if (error) throw error;
+      return (data as unknown as { event: EventRow }[]).map((row) => toEvent(row.event));
+    },
+
+    async musicianHasConflict(musicianId, eventId) {
+      const { data, error } = await admin.rpc("musician_has_conflict", { p_musician_id: musicianId, p_event_id: eventId });
+      if (error) throw error;
+      return data === true;
     },
 
     async insertCandidate(eventId, musicianId, valorProposto) {
@@ -303,6 +322,18 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
 
     findPaymentByAsaasId: (asaasPaymentId) => findOne("asaas_payment_id", asaasPaymentId),
     findPaymentByTransferId: (asaasTransferId) => findOne("repasse_asaas_id", asaasTransferId),
+
+    async findLateRefundsToRetry(eventId) {
+      const { data, error } = await admin
+        .from("payments")
+        .select("*")
+        .eq("event_id", eventId)
+        .eq("refund_action", "NENHUMA")
+        .neq("status", "ESTORNADO")
+        .or("refund_status.is.null,refund_status.eq.NEGADO");
+      if (error) throw error;
+      return data.map(toPayment);
+    },
 
     async insertPayment(payment) {
       const { data, error } = await admin

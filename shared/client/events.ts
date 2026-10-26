@@ -9,7 +9,7 @@ export type PayoutStatus = "RETIDO" | "PROCESSANDO" | "REPASSADO" | "FALHOU";
 
 export interface EventItem {
   id: string;
-  contractorId: string;
+  contractorId: string | null;
   musicoContratadoId: string | null;
   titulo: string;
   tipoEvento: string;
@@ -28,6 +28,7 @@ export interface EventItem {
   confirmacaoContratante: boolean;
   inscricoesEncerradas: boolean;
   totalCandidatos?: number;
+  cachePago?: number;
   distanciaKm?: number;
 }
 
@@ -89,6 +90,8 @@ export interface Checkout {
   comissao: number;
   valor: number;
   status: PaymentStatus;
+  candidateId: string | null;
+  refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null;
   pixCopiaCola: string | null;
   pixQrCode: string | null;
   expiraEm: string;
@@ -122,7 +125,7 @@ export interface Hiring {
 
 interface EventRow {
   id: string;
-  contractor_id: string;
+  contractor_id: string | null;
   musico_contratado_id: string | null;
   titulo: string;
   tipo_evento: string;
@@ -141,6 +144,7 @@ interface EventRow {
   confirmacao_contratante: boolean;
   inscricoes_encerradas: boolean;
   event_candidates?: { count: number }[];
+  payments?: { valor_cache: number | string; status: PaymentStatus }[];
 }
 
 interface ProfileRow {
@@ -189,6 +193,7 @@ const toEvent = (row: EventRow): EventItem => ({
   confirmacaoContratante: row.confirmacao_contratante,
   inscricoesEncerradas: row.inscricoes_encerradas,
   totalCandidatos: row.event_candidates?.[0]?.count,
+  cachePago: row.payments?.filter((p) => p.status === "PAGO").reduce((sum, p) => sum + Number(p.valor_cache), 0),
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
@@ -230,7 +235,10 @@ export async function fetchFeed(raioKm: number): Promise<EventItem[]> {
 }
 
 export async function fetchEvent(id: string): Promise<EventItem> {
-  return toEvent(unwrap<EventRow>(await supabase().from("events").select("*").eq("id", id).single()));
+  const { data, error } = await supabase().from("events").select("*").eq("id", id).maybeSingle<EventRow>();
+  if (error) unwrap({ data: null, error });
+  if (!data) throw new ApiError("Este evento não está mais disponível para você.", 404, "EVENTO_NAO_ENCONTRADO");
+  return toEvent(data);
 }
 
 export async function fetchEventAddress(eventId: string): Promise<string> {
@@ -239,13 +247,14 @@ export async function fetchEventAddress(eventId: string): Promise<string> {
   return data?.endereco ?? "";
 }
 
-export async function fetchContractor(id: string): Promise<PublicProfile> {
+export async function fetchContractor(id: string | null): Promise<PublicProfile | null> {
+  if (!id) return null;
   const result = await supabase().from("contractor_profiles").select(`nome_fantasia, ${PUBLIC_PROFILE}`).eq("user_id", id).single();
   return toPublicProfile(unwrap<ProfileRow>(result), "nome_fantasia");
 }
 
 export async function fetchMyEvents(contractorId: string): Promise<EventItem[]> {
-  const result = await supabase().from("events").select("*, event_candidates(count)").eq("contractor_id", contractorId).order("inicio");
+  const result = await supabase().from("events").select("*, event_candidates(count), payments(valor_cache, status)").eq("contractor_id", contractorId).order("inicio");
   return unwrap<EventRow[]>(result).map(toEvent);
 }
 
@@ -333,7 +342,8 @@ export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candi
 export const fetchHiring = (id: string) => apiRequest<Hiring>(`/events/${id}/contratacao`);
 export type CancellationResult = { situacao: "COBRANCA_CANCELADA" | "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" };
 export const reportNoShow = (id: string) => apiRequest<CancellationResult>(`/events/${id}/nao-comparecimento`, { method: "POST" });
-export const cancelHiring = (id: string) => apiRequest<CancellationResult>(`/events/${id}/contratacao`, { method: "DELETE" });
+export const cancelHiring = (id: string, esperado?: "COM_ESTORNO" | "SEM_ESTORNO") =>
+  apiRequest<CancellationResult>(`/events/${id}/contratacao${esperado ? `?esperado=${esperado}` : ""}`, { method: "DELETE" });
 export const cancelPendingCheckout = (id: string) => apiRequest<CancellationResult>(`/events/${id}/checkout`, { method: "DELETE" });
 
 export const confirmCompletion = (id: string) =>

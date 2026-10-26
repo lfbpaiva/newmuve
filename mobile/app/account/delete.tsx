@@ -31,7 +31,7 @@ export default function DeleteAccountScreen() {
     <Heading title="Excluir conta" subtitle="Esta ação é permanente."/>
     <View style={[styles.card, { gap: space.md }]}>
       {[
-        "Seu perfil, eventos, candidaturas e avaliações serão apagados.",
+        "Seu perfil, suas inscrições e seus eventos ainda abertos serão apagados, e os inscritos serão avisados. Shows já realizados continuam no histórico da outra parte, e as avaliações que você deixou ficam sem o seu nome.",
         "Registros de pagamentos já realizados são mantidos, sem vínculo com você, por obrigação fiscal.",
         "Você poderá criar uma nova conta com o mesmo CPF/CNPJ no futuro.",
       ].map((text) => <View key={text} style={[styles.row, { alignItems: "flex-start", gap: 10 }]}><Icon name="remove-circle-outline" size={18} color={colors.error}/><Text style={[type.bodySmall, { flex: 1 }]}>{text}</Text></View>)}

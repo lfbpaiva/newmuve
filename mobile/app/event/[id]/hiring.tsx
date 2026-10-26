@@ -99,7 +99,8 @@ export default function HiringScreen() {
         ? "O estorno integral será solicitado ao Asaas. A contratação termina quando a devolução for confirmada."
         : "Faltam menos de 24h: não há devolução e o cachê será repassado ao músico."
       : "O estorno integral ao contratante será solicitado. Depois da confirmação da devolução, o evento volta a receber candidatos.";
-    confirmAction({ title: isContractor ? "Cancelar contratação" : "Desistir do show", message, onConfirm: () => void runCancellation(() => cancelHiring(evento.id)) });
+    const esperado = isContractor ? (cancelamento.reembolso ? "COM_ESTORNO" : "SEM_ESTORNO") : undefined;
+    confirmAction({ title: isContractor ? "Cancelar contratação" : "Desistir do show", message, onConfirm: () => void runCancellation(() => cancelHiring(evento.id, esperado)) });
   }
 
   function noShow() {

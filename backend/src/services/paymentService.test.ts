@@ -478,14 +478,14 @@ describe("ciclo do estorno", () => {
     expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
   });
 
-  it("pagamento tardio ainda pendente vira estornado, e não cancelado, quando a Asaas devolve o valor", async () => {
+  it("pagamento tardio deixa de bloquear o evento e vira estornado quando a Asaas devolve o valor", async () => {
     const payment = await checkout();
     t.world.events.get(t.event.id)!.status = "CANCELADO";
     payAtAsaas(t.world, payment.asaasPaymentId);
     refundStaysPending();
 
     await t.service.handleWebhook({ id: "evt_a", event: "PAYMENT_RECEIVED", payment: { id: payment.asaasPaymentId } });
-    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PENDENTE", refundStatus: "PROCESSANDO" });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "CANCELADO", refundStatus: "PROCESSANDO" });
 
     t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
     await t.service.handleWebhook({ id: "evt_b", event: "PAYMENT_REFUNDED", payment: { id: payment.asaasPaymentId } });
@@ -493,15 +493,41 @@ describe("ciclo do estorno", () => {
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", refundStatus: "CONFIRMADO" });
   });
 
-  it("cobrança com estorno reservado não contrata mesmo se a Asaas mostrar o pagamento", async () => {
+  it("cobrança com devolução recusada não contrata e a devolução é tentada de novo", async () => {
     const payment = await checkout();
-    t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
+    Object.assign(t.world.payments.get(payment.id)!, { refundStatus: "NEGADO", refundAction: "NENHUMA" });
     payAtAsaas(t.world, payment.asaasPaymentId);
 
     await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
 
-    expect(t.world.payments.get(payment.id)?.status).toBe("PENDENTE");
     expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
-    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
+  });
+
+  it("Pix pago fora de hora não trava o evento, avisa o contratante e a devolução é tentada até dar certo", async () => {
+    const payment = await checkout();
+    t.world.events.get(t.event.id)!.status = "CANCELADO";
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    t.world.failures.refund = true;
+
+    await t.service.handleWebhook({ id: "evt_c", event: "PAYMENT_RECEIVED", payment: { id: payment.asaasPaymentId } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "CANCELADO", refundAction: "NENHUMA", refundStatus: null });
+    expect(await t.world.stores.payments.findPendingPayment(t.event.id)).toBeNull();
+    expect(t.world.notifications.filter((n) => n.userId === "c1").map((n) => n.titulo)).toEqual([expect.stringContaining("Pix recebido fora de hora")]);
+
+    t.world.failures.refund = false;
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+
+    expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
+  });
+
+  it("não cobra músico que já tem show contratado no mesmo horário", async () => {
+    const outro = t.world.seedEvent({ cache: 300, status: "CONTRATADO", musicoContratadoId: "m1", inicio: t.event.inicio });
+
+    await expect(checkout()).rejects.toMatchObject({ code: "MUSICO_OCUPADO" });
+    expect(t.world.asaasCalls.createPixCharge).toHaveLength(0);
+    expect(outro.status).toBe("CONTRATADO");
   });
 });

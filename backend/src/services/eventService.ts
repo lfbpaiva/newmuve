@@ -9,6 +9,8 @@ import type { EventStore } from "./ports.ts";
 
 const prazoEncerrado = (event: EventRecord, now: Date) => now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS;
 
+const musicoOcupado = () => new AppError(409, "MUSICO_OCUPADO", "O músico já tem um show contratado nesse horário.");
+
 const naoEncontrado = () => new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
 
 function assertImage(file: File): void {
@@ -34,7 +36,7 @@ export function createEventService(deps: {
   accounts: AccountStore;
   images: ImageStore;
   payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
-  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed">;
+  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
 
@@ -115,15 +117,31 @@ export function createEventService(deps: {
       const current = await findEditableEvent(user, eventId, now);
       assertFuture(input.inicio, now);
       const updated = await saveEvent(user, current, input, imagem);
-      const pending = (await events.listCandidates(eventId)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);
-      if (pending.length > 0 && changedForCandidates(current, updated)) void notifier.eventUpdated(updated, pending);
+      const pending = (await events.listCandidates(eventId)).filter((c) => c.status === "PENDENTE");
+      if (pending.length === 0 || !changedForCandidates(current, updated)) return updated;
+
+      const stillValid: string[] = [];
+      for (const candidate of pending) {
+        if (updated.cache !== current.cache && candidate.valorProposto === null) {
+          await events.updateCandidateProposal(candidate.id, current.cache);
+        }
+        const musician = await accounts.findAccount(candidate.musicianId);
+        const distancia = await events.distanceKm(eventId, candidate.musicianId);
+        const combina = musician?.uf && musician.cidade
+          && eventMatchesMusician(updated, { uf: musician.uf, cidade: musician.cidade, estilosMusicais: musician.estilosMusicais ?? [] }, distancia);
+        if (combina) stillValid.push(candidate.musicianId);
+        else if (await events.declineCandidate(candidate.id, "EVENTO_ALTERADO")) void notifier.candidateOutOfRange(updated, candidate.musicianId);
+      }
+      if (stillValid.length > 0) void notifier.eventUpdated(updated, stillValid);
       return updated;
     },
 
     async deleteEvent(user: AuthUser, eventId: string, now = new Date()): Promise<void> {
       const event = await findEditableEvent(user, eventId, now);
+      const pending = (await events.listCandidates(eventId)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);
       await events.deleteEvent(eventId);
       await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
+      if (pending.length > 0) void notifier.eventDeleted(event, pending);
     },
 
     async apply(user: AuthUser, eventId: string, valorProposto: number | null = null, now = new Date()): Promise<void> {
@@ -138,8 +156,22 @@ export function createEventService(deps: {
       if (!eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm)) {
         throw new AppError(403, "EVENTO_INCOMPATIVEL", "Este evento não é compatível com a região e os estilos do seu perfil.");
       }
+      if (await events.musicianHasConflict(user.id, eventId)) throw musicoOcupado();
       const candidate = await events.insertCandidate(eventId, user.id, valorProposto === event.cache ? null : valorProposto);
       void notifier.newApplication(event, candidate.valorProposto);
+    },
+
+    async releaseAccount(user: AuthUser, role: Role): Promise<void> {
+      const mine = await events.listEventsOf(user.id, role);
+      for (const event of mine) {
+        if (role === "CONTRACTOR" && event.status === "ABERTO") {
+          const pending = (await events.listCandidates(event.id)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);
+          await events.deleteEvent(event.id);
+          await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
+          if (pending.length > 0) void notifier.eventDeleted(event, pending);
+        }
+        if (role === "MUSICIAN" && event.status === "ABERTO") void notifier.applicantLeft(event);
+      }
     },
 
     async setApplicationsClosed(user: AuthUser, eventId: string, closed: boolean): Promise<void> {
@@ -158,23 +190,24 @@ export function createEventService(deps: {
         throw new AppError(409, "CANDIDATURA_INDISPONIVEL", "Esta inscrição não está mais aguardando resposta.");
       }
       await payments.ensureNoActiveCheckout(eventId, now);
-      if (await events.declineCandidate(candidateId)) void notifier.candidateDeclined(event, candidate.musicianId);
+      if (await events.declineCandidate(candidateId, "CONTRATANTE")) void notifier.candidateDeclined(event, candidate.musicianId);
     },
 
     async updateProposal(user: AuthUser, eventId: string, valorProposto: number | null, now = new Date()): Promise<void> {
       const event = await events.findEvent(eventId);
       const candidate = event && (await events.findCandidate(eventId, user.id));
       if (!event || !candidate) throw new AppError(404, "CANDIDATURA_NAO_ENCONTRADA", "Inscrição não encontrada.");
-      if (event.status !== "ABERTO" || candidate.status !== "PENDENTE") {
+      if (event.status !== "ABERTO" || candidate.status !== "PENDENTE" || event.inicio <= now) {
         throw new AppError(409, "PROPOSTA_INDISPONIVEL", "O valor só pode ser alterado enquanto a inscrição aguarda resposta.");
       }
       await payments.ensureNoActiveCheckout(eventId, now);
       await events.updateCandidateProposal(candidate.id, valorProposto === event.cache ? null : valorProposto);
     },
 
-    async sendMessage(user: AuthUser, candidateId: string, texto: string): Promise<MessageRecord> {
+    async sendMessage(user: AuthUser, candidateId: string, texto: string, now = new Date()): Promise<MessageRecord> {
       const { event, candidate } = await findConversation(user, candidateId);
-      if (candidate.status === "RECUSADO" || (event.status !== "ABERTO" && event.status !== "CONTRATADO")) {
+      const encerradoSemContratacao = event.status === "ABERTO" && event.inicio <= now;
+      if (candidate.status === "RECUSADO" || encerradoSemContratacao || (event.status !== "ABERTO" && event.status !== "CONTRATADO")) {
         throw new AppError(409, "CONVERSA_ENCERRADA", "Esta conversa está encerrada.");
       }
       const message = await events.insertMessage({ candidateId, authorId: user.id, texto });
@@ -213,7 +246,7 @@ export function createEventService(deps: {
       if ((event.status === "CONCLUIDO" || event.status === "CANCELADO") && !estornoPendente) await payments.payout(eventId);
 
       const [contratante, musico, endereco, payment, avaliou] = await Promise.all([
-        accounts.findAccount(event.contractorId),
+        event.contractorId ? accounts.findAccount(event.contractorId) : null,
         event.musicoContratadoId ? accounts.findAccount(event.musicoContratadoId) : null,
         events.findEndereco(eventId),
         payments.findPayment(eventId),
@@ -258,7 +291,7 @@ export function createEventService(deps: {
       };
     },
 
-    async cancelHiring(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" }> {
+    async cancelHiring(user: AuthUser, eventId: string, esperado?: "COM_ESTORNO" | "SEM_ESTORNO", now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" }> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
       if (event.inicio <= now) {
@@ -270,6 +303,9 @@ export function createEventService(deps: {
         return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
       }
       const reembolsado = hasCancellationNotice(event.inicio, now);
+      if (esperado && esperado !== (reembolsado ? "COM_ESTORNO" : "SEM_ESTORNO")) {
+        throw new AppError(409, "PRAZO_ALTERADO", "O prazo de 24 horas mudou enquanto você decidia. Confira as condições na tela e confirme de novo.");
+      }
       if (reembolsado) {
         const status = await payments.refundHiring(eventId, "CANCELAR");
         return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };

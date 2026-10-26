@@ -125,6 +125,7 @@ export default function CheckoutScreen() {
           </>}
         {cancelError ? <Alert tone="error">{cancelError}</Alert> : null}
         {statusError ? <Alert tone="info">Não foi possível atualizar o pagamento: {statusError}</Alert> : null}
+        {checkout.refundStatus ? <Alert tone="info">Este Pix foi pago depois que a cobrança deixou de valer, então não contratou o músico. O valor será devolvido integralmente; você recebe uma notificação sobre a devolução.</Alert> : null}
       </View>}
       <View style={[styles.card, { gap: 6 }]}>
         {event.data ? <>

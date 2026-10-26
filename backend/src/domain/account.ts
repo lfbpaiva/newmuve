@@ -41,6 +41,14 @@ const optionalText = <T>(schema: z.ZodType<T, string>) =>
     .transform((value) => value || undefined)
     .pipe(schema.optional());
 
+const clearableText = <T>(schema: z.ZodType<T, string>) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value || null))
+    .pipe(schema.nullable().optional());
+
 const documento = optionalText(z.string().refine(isValidDocumento, "Informe um CPF ou CNPJ válido.").transform(onlyDigits));
 
 const profileCommon = {
@@ -56,12 +64,12 @@ const contractorProfile = z.object(profileCommon);
 const musicianProfile = z
   .object({
     ...profileCommon,
-    bio: optionalText(z.string().max(1000, "A bio deve ter no máximo 1000 caracteres.")),
+    bio: clearableText(z.string().max(1000, "A bio deve ter no máximo 1000 caracteres.")),
     estilosMusicais: z
       .array(z.enum(ESTILOS_MUSICAIS, { error: "Estilo musical inválido." }))
       .optional()
       .transform((estilos) => (estilos && estilos.length ? [...new Set(estilos)] : undefined)),
-    portfolioUrl: optionalText(z.string().refine(isValidUrl, "Informe um link válido, começando com http:// ou https://.")),
+    portfolioUrl: clearableText(z.string().refine(isValidUrl, "Informe um link válido, começando com http:// ou https://.")),
     chavePixTipo: optionalText(z.enum(TIPOS_CHAVE_PIX, { error: "Tipo de chave Pix inválido." })),
     chavePix: optionalText(z.string()),
   })

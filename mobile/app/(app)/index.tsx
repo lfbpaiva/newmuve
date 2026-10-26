@@ -94,7 +94,7 @@ function Dashboard() {
   const active = all.filter((event) => (event.status === "ABERTO" && !event.encerrado) || event.status === "CONTRATADO");
   const candidaturas = active.filter((e) => e.status === "ABERTO").reduce((sum, e) => sum + (e.totalCandidatos ?? 0), 0);
   const concluidos = all.filter((e) => e.status === "CONCLUIDO");
-  const investido = concluidos.reduce((sum, e) => sum + e.cache, 0);
+  const investido = concluidos.reduce((sum, e) => sum + (e.cachePago ?? e.cache), 0);
   const faltando = camposFaltantes(me, "criarEvento");
   const create = () => (faltando.length ? router.push({ pathname: "/account/edit", params: { acao: "criarEvento" } }) : router.push("/event/new"));
 

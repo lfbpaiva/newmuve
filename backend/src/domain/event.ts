@@ -43,6 +43,10 @@ export const eventSchema = z.object({
 });
 export type EventInput = z.infer<typeof eventSchema>;
 
+export const cancelamentoSchema = z.object({
+  esperado: z.enum(["COM_ESTORNO", "SEM_ESTORNO"]).optional(),
+});
+
 export const inscricoesSchema = z.object({
   encerradas: z.boolean({ error: "Informe se as inscrições estão encerradas." }),
 });
@@ -83,7 +87,7 @@ export type AsaasWebhook = z.infer<typeof asaasWebhookSchema>;
 
 export interface EventRecord {
   id: string;
-  contractorId: string;
+  contractorId: string | null;
   musicoContratadoId: string | null;
   titulo: string;
   tipoEvento: string;
@@ -109,7 +113,10 @@ export interface CandidateRecord {
   musicianId: string;
   status: CandidateStatus;
   valorProposto: number | null;
+  motivoRecusa: MotivoRecusa | null;
 }
+
+export type MotivoRecusa = "CONTRATANTE" | "OUTRO_CONTRATADO" | "EVENTO_ALTERADO";
 
 export interface PaymentRecord {
   id: string;
@@ -137,6 +144,8 @@ export function toCheckoutView(payment: PaymentRecord) {
     comissao: payment.valorComissao,
     valor: payment.valor,
     status: payment.status,
+    candidateId: payment.candidateId,
+    refundStatus: payment.refundStatus,
     pixCopiaCola: payment.pixCopiaCola,
     pixQrCode: payment.pixQrCode,
     expiraEm: payment.expiraEm.toISOString(),

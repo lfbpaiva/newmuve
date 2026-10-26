@@ -309,8 +309,8 @@ describe("cancelamento da contratação", () => {
       t.world.asaasCharges.set(id, { status: "REFUND_REQUESTED", value: payment.valor });
     };
 
-    await expect(t.service.cancelHiring(musico, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
-    await expect(t.service.cancelHiring(musico, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
+    await expect(t.service.cancelHiring(musico, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
+    await expect(t.service.cancelHiring(musico, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
     expect(t.world.asaasCalls.refundPayment).toHaveLength(1);
     expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
     expect((await t.service.getHiring(musico, event.id, NOW)).pagamento?.refundStatus).toBe("PROCESSANDO");
@@ -380,14 +380,14 @@ describe("cancelamento da contratação", () => {
     const { event, payment } = await hired(hoursFromNow(12));
     t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
   it("repasse de cancelamento em cima da hora é tentado de novo ao abrir o comprovante", async () => {
     const { event, payment } = await hired(hoursFromNow(12));
     t.world.failures.transfer = true;
-    await t.service.cancelHiring(contratante, event.id, NOW);
+    await t.service.cancelHiring(contratante, event.id, undefined, NOW);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
 
     t.world.failures.transfer = false;
@@ -404,12 +404,12 @@ describe("cancelamento da contratação", () => {
       throw new AppError(409, "ESTORNO_SALDO_INSUFICIENTE", "Saldo insuficiente no Sandbox.");
     };
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).rejects.toMatchObject({ code: "ESTORNO_SALDO_INSUFICIENTE" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).rejects.toMatchObject({ code: "ESTORNO_SALDO_INSUFICIENTE" });
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: "NEGADO" });
     expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
 
     t.world.stores.asaas.refundPayment = original;
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
     expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
   });
 
@@ -422,8 +422,8 @@ describe("cancelamento da contratação", () => {
       await gate;
     };
 
-    const first = t.service.cancelHiring(musico, event.id, NOW);
-    const second = t.service.cancelHiring(musico, event.id, NOW);
+    const first = t.service.cancelHiring(musico, event.id, undefined, NOW);
+    const second = t.service.cancelHiring(musico, event.id, undefined, NOW);
     release();
     await Promise.all([first, second]);
 
@@ -434,7 +434,7 @@ describe("cancelamento da contratação", () => {
   it("contratante com mais de 24h: estorno integral e evento cancelado", async () => {
     const { event, payment } = await hired(hoursFromNow(48));
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
 
     expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
     expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
@@ -445,7 +445,7 @@ describe("cancelamento da contratação", () => {
   it("contratante com menos de 24h: sem estorno, o cachê vai para o músico", async () => {
     const { event, payment } = await hired(hoursFromNow(12));
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
 
     expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500, pixAddressKey: "m1@exemplo.com" })]);
@@ -456,7 +456,7 @@ describe("cancelamento da contratação", () => {
   it("músico desiste: estorno integral e o evento volta a aceitar candidatos", async () => {
     const { event, payment, outro } = await hired(hoursFromNow(12));
 
-    await expect(t.service.cancelHiring(musico, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
+    await expect(t.service.cancelHiring(musico, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
 
     expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
     expect(t.world.events.get(event.id)).toMatchObject({ status: "ABERTO", musicoContratadoId: null });
@@ -468,12 +468,12 @@ describe("cancelamento da contratação", () => {
     const { event, payment } = await hired(hoursFromNow(48));
     t.world.failures.refund = true;
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
     expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: null, refundAction: null });
 
     t.world.failures.refund = false;
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
     expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
   });
 
@@ -484,7 +484,7 @@ describe("cancelamento da contratação", () => {
       throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada depois do pedido");
     };
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
     expect(t.world.payments.get(payment.id)?.refundStatus).toBe("PROCESSANDO");
   });
 
@@ -493,15 +493,15 @@ describe("cancelamento da contratação", () => {
     Object.assign(t.world.payments.get(payment.id)!, { refundStatus: "NEGADO", refundAction: "CANCELAR" });
     t.world.failures.refund = true;
 
-    await expect(t.service.cancelHiring(contratante, event.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
     expect(t.world.payments.get(payment.id)).toMatchObject({ refundStatus: "NEGADO", refundAction: "CANCELAR" });
   });
 
   it("não vale depois do início do evento, nem para terceiros", async () => {
     const { event } = await hired(hoursFromNow(48));
 
-    await expect(t.service.cancelHiring(contratante, event.id, hoursFromNow(49))).rejects.toMatchObject({ code: "EVENTO_JA_INICIADO" });
-    await expect(t.service.cancelHiring(outroMusico, event.id, NOW)).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, hoursFromNow(49))).rejects.toMatchObject({ code: "EVENTO_JA_INICIADO" });
+    await expect(t.service.cancelHiring(outroMusico, event.id, undefined, NOW)).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -583,7 +583,7 @@ describe("avisos por e-mail", () => {
     const { event } = await hired(hoursFromNow(48));
     t.world.sent.length = 0;
 
-    await t.service.cancelHiring(musico, event.id, NOW);
+    await t.service.cancelHiring(musico, event.id, undefined, NOW);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(t.world.sent).toEqual([expect.objectContaining({ to: "c1@exemplo.com", subject: expect.stringContaining("desistiu") })]);
 
@@ -720,5 +720,94 @@ describe("encerrar inscrições", () => {
     const event = t.world.seedEvent({ status: "CONTRATADO", musicoContratadoId: "m1" });
 
     await expect(t.service.setApplicationsClosed(contratante, event.id, true)).rejects.toMatchObject({ code: "EVENTO_INDISPONIVEL" });
+  });
+});
+
+describe("correções de fluxo", () => {
+  it("quem aceitou o cachê mantém o valor antigo quando o contratante muda o cachê", async () => {
+    const event = t.world.seedEvent({ cache: 500 });
+    const aceitou = t.world.seedCandidate(event.id, "m1");
+
+    await t.service.updateEvent(contratante, event.id, { ...novoEvento, cache: 100 }, null, NOW);
+
+    expect(aceitou.valorProposto).toBe(500);
+  });
+
+  it("inscrito que deixa de combinar com o evento editado é recusado e avisado", async () => {
+    const event = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    await t.service.updateEvent(contratante, event.id, { ...novoEvento, uf: "SP", cidade: "São Paulo" }, null, NOW);
+    await flush();
+
+    expect(candidate).toMatchObject({ status: "RECUSADO", motivoRecusa: "EVENTO_ALTERADO" });
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("não combina mais")]);
+  });
+
+  it("quando o contratado desiste, só voltam a concorrer os que perderam para ele, e eles são avisados", async () => {
+    const event = t.world.seedEvent({ inicio: hoursFromNow(72) });
+    const escolhido = t.world.seedCandidate(event.id, "m1");
+    const perdeu = t.world.seedCandidate(event.id, "m2");
+    const recusado = t.world.seedCandidate(event.id, "m3");
+    await t.service.declineCandidate(contratante, event.id, recusado.id, NOW);
+    const payment = await t.payments.startCheckout(contratante, event.id, escolhido.id, NOW);
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.payments.syncCheckout(contratante, event.id, NOW);
+
+    await t.service.cancelHiring(musico, event.id, undefined, NOW);
+    await flush();
+
+    expect(perdeu).toMatchObject({ status: "PENDENTE", motivoRecusa: null });
+    expect(recusado).toMatchObject({ status: "RECUSADO", motivoRecusa: "CONTRATANTE" });
+    expect(avisosDe("m2").at(-1)?.titulo).toContain("voltou a concorrer");
+    expect(avisosDe("m3").some((n) => n.titulo.includes("voltou a concorrer"))).toBe(false);
+  });
+
+  it("excluir o evento avisa os inscritos", async () => {
+    const event = t.world.seedEvent();
+    t.world.seedCandidate(event.id, "m1");
+
+    await t.service.deleteEvent(contratante, event.id, NOW);
+    await flush();
+
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("foi excluído")]);
+  });
+
+  it("músico contratado num horário não se inscreve em outro show que se sobrepõe", async () => {
+    t.world.seedEvent({ status: "CONTRATADO", musicoContratadoId: "m1", inicio: hoursFromNow(72), duracaoMinutos: 180 });
+    const sobreposto = t.world.seedEvent({ inicio: hoursFromNow(73) });
+    const depois = t.world.seedEvent({ inicio: hoursFromNow(76) });
+
+    await expect(t.service.apply(musico, sobreposto.id, null, NOW)).rejects.toMatchObject({ code: "MUSICO_OCUPADO" });
+    await expect(t.service.apply(musico, depois.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("cancelamento recusa a confirmação se o prazo de 24h mudou desde que a tela foi aberta", async () => {
+    const { event } = await hired(hoursFromNow(23));
+
+    await expect(t.service.cancelHiring(contratante, event.id, "COM_ESTORNO", NOW)).rejects.toMatchObject({ code: "PRAZO_ALTERADO" });
+    expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
+    await expect(t.service.cancelHiring(contratante, event.id, "SEM_ESTORNO", NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+  });
+
+  it("evento que passou sem contratação encerra conversa e proposta", async () => {
+    const event = t.world.seedEvent({ inicio: hoursFromNow(-1) });
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    await expect(t.service.sendMessage(musico, candidate.id, "oi", NOW)).rejects.toMatchObject({ code: "CONVERSA_ENCERRADA" });
+    await expect(t.service.updateProposal(musico, event.id, 700, NOW)).rejects.toMatchObject({ code: "PROPOSTA_INDISPONIVEL" });
+  });
+
+  it("ao excluir a conta, o contratante leva os eventos abertos e avisa os inscritos; os shows passados ficam", async () => {
+    const aberto = t.world.seedEvent();
+    t.world.seedCandidate(aberto.id, "m1");
+    const concluido = t.world.seedEvent({ status: "CONCLUIDO", musicoContratadoId: "m2" });
+
+    await t.service.releaseAccount(contratante, "CONTRACTOR");
+    await flush();
+
+    expect(t.world.events.has(aberto.id)).toBe(false);
+    expect(t.world.events.has(concluido.id)).toBe(true);
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("foi excluído")]);
   });
 });
