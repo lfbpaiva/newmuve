@@ -2,11 +2,16 @@ import { apiRequest } from "./api.ts";
 import { supabase } from "./config.ts";
 import { unwrap, type CandidateStatus, type EventStatus } from "./events.ts";
 
+export type StatusProposta = "ABERTA" | "ACEITA" | "RECUSADA" | "SUBSTITUIDA";
+
 export interface Message {
   id: string;
   candidateId: string;
   authorId: string;
   texto: string;
+  tipo: "TEXTO" | "PROPOSTA";
+  valor: number | null;
+  statusProposta: StatusProposta | null;
   createdAt: string;
 }
 
@@ -24,6 +29,9 @@ interface MessageRow {
   candidate_id: string;
   author_id: string;
   texto: string;
+  tipo: "TEXTO" | "PROPOSTA";
+  valor: number | string | null;
+  status_proposta: StatusProposta | null;
   created_at: string;
 }
 
@@ -40,6 +48,9 @@ const toMessage = (row: MessageRow): Message => ({
   candidateId: row.candidate_id,
   authorId: row.author_id,
   texto: row.texto,
+  tipo: row.tipo,
+  valor: row.valor === null ? null : Number(row.valor),
+  statusProposta: row.status_proposta,
   createdAt: row.created_at,
 });
 
@@ -72,10 +83,18 @@ export async function fetchMessages(candidateId: string): Promise<Message[]> {
 export const sendMessage = (candidateId: string, texto: string) =>
   apiRequest<Message>(`/candidaturas/${candidateId}/mensagens`, { method: "POST", body: { texto } });
 
+export const proposeValue = (candidateId: string, valor: number) =>
+  apiRequest<Message>(`/candidaturas/${candidateId}/propostas`, { method: "POST", body: { valor } });
+
+export const answerProposal = (candidateId: string, messageId: string, aceitar: boolean) =>
+  apiRequest<Message>(`/candidaturas/${candidateId}/propostas/${messageId}/resposta`, { method: "POST", body: { aceitar } });
+
 export function subscribeToMessages(candidateId: string, onMessage: (message: Message) => void): () => void {
   const channel = supabase()
     .channel(`conversa:${candidateId}`)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "candidate_messages", filter: `candidate_id=eq.${candidateId}` }, (payload) => onMessage(toMessage(payload.new as MessageRow)))
+    .on("postgres_changes", { event: "*", schema: "public", table: "candidate_messages", filter: `candidate_id=eq.${candidateId}` }, (payload) => {
+      if (payload.new && "id" in payload.new) onMessage(toMessage(payload.new as MessageRow));
+    })
     .subscribe();
   return () => void supabase().removeChannel(channel);
 }

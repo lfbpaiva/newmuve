@@ -5,7 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, inscricoesSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
+import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, inscricoesSchema, propostaSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
@@ -192,6 +192,16 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     const { valorProposto } = candidaturaSchema.parse(await readJson(c));
     await events.updateProposal(c.get("user"), c.req.param("id"), valorProposto);
     return c.body(null, 204);
+  });
+
+  app.post("/candidaturas/:id/propostas", async (c) => {
+    const { valor } = propostaSchema.parse(await readJson(c));
+    return c.json(await events.proposeValue(c.get("user"), c.req.param("id"), valor), 201);
+  });
+
+  app.post("/candidaturas/:id/propostas/:messageId/resposta", async (c) => {
+    const { aceitar } = respostaPropostaSchema.parse(await readJson(c));
+    return c.json(await events.answerProposal(c.get("user"), c.req.param("id"), c.req.param("messageId"), aceitar), 201);
   });
 
   app.post("/candidaturas/:id/mensagens", async (c) => {

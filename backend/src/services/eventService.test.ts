@@ -811,3 +811,42 @@ describe("correções de fluxo", () => {
     expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("foi excluído")]);
   });
 });
+
+describe("contraproposta no chat", () => {
+  it("o contratante propõe, o músico aceita e o valor da inscrição passa a ser o combinado", async () => {
+    const event = t.world.seedEvent({ cache: 500 });
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    const proposta = await t.service.proposeValue(contratante, candidate.id, 600, NOW);
+    await expect(t.service.answerProposal(contratante, candidate.id, proposta.id, true, NOW)).rejects.toMatchObject({ code: "PROPOSTA_PROPRIA" });
+    await t.service.answerProposal(musico, candidate.id, proposta.id, true, NOW);
+
+    expect(candidate.valorProposto).toBe(600);
+    expect(t.world.messages.find((m) => m.id === proposta.id)?.statusProposta).toBe("ACEITA");
+    await expect(t.service.answerProposal(musico, candidate.id, proposta.id, true, NOW)).rejects.toMatchObject({ code: "PROPOSTA_ENCERRADA" });
+  });
+
+  it("uma proposta nova substitui a anterior, e a recusada não muda o valor", async () => {
+    const event = t.world.seedEvent({ cache: 500 });
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    const primeira = await t.service.proposeValue(musico, candidate.id, 800, NOW);
+    const segunda = await t.service.proposeValue(contratante, candidate.id, 650, NOW);
+    await t.service.answerProposal(musico, candidate.id, segunda.id, false, NOW);
+
+    expect(t.world.messages.find((m) => m.id === primeira.id)?.statusProposta).toBe("SUBSTITUIDA");
+    expect(t.world.messages.find((m) => m.id === segunda.id)?.statusProposta).toBe("RECUSADA");
+    expect(candidate.valorProposto).toBeNull();
+  });
+
+  it("não negocia valor com Pix em andamento nem depois de decidida a inscrição", async () => {
+    const event = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(event.id, "m1");
+    await t.payments.startCheckout(contratante, event.id, candidate.id, NOW);
+
+    await expect(t.service.proposeValue(musico, candidate.id, 900, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_EM_ANDAMENTO" });
+
+    const recusada = t.world.seedCandidate(t.world.seedEvent().id, "m1", "RECUSADO");
+    await expect(t.service.proposeValue(musico, recusada.id, 900, NOW)).rejects.toMatchObject({ code: "NEGOCIACAO_ENCERRADA" });
+  });
+});

@@ -55,15 +55,28 @@ export const candidaturaSchema = z.object({
   valorProposto: valorEmReais.nullable().default(null),
 });
 
+export const propostaSchema = z.object({
+  valor: valorEmReais,
+});
+
+export const respostaPropostaSchema = z.object({
+  aceitar: z.boolean({ error: "Informe se a proposta foi aceita." }),
+});
+
 export const mensagemSchema = z.object({
   texto: texto("Escreva uma mensagem.").min(1, "Escreva uma mensagem.").max(1000, "A mensagem deve ter no máximo 1000 caracteres."),
 });
+
+export type StatusProposta = "ABERTA" | "ACEITA" | "RECUSADA" | "SUBSTITUIDA";
 
 export interface MessageRecord {
   id: string;
   candidateId: string;
   authorId: string;
   texto: string;
+  tipo: "TEXTO" | "PROPOSTA";
+  valor: number | null;
+  statusProposta: StatusProposta | null;
   createdAt: Date;
 }
 

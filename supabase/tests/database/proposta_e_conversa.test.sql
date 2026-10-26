@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(10);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000c1', 'conversa-musico@example.com'),
@@ -29,17 +29,26 @@ select throws_ok(
   $$ insert into public.candidate_messages (candidate_id, author_id, texto) values ('00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000c1', '') $$,
   '23514', null, 'mensagem vazia e rejeitada');
 
+insert into public.candidate_messages (candidate_id, author_id, texto, tipo, valor, status_proposta) values
+  ('00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000c3', 'Proposta', 'PROPOSTA', 600, 'ABERTA');
+select throws_ok(
+  $$ insert into public.candidate_messages (candidate_id, author_id, texto, tipo, valor, status_proposta) values ('00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000c1', 'Outra', 'PROPOSTA', 700, 'ABERTA') $$,
+  '23505', null, 'so uma proposta aberta por inscricao');
+select throws_ok(
+  $$ insert into public.candidate_messages (candidate_id, author_id, texto, tipo) values ('00000000-0000-0000-0000-0000000000d5', '00000000-0000-0000-0000-0000000000c1', 'Sem valor', 'PROPOSTA') $$,
+  '23514', null, 'proposta sem valor e rejeitada');
+
 set local role anon;
 select throws_ok($$ select 1 from public.candidate_messages $$, '42501', null, 'anonimo nao le conversas');
 reset role;
 
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000c1","role":"authenticated"}';
-select is((select count(*)::int from public.candidate_messages), 1, 'musico le a propria conversa');
+select is((select count(*)::int from public.candidate_messages), 2, 'musico le a propria conversa');
 select is((select valor_proposto from public.event_candidates where id = '00000000-0000-0000-0000-0000000000d5'), 650.00::numeric, 'musico le a propria proposta');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000c3","role":"authenticated"}';
-select is((select count(*)::int from public.candidate_messages), 1, 'dono do evento le a conversa');
+select is((select count(*)::int from public.candidate_messages), 2, 'dono do evento le a conversa');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000c2","role":"authenticated"}';
 select is((select count(*)::int from public.candidate_messages), 0, 'outro musico nao le a conversa');

@@ -1,4 +1,5 @@
 import { CONCLUSAO_AUTOMATICA_MS, EMAIL_SUPORTE, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
+import { formatCurrency } from "../../../shared/formato.ts";
 import type { Account, Role } from "../domain/account.ts";
 import type { CandidateRecord, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
@@ -85,6 +86,15 @@ export function createEventService(deps: {
       throw new AppError(404, "CONVERSA_NAO_ENCONTRADA", "Conversa não encontrada.");
     }
     return { event, candidate };
+  }
+
+  async function findOpenNegotiation(user: AuthUser, candidateId: string, now: Date): Promise<{ event: EventRecord; candidate: CandidateRecord }> {
+    const found = await findConversation(user, candidateId);
+    if (found.event.status !== "ABERTO" || found.candidate.status !== "PENDENTE" || found.event.inicio <= now) {
+      throw new AppError(409, "NEGOCIACAO_ENCERRADA", "O valor só pode ser negociado enquanto a inscrição aguarda resposta.");
+    }
+    await payments.ensureNoActiveCheckout(found.event.id, now);
+    return found;
   }
 
   async function findEventAsParty(user: AuthUser, eventId: string): Promise<{ event: EventRecord; party: Party }> {
@@ -202,6 +212,31 @@ export function createEventService(deps: {
       }
       await payments.ensureNoActiveCheckout(eventId, now);
       await events.updateCandidateProposal(candidate.id, valorProposto === event.cache ? null : valorProposto);
+    },
+
+    async proposeValue(user: AuthUser, candidateId: string, valor: number, now = new Date()): Promise<MessageRecord> {
+      const { event, candidate } = await findOpenNegotiation(user, candidateId, now);
+      await events.closeOpenProposals(candidateId);
+      const message = await events.insertMessage({ candidateId, authorId: user.id, texto: `Proposta de cachê: ${formatCurrency(valor)}`, valor });
+      void notifier.newMessage(event, candidate, user.id);
+      return message;
+    },
+
+    async answerProposal(user: AuthUser, candidateId: string, messageId: string, aceitar: boolean, now = new Date()): Promise<MessageRecord> {
+      const { event, candidate } = await findOpenNegotiation(user, candidateId, now);
+      const proposal = await events.findMessage(messageId);
+      if (!proposal || proposal.candidateId !== candidateId || proposal.tipo !== "PROPOSTA") {
+        throw new AppError(404, "PROPOSTA_NAO_ENCONTRADA", "Proposta não encontrada.");
+      }
+      if (proposal.authorId === user.id) throw new AppError(409, "PROPOSTA_PROPRIA", "Quem responde a proposta é a outra parte.");
+      if (!(await events.answerProposal(messageId, aceitar ? "ACEITA" : "RECUSADA"))) {
+        throw new AppError(409, "PROPOSTA_ENCERRADA", "Esta proposta já foi respondida ou substituída.");
+      }
+      if (aceitar) await events.updateCandidateProposal(candidate.id, proposal.valor === event.cache ? null : proposal.valor);
+      const texto = aceitar ? `Proposta de ${formatCurrency(proposal.valor!)} aceita. Esse é o valor da contratação.` : `Proposta de ${formatCurrency(proposal.valor!)} recusada.`;
+      const message = await events.insertMessage({ candidateId, authorId: user.id, texto });
+      void notifier.newMessage(event, candidate, user.id);
+      return message;
     },
 
     async sendMessage(user: AuthUser, candidateId: string, texto: string, now = new Date()): Promise<MessageRecord> {

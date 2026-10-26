@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 import type { Inbox } from "../services/notifications.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
 
@@ -42,6 +42,9 @@ interface MessageRow {
   candidate_id: string;
   author_id: string;
   texto: string;
+  tipo: "TEXTO" | "PROPOSTA";
+  valor: number | string | null;
+  status_proposta: StatusProposta | null;
   created_at: string;
 }
 
@@ -100,6 +103,9 @@ const toMessage = (row: MessageRow): MessageRecord => ({
   candidateId: row.candidate_id,
   authorId: row.author_id,
   texto: row.texto,
+  tipo: row.tipo,
+  valor: row.valor === null ? null : Number(row.valor),
+  statusProposta: row.status_proposta,
   createdAt: new Date(row.created_at),
 });
 
@@ -262,11 +268,33 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     async insertMessage(message) {
       const { data, error } = await admin
         .from("candidate_messages")
-        .insert({ candidate_id: message.candidateId, author_id: message.authorId, texto: message.texto })
+        .insert({
+          candidate_id: message.candidateId,
+          author_id: message.authorId,
+          texto: message.texto,
+          ...(message.valor === undefined ? {} : { tipo: "PROPOSTA", valor: message.valor, status_proposta: "ABERTA" }),
+        })
         .select()
         .single();
       if (error) throw error;
       return toMessage(data);
+    },
+
+    async findMessage(id) {
+      const { data, error } = await admin.from("candidate_messages").select("*").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data && toMessage(data);
+    },
+
+    async closeOpenProposals(candidateId) {
+      const { error } = await admin.from("candidate_messages").update({ status_proposta: "SUBSTITUIDA" }).eq("candidate_id", candidateId).eq("status_proposta", "ABERTA");
+      if (error) throw error;
+    },
+
+    async answerProposal(id, status) {
+      const { data, error } = await admin.from("candidate_messages").update({ status_proposta: status }).eq("id", id).eq("status_proposta", "ABERTA").select("id");
+      if (error) throw error;
+      return data.length > 0;
     },
 
     async deleteCandidate(id) {

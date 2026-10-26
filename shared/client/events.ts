@@ -367,3 +367,34 @@ export function startCheckout(eventId: string, candidateId: string): Promise<Che
   }
   return request;
 }
+
+export type PeriodoFeed = "QUALQUER" | "SEMANA" | "MES";
+
+export interface FeedFilters {
+  busca: string;
+  periodo: PeriodoFeed;
+  tipos: string[];
+  cacheMinimo: number;
+}
+
+export const FILTROS_VAZIOS: FeedFilters = { busca: "", periodo: "QUALQUER", tipos: [], cacheMinimo: 0 };
+
+const normalizar = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+const DIAS_DO_PERIODO: Record<PeriodoFeed, number | null> = { QUALQUER: null, SEMANA: 7, MES: 30 };
+
+export function filterFeed(events: EventItem[], filtros: FeedFilters, now = new Date()): EventItem[] {
+  const termos = normalizar(filtros.busca).split(/\s+/).filter(Boolean);
+  const dias = DIAS_DO_PERIODO[filtros.periodo];
+  const limite = dias === null ? null : now.getTime() + dias * 24 * 60 * 60 * 1000;
+  return events.filter((event) => {
+    const texto = normalizar([event.titulo, event.cidade, event.tipoEvento, event.descricao ?? "", ...event.estilosMusicais].join(" "));
+    if (termos.some((termo) => !texto.includes(termo))) return false;
+    if (limite !== null && new Date(event.inicio).getTime() > limite) return false;
+    if (filtros.tipos.length > 0 && !filtros.tipos.includes(event.tipoEvento)) return false;
+    return event.cache >= filtros.cacheMinimo;
+  });
+}
+
+export const filtrosAtivos = (filtros: FeedFilters) =>
+  (filtros.busca.trim() ? 1 : 0) + (filtros.periodo !== "QUALQUER" ? 1 : 0) + filtros.tipos.length + (filtros.cacheMinimo > 0 ? 1 : 0);

@@ -3,12 +3,12 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchFeed, fetchMyEvents } from "../../../shared/client/events.ts";
+import { fetchFeed, fetchMyEvents, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
-import { camposFaltantes, descreverFaltantes, RAIOS_FEED_KM } from "../../../shared/dominio.ts";
+import { camposFaltantes, descreverFaltantes, RAIOS_FEED_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import { EventCard, EventRow, EventStatusPill, withEncerrado } from "../../components/events";
-import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Icon, Loading, Screen, Section } from "../../components/ui";
+import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Field, Icon, Loading, Screen, Section } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
@@ -45,6 +45,29 @@ function NotificationBell() {
   </Pressable>;
 }
 
+const PERIODOS: Record<PeriodoFeed, string> = { QUALQUER: "Qualquer data", SEMANA: "Próximos 7 dias", MES: "Próximos 30 dias" };
+const CACHES_MINIMOS = ["0", "300", "500", "1000"];
+const cacheLabel = (valor: string) => (valor === "0" ? "Qualquer cachê" : `${formatCurrency(Number(valor)).replace(",00", "")} ou mais`);
+
+function FeedFiltersPanel({ filtros, onChange }: { filtros: FeedFilters; onChange: (filtros: FeedFilters) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const ativos = filtrosAtivos({ ...filtros, busca: "" });
+  return <View style={{ gap: space.sm }}>
+    <View style={[styles.row, { gap: space.sm }]}>
+      <View style={{ flex: 1 }}>
+        <Field label="Buscar" value={filtros.busca} onChangeText={(busca) => onChange({ ...filtros, busca })} placeholder="Nome do evento, cidade, estilo..." autoCapitalize="none" returnKeyType="search"/>
+      </View>
+      <Button title={ativos > 0 ? `Filtros (${ativos})` : "Filtros"} variant={aberto ? "tonal" : "outlined"} icon="options-outline" block={false} onPress={() => setAberto(!aberto)}/>
+    </View>
+    {aberto && <View style={{ gap: space.sm }}>
+      <Chips scroll options={Object.keys(PERIODOS)} selected={[filtros.periodo]} onToggle={(periodo) => onChange({ ...filtros, periodo: periodo as PeriodoFeed })} labels={(p) => PERIODOS[p as PeriodoFeed]}/>
+      <Chips scroll options={[...TIPOS_EVENTO]} selected={filtros.tipos} onToggle={(tipo) => onChange({ ...filtros, tipos: filtros.tipos.includes(tipo) ? filtros.tipos.filter((t) => t !== tipo) : [...filtros.tipos, tipo] })}/>
+      <Chips scroll options={CACHES_MINIMOS} selected={[String(filtros.cacheMinimo)]} onToggle={(valor) => onChange({ ...filtros, cacheMinimo: Number(valor) })} labels={cacheLabel}/>
+      {filtrosAtivos(filtros) > 0 && <Button title="Limpar filtros" variant="text" block={false} onPress={() => onChange(FILTROS_VAZIOS)}/>}
+    </View>}
+  </View>;
+}
+
 const RADIUS_KEY = "muve.feedRadiusKm";
 const radiusLabel = (km: string) => (km === "0" ? "Minha cidade" : `${km} km`);
 
@@ -52,6 +75,7 @@ function Feed() {
   const me = useMe();
   const router = useRouter();
   const [radius, setRadius] = useState(50);
+  const [filtros, setFiltros] = useState<FeedFilters>(FILTROS_VAZIOS);
   const setupPending = camposFaltantes(me, "feed").length > 0;
   const feed = useAsync(`feed:${radius}:${setupPending}`, () => (setupPending ? Promise.resolve([]) : fetchFeed(radius)));
   useRefreshOnFocus(feed.reload);
@@ -62,6 +86,8 @@ function Feed() {
       if ((RAIOS_FEED_KM as readonly number[]).includes(value)) setRadius(value);
     });
   }, []);
+
+  const visiveis = filterFeed(feed.data ?? [], filtros);
 
   function changeRadius(value: string) {
     setRadius(Number(value));
@@ -75,12 +101,14 @@ function Feed() {
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
       {!setupPending && <Chips scroll options={RAIOS_FEED_KM.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
+      {!setupPending && (feed.data?.length ?? 0) > 0 && <FeedFiltersPanel filtros={filtros} onChange={setFiltros}/>}
+      {!setupPending && (feed.data?.length ?? 0) > 0 && visiveis.length === 0 && <EmptyState title="Nenhum evento com esses filtros" action={<Button title="Limpar filtros" variant="tonal" block={false} onPress={() => setFiltros(FILTROS_VAZIOS)}/>}/>}
       {!setupPending && feed.error && <ErrorState message={feed.error} onRetry={feed.reload}/>}
       {!setupPending && !feed.error && !feed.data && <Loading label="Buscando eventos..."/>}
       {!setupPending && feed.data?.length === 0 && <EmptyState title={radius === 0 ? "Nada na sua cidade por enquanto" : `Nada até ${radius} km por enquanto`} action={radius < 200 ? <Button title="Aumentar a distância" variant="tonal" block={false} onPress={() => changeRadius(String(RAIOS_FEED_KM[RAIOS_FEED_KM.indexOf(radius as 0) + 1] ?? 200))}/> : undefined}>
         <Text style={[type.bodySmall, { textAlign: "center" }]}>Os eventos são filtrados pelos seus estilos ({(me.estilosMusicais ?? []).join(", ")}). Novos shows compatíveis aparecem aqui assim que forem publicados.</Text>
       </EmptyState>}
-      {feed.data?.map((event) => <EventCard key={event.id} event={event}/>)}
+      {visiveis.map((event) => <EventCard key={event.id} event={event}/>)}
     </Screen>
   </View>;
 }

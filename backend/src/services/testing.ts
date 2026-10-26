@@ -185,10 +185,22 @@ export function memoryWorld() {
       if (candidate?.status === "PENDENTE") candidate.valorProposto = valorProposto;
     },
     deleteCandidate: async (id) => void candidates.delete(id),
-    insertMessage: async (message) => {
-      const record: MessageRecord = { ...message, id: nextId("msg"), createdAt: new Date() };
+    insertMessage: async ({ valor, ...message }) => {
+      const record: MessageRecord = valor === undefined
+        ? { ...message, tipo: "TEXTO", valor: null, statusProposta: null, id: nextId("msg"), createdAt: new Date() }
+        : { ...message, tipo: "PROPOSTA", valor, statusProposta: "ABERTA", id: nextId("msg"), createdAt: new Date() };
       messages.push(record);
       return record;
+    },
+    findMessage: async (id) => messages.find((m) => m.id === id) ?? null,
+    closeOpenProposals: async (candidateId) => {
+      for (const m of messages) if (m.candidateId === candidateId && m.statusProposta === "ABERTA") m.statusProposta = "SUBSTITUIDA";
+    },
+    answerProposal: async (id, status) => {
+      const message = messages.find((m) => m.id === id);
+      if (message?.statusProposta !== "ABERTA") return false;
+      message.statusProposta = status;
+      return true;
     },
     insertReview: async (review) => {
       if (reviews.some((r) => r.eventId === review.eventId && r.authorId === review.authorId)) {
