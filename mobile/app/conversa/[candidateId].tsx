@@ -19,6 +19,7 @@ export default function ConversationScreen() {
   const { candidateId } = useLocalSearchParams<{ candidateId: string }>();
   const conversation = useAsync(`conversa:${candidateId}`, () => fetchConversation(candidateId));
   useRefreshOnFocus(conversation.reload);
+  const reloadConversation = conversation.reload;
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadError, setLoadError] = useState("");
   const [texto, setTexto] = useState("");
@@ -32,12 +33,16 @@ export default function ConversationScreen() {
     let active = true;
     const merge = (incoming: Message[]) => setMessages((current) => mergeMessages(current, incoming));
     fetchMessages(candidateId).then((loaded) => active && merge(loaded), (error: unknown) => active && setLoadError(errorMessage(error)));
-    const unsubscribe = subscribeToMessages(candidateId, (message) => active && merge([message]));
+    const unsubscribe = subscribeToMessages(candidateId, (message) => {
+      if (!active) return;
+      merge([message]);
+      if (message.statusProposta === "ACEITA") reloadConversation();
+    });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [candidateId]);
+  }, [candidateId, reloadConversation]);
 
   async function run(action: () => Promise<Message>) {
     setSending(true);

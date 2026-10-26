@@ -24,7 +24,7 @@ function TopBar({ title, subtitle }: { title: string; subtitle: string }) {
   const router = useRouter();
   return <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.surface }}>
     <View style={[styles.between, { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm, alignItems: "flex-end" }]}>
-      <View style={{ flex: 1, gap: 6 }}><Text style={[type.display, { fontSize: 30, lineHeight: 30 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityRole="header">{title}</Text><Text style={type.labelSmall} numberOfLines={1}>{subtitle}</Text></View>
+      <View style={{ flex: 1, gap: 6 }}><Text style={[type.display, { fontSize: 26, lineHeight: 28 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityRole="header">{title}</Text><Text style={type.labelSmall} numberOfLines={1}>{subtitle}</Text></View>
       <View style={[styles.row, { gap: space.md }]}>
         <NotificationBell/>
         <Pressable accessibilityRole="button" accessibilityLabel="Abrir meu perfil" onPress={() => router.push("/(app)/profile")} hitSlop={6}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={44}/></Pressable>
