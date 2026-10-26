@@ -11,6 +11,12 @@ export type RefundAction = "REABRIR" | "CANCELAR" | "NAO_COMPARECIMENTO" | "NENH
 
 const isCentavos = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 
+const valorEmReais = z
+  .number({ error: "O cachê mínimo é de R$ 100,00." })
+  .min(CACHE_MINIMO, "O cachê mínimo é de R$ 100,00.")
+  .max(1_000_000, "O cachê deve ser de no máximo R$ 1.000.000,00.")
+  .refine(isCentavos, "O cachê deve ter no máximo duas casas decimais.");
+
 export const eventSchema = z.object({
   titulo: texto("Informe o título do evento.").min(1, "Informe o título do evento.").max(120, "O título deve ter no máximo 120 caracteres."),
   tipoEvento: z.enum(TIPOS_EVENTO, { error: "Informe tipo, horário de início e duração do evento." }),
@@ -32,14 +38,26 @@ export const eventSchema = z.object({
     .transform((estilos) => (estilos.includes(QUALQUER_ESTILO) ? [QUALQUER_ESTILO] : [...new Set(estilos)])),
   formacao: z.enum(FORMACOES, { error: "Formação inválida." }).default("Indiferente"),
   somDisponivel: z.boolean().default(false),
-  cache: z
-    .number({ error: "O cachê mínimo é de R$ 100,00." })
-    .min(CACHE_MINIMO, "O cachê mínimo é de R$ 100,00.")
-    .max(1_000_000, "O cachê deve ser de no máximo R$ 1.000.000,00.")
-    .refine(isCentavos, "O cachê deve ter no máximo duas casas decimais."),
+  cache: valorEmReais,
   descricao: z.string().trim().max(2000, "A descrição deve ter no máximo 2000 caracteres.").optional(),
 });
 export type EventInput = z.infer<typeof eventSchema>;
+
+export const candidaturaSchema = z.object({
+  valorProposto: valorEmReais.nullable().default(null),
+});
+
+export const mensagemSchema = z.object({
+  texto: texto("Escreva uma mensagem.").min(1, "Escreva uma mensagem.").max(1000, "A mensagem deve ter no máximo 1000 caracteres."),
+});
+
+export interface MessageRecord {
+  id: string;
+  candidateId: string;
+  authorId: string;
+  texto: string;
+  createdAt: Date;
+}
 
 export const checkoutSchema = z.object({
   candidateId: z.uuid({ error: "Candidatura inválida." }),
@@ -85,6 +103,7 @@ export interface CandidateRecord {
   eventId: string;
   musicianId: string;
   status: CandidateStatus;
+  valorProposto: number | null;
 }
 
 export interface PaymentRecord {

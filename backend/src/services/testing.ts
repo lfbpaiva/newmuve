@@ -1,6 +1,6 @@
 import type { Account } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, EventRecord, PaymentRecord } from "../domain/event.ts";
+import type { CandidateRecord, EventRecord, MessageRecord, PaymentRecord } from "../domain/event.ts";
 import type { AccountStore, ImageStore } from "./accountService.ts";
 import type { Mailer } from "./notifications.ts";
 import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
@@ -37,6 +37,7 @@ export function memoryWorld() {
   const events = new Map<string, EventRecord>();
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
+  const messages: MessageRecord[] = [];
   const payments = new Map<string, PaymentRecord & { createdAt: number }>();
   const asaasTransfers = new Map<string, string>();
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
@@ -133,15 +134,24 @@ export function memoryWorld() {
     findCandidate: async (eventId, musicianId) =>
       [...candidates.values()].find((c) => c.eventId === eventId && c.musicianId === musicianId) ?? null,
     findCandidateById: async (id) => candidates.get(id) ?? null,
-    insertCandidate: async (eventId, musicianId) => {
+    insertCandidate: async (eventId, musicianId, valorProposto) => {
       if ([...candidates.values()].some((c) => c.eventId === eventId && c.musicianId === musicianId)) {
         throw new AppError(409, "JA_INSCRITO", "Você já se inscreveu neste evento.");
       }
-      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status: "PENDENTE" };
+      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status: "PENDENTE", valorProposto };
       candidates.set(candidate.id, candidate);
       return candidate;
     },
+    updateCandidateProposal: async (id, valorProposto) => {
+      const candidate = candidates.get(id);
+      if (candidate?.status === "PENDENTE") candidate.valorProposto = valorProposto;
+    },
     deleteCandidate: async (id) => void candidates.delete(id),
+    insertMessage: async (message) => {
+      const record: MessageRecord = { ...message, id: nextId("msg"), createdAt: new Date() };
+      messages.push(record);
+      return record;
+    },
     insertReview: async (review) => {
       if (reviews.some((r) => r.eventId === review.eventId && r.authorId === review.authorId)) {
         throw new AppError(409, "JA_AVALIADO", "Você já avaliou este evento.");
@@ -285,6 +295,7 @@ export function memoryWorld() {
     events,
     enderecos,
     candidates,
+    messages,
     payments,
     reviews,
     images,
@@ -322,7 +333,7 @@ export function memoryWorld() {
       return event;
     },
     seedCandidate(eventId: string, musicianId: string, status: CandidateRecord["status"] = "PENDENTE"): CandidateRecord {
-      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status };
+      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status, valorProposto: null };
       candidates.set(candidate.id, candidate);
       return candidate;
     },

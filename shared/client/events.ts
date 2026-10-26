@@ -48,7 +48,14 @@ export interface EventData {
 export interface Application {
   id: string;
   status: CandidateStatus;
+  valorProposto: number | null;
   event: EventItem;
+}
+
+export interface MyApplication {
+  id: string;
+  status: CandidateStatus;
+  valorProposto: number | null;
 }
 
 export interface PublicProfile {
@@ -64,6 +71,7 @@ export interface PublicProfile {
 export interface Candidate {
   id: string;
   status: CandidateStatus;
+  valorProposto: number | null;
   musician: PublicProfile & { bio: string | null; estilosMusicais: string[]; portfolioUrl: string | null };
 }
 
@@ -147,10 +155,11 @@ interface ProfileRow {
 interface CandidateRow {
   id: string;
   status: CandidateStatus;
+  valor_proposto: number | string | null;
   musician: ProfileRow & { bio: string | null; estilos_musicais: string[] | null; portfolio_url: string | null };
 }
 
-function unwrap<T>(result: { data: unknown; error: PostgrestError | null }): T {
+export function unwrap<T>(result: { data: unknown; error: PostgrestError | null }): T {
   if (result.error || result.data === null) {
     throw new ApiError("Não foi possível carregar os dados. Verifique sua conexão e tente novamente.", 0, "FALHA_DE_LEITURA");
   }
@@ -180,7 +189,7 @@ const toEvent = (row: EventRow): EventItem => ({
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
-const CANDIDATE_SELECT = `id, status, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, ${PUBLIC_PROFILE})`;
+const CANDIDATE_SELECT = `id, status, valor_proposto, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, ${PUBLIC_PROFILE})`;
 
 const toPublicProfile = (row: ProfileRow, nameColumn: "nome_completo" | "nome_fantasia"): PublicProfile => ({
   id: row.user_id,
@@ -192,9 +201,12 @@ const toPublicProfile = (row: ProfileRow, nameColumn: "nome_completo" | "nome_fa
   totalAvaliacoes: row.total_avaliacoes,
 });
 
+const toValor = (value: number | string | null) => (value === null ? null : Number(value));
+
 const toCandidate = (row: CandidateRow): Candidate => ({
   id: row.id,
   status: row.status,
+  valorProposto: toValor(row.valor_proposto),
   musician: {
     ...toPublicProfile(row.musician, "nome_completo"),
     bio: row.musician.bio,
@@ -237,16 +249,26 @@ export async function fetchMyEvents(contractorId: string): Promise<EventItem[]> 
 export async function fetchMyApplications(musicianId: string): Promise<Application[]> {
   const result = await supabase()
     .from("event_candidates")
-    .select("id, status, event:events(*)")
+    .select("id, status, valor_proposto, event:events(*)")
     .eq("musician_id", musicianId)
     .order("created_at", { ascending: false });
-  return unwrap<{ id: string; status: CandidateStatus; event: EventRow }[]>(result).map((row) => ({ id: row.id, status: row.status, event: toEvent(row.event) }));
+  return unwrap<{ id: string; status: CandidateStatus; valor_proposto: number | string | null; event: EventRow }[]>(result).map((row) => ({
+    id: row.id,
+    status: row.status,
+    valorProposto: toValor(row.valor_proposto),
+    event: toEvent(row.event),
+  }));
 }
 
-export async function fetchMyApplication(eventId: string, musicianId: string): Promise<{ id: string; status: CandidateStatus } | null> {
-  const { data, error } = await supabase().from("event_candidates").select("id, status").eq("event_id", eventId).eq("musician_id", musicianId).maybeSingle();
+export async function fetchMyApplication(eventId: string, musicianId: string): Promise<MyApplication | null> {
+  const { data, error } = await supabase()
+    .from("event_candidates")
+    .select("id, status, valor_proposto")
+    .eq("event_id", eventId)
+    .eq("musician_id", musicianId)
+    .maybeSingle<{ id: string; status: CandidateStatus; valor_proposto: number | string | null }>();
   if (error) unwrap({ data: null, error });
-  return data;
+  return data && { id: data.id, status: data.status, valorProposto: toValor(data.valor_proposto) };
 }
 
 export async function fetchCandidates(eventId: string): Promise<Candidate[]> {
@@ -295,7 +317,10 @@ export function updateEvent(id: string, dados: EventData, imagem: UploadFile | n
 }
 
 export const deleteEvent = (id: string) => apiRequest(`/events/${id}`, { method: "DELETE" });
-export const applyToEvent = (id: string) => apiRequest(`/events/${id}/candidatura`, { method: "POST" });
+export const applyToEvent = (id: string, valorProposto: number | null) =>
+  apiRequest(`/events/${id}/candidatura`, { method: "POST", body: { valorProposto } });
+export const updateProposal = (id: string, valorProposto: number | null) =>
+  apiRequest(`/events/${id}/candidatura`, { method: "PATCH", body: { valorProposto } });
 export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candidatura`, { method: "DELETE" });
 
 export const fetchHiring = (id: string) => apiRequest<Hiring>(`/events/${id}/contratacao`);

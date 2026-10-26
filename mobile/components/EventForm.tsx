@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
-import { formatCurrency, minutesToTimeInput, timeInputToMinutes, toDateInput, toTimeInput } from "../../shared/client/format.ts";
+import { formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toDateInput, toTimeInput, toValorInput } from "../../shared/client/format.ts";
 import { calcularCobranca, ESTILOS_EVENTO, FORMACOES, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
 import { space } from "../lib/theme";
 import { ImageField, LocationFields } from "./fields";
@@ -24,7 +24,7 @@ function initialForm(event: EditableEvent | null, local?: { uf: string | null; c
     data: inicio ? fromIsoDate(toDateInput(inicio)) : "",
     horario: inicio ? toTimeInput(inicio) : "",
     duracao: event ? minutesToTimeInput(event.duracaoMinutos) : "",
-    cache: event ? String(event.cache).replace(".", ",") : "",
+    cache: event ? toValorInput(event.cache) : "",
     uf: event?.uf ?? local?.uf ?? "",
     cidade: event?.cidade ?? local?.cidade ?? "",
     endereco: event?.endereco ?? "",
@@ -42,7 +42,7 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
-  const cacheNumber = Number(form.cache.replace(/\./g, "").replace(",", "."));
+  const cacheNumber = parseValor(form.cache);
 
   async function submit() {
     const inicio = new Date(`${toIsoDate(form.data)}T${form.horario}`);

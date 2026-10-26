@@ -26,13 +26,14 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
     titulo: "3. Como funciona a contratação",
     paragrafos: [
       `O evento aparece para músicos da mesma cidade ou a até ${RAIO_MAXIMO_KM} km, com estilos compatíveis. O endereço completo só é mostrado ao músico contratado.`,
+      "Ao se inscrever, o músico aceita o cachê oferecido ou propõe outro valor, que pode alterar enquanto a inscrição aguarda resposta. Músico e contratante podem conversar pela inscrição para combinar repertório, horário e valor.",
       `O contratante aprova um candidato pagando a cobrança Pix, que vale por ${COBRANCA_VALIDADE_MS / 60000} minutos. A contratação só é efetivada quando a Asaas confirma o pagamento.`,
     ],
   },
   {
     titulo: "4. Valores e taxa",
     paragrafos: [
-      `O cachê é definido pelo contratante, com mínimo de ${formatCurrency(CACHE_MINIMO)}. A Muve cobra uma taxa de serviço de ${COMISSAO_PERCENTUAL}% somada ao cachê, paga pelo contratante. O músico recebe o cachê integral.`,
+      `O cachê é o valor oferecido pelo contratante ou, se o músico tiver feito uma proposta, o valor proposto por ele, sempre com mínimo de ${formatCurrency(CACHE_MINIMO)}. A Muve cobra uma taxa de serviço de ${COMISSAO_PERCENTUAL}% somada ao cachê, paga pelo contratante. O músico recebe o cachê integral.`,
     ],
   },
   {
@@ -60,7 +61,8 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
   {
     titulo: "8. O que não é permitido",
     paragrafos: [
-      "Usar dados de outra pessoa, publicar eventos falsos, enviar fotos ou textos ofensivos e usar a Muve para fraudes. Contas nessas situações podem ser excluídas.",
+      "Usar dados de outra pessoa, publicar eventos falsos, enviar fotos, textos ou mensagens ofensivas e usar a Muve para fraudes. Contas nessas situações podem ser excluídas.",
+      "Pagamentos combinados fora da Muve não têm a garantia do valor retido, nem as regras de cancelamento e devolução destes termos.",
     ],
   },
   {

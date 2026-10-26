@@ -101,7 +101,7 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
 
 select results_eq(
-  $$ select event_id from public.musician_feed() $$,
+  $$ select event_id from public.musician_feed() where event_id::text like '00000000-%' $$,
   $$ values ('00000000-0000-0000-0000-0000000000e1'::uuid) $$,
   'feed só traz evento aberto, futuro, da mesma cidade e de estilo compatível');
 

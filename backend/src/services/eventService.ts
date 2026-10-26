@@ -1,6 +1,6 @@
 import { CONCLUSAO_AUTOMATICA_MS, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
 import type { Account, Role } from "../domain/account.ts";
-import type { EventInput, EventRecord, ReviewInput } from "../domain/event.ts";
+import type { CandidateRecord, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser, type ImageStore } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
@@ -52,6 +52,15 @@ export function createEventService(deps: {
     return event;
   }
 
+  async function findConversation(user: AuthUser, candidateId: string): Promise<{ event: EventRecord; candidate: CandidateRecord }> {
+    const candidate = await events.findCandidateById(candidateId);
+    const event = candidate && (await events.findEvent(candidate.eventId));
+    if (!event || !candidate || (candidate.musicianId !== user.id && event.contractorId !== user.id)) {
+      throw new AppError(404, "CONVERSA_NAO_ENCONTRADA", "Conversa não encontrada.");
+    }
+    return { event, candidate };
+  }
+
   async function findEventAsParty(user: AuthUser, eventId: string): Promise<{ event: EventRecord; party: Party }> {
     const event = await events.findEvent(eventId);
     const party = event && partyOf(event, user);
@@ -101,7 +110,7 @@ export function createEventService(deps: {
       await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
     },
 
-    async apply(user: AuthUser, eventId: string, now = new Date()): Promise<void> {
+    async apply(user: AuthUser, eventId: string, valorProposto: number | null = null, now = new Date()): Promise<void> {
       const musician = await requireRole(user, "MUSICIAN", "Apenas músicos podem se inscrever em eventos.");
       assertProfileComplete(musician, "candidatar");
       const event = await events.findEvent(eventId);
@@ -113,7 +122,26 @@ export function createEventService(deps: {
       if (!eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm)) {
         throw new AppError(403, "EVENTO_INCOMPATIVEL", "Este evento não é compatível com a região e os estilos do seu perfil.");
       }
-      await events.insertCandidate(eventId, user.id);
+      await events.insertCandidate(eventId, user.id, valorProposto === event.cache ? null : valorProposto);
+    },
+
+    async updateProposal(user: AuthUser, eventId: string, valorProposto: number | null, now = new Date()): Promise<void> {
+      const event = await events.findEvent(eventId);
+      const candidate = event && (await events.findCandidate(eventId, user.id));
+      if (!event || !candidate) throw new AppError(404, "CANDIDATURA_NAO_ENCONTRADA", "Inscrição não encontrada.");
+      if (event.status !== "ABERTO" || candidate.status !== "PENDENTE") {
+        throw new AppError(409, "PROPOSTA_INDISPONIVEL", "O valor só pode ser alterado enquanto a inscrição aguarda resposta.");
+      }
+      await payments.ensureNoActiveCheckout(eventId, now);
+      await events.updateCandidateProposal(candidate.id, valorProposto === event.cache ? null : valorProposto);
+    },
+
+    async sendMessage(user: AuthUser, candidateId: string, texto: string): Promise<MessageRecord> {
+      const { event, candidate } = await findConversation(user, candidateId);
+      if (candidate.status === "RECUSADO" || (event.status !== "ABERTO" && event.status !== "CONTRATADO")) {
+        throw new AppError(409, "CONVERSA_ENCERRADA", "Esta conversa está encerrada.");
+      }
+      return events.insertMessage({ candidateId, authorId: user.id, texto });
     },
 
     async cancelApplication(user: AuthUser, eventId: string, now = new Date()): Promise<void> {
@@ -145,7 +173,7 @@ export function createEventService(deps: {
       if (event.status === "CONTRATADO" && !estornoPendente && umaConfirmacao && now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS) {
         event = await events.concludeEvent(eventId);
       }
-      if (event.status === "CONCLUIDO" && !estornoPendente) await payments.payout(eventId);
+      if ((event.status === "CONCLUIDO" || event.status === "CANCELADO") && !estornoPendente) await payments.payout(eventId);
 
       const [contratante, musico, endereco, payment, avaliou] = await Promise.all([
         accounts.findAccount(event.contractorId),
@@ -185,7 +213,7 @@ export function createEventService(deps: {
           refundStatus: payment.refundStatus,
         },
         avaliou,
-        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && payment?.refundStatus !== "PROCESSANDO" },
+        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
           permitido: event.status === "CONTRATADO" && antesDoInicio && payment?.refundStatus !== "PROCESSANDO",
           reembolso: party === "musico" || hasCancellationNotice(event.inicio, now),
@@ -223,6 +251,9 @@ export function createEventService(deps: {
       if (event.inicio > now) throw new AppError(409, "EVENTO_NAO_INICIADO", "O não comparecimento só pode ser registrado após o horário do evento.");
       if (event.confirmacaoMusico) {
         throw new AppError(409, "MUSICO_CONFIRMOU", "O músico confirmou a realização do show. Para contestar, entre em contato com o suporte.");
+      }
+      if (event.confirmacaoContratante) {
+        throw new AppError(409, "CONTRATANTE_CONFIRMOU", "Você já confirmou a realização do show.");
       }
       const status = await payments.refundHiring(eventId, "NAO_COMPARECIMENTO");
       return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };

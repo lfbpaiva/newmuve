@@ -80,6 +80,7 @@ function AuthGate() {
       <Stack.Screen name="event/[id]/checkout" options={{ title: "PAGAMENTO" }}/>
       <Stack.Screen name="event/[id]/hiring" options={{ title: "CONTRATAÇÃO" }}/>
       <Stack.Screen name="event/[id]/candidate/[candidateId]" options={{ title: "PERFIL DO MÚSICO" }}/>
+      <Stack.Screen name="conversa/[candidateId]" options={{ title: "CONVERSA" }}/>
       <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
       <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
       <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>

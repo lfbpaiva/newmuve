@@ -25,6 +25,15 @@ beforeEach(() => {
 const checkout = (now = NOW) => t.service.startCheckout(contratante, t.event.id, t.candidate.id, now);
 
 describe("checkout (aprovar candidato)", () => {
+  it("cobra o valor proposto pelo músico, mais a taxa, quando ele pediu outro cachê", async () => {
+    t.candidate.valorProposto = 900;
+
+    const payment = await checkout();
+
+    expect(payment).toMatchObject({ valor: 990, valorComissao: 90, valorCache: 900 });
+    expect(t.world.asaasCalls.createPixCharge).toEqual([{ value: 990, customer: expect.any(String) }]);
+  });
+
   it("cancela cobrança pendente sem estorno e mantém evento e candidatura abertos", async () => {
     const payment = await checkout();
 

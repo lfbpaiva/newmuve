@@ -1,4 +1,4 @@
-import type { CandidateRecord, EventInput, EventRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, EventInput, EventRecord, MessageRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 
 export type ConfirmPaymentResult = "CONTRATADO" | "JA_PROCESSADO" | "PAGAMENTO_NAO_ENCONTRADO" | "EVENTO_INDISPONIVEL";
 
@@ -16,8 +16,10 @@ export interface EventStore {
 
   findCandidate(eventId: string, musicianId: string): Promise<CandidateRecord | null>;
   findCandidateById(id: string): Promise<CandidateRecord | null>;
-  insertCandidate(eventId: string, musicianId: string): Promise<CandidateRecord>;
+  insertCandidate(eventId: string, musicianId: string, valorProposto: number | null): Promise<CandidateRecord>;
+  updateCandidateProposal(id: string, valorProposto: number | null): Promise<void>;
   deleteCandidate(id: string): Promise<void>;
+  insertMessage(message: { candidateId: string; authorId: string; texto: string }): Promise<MessageRecord>;
 
   insertReview(review: { eventId: string; authorId: string; reviewedId: string; rating: number; comment?: string }): Promise<void>;
   hasReviewed(eventId: string, authorId: string): Promise<boolean>;

@@ -20,6 +20,7 @@ function setup() {
     createEvent: vi.fn(async () => ({ id: "e1" })),
     apply: vi.fn(async () => {}),
     reportNoShow: vi.fn(async () => {}),
+    sendMessage: vi.fn(async () => ({})),
   };
   const payments = {
     startCheckout: vi.fn(async () => ({
@@ -191,10 +192,25 @@ describe("eventos e checkout", () => {
     const criar = await app.request("/api/events", { method: "POST", body: new FormData() });
     const inscrever = await app.request("/api/events/e1/candidatura", { method: "POST" });
     const checkout = await app.request("/api/events/e1/checkout", { method: "POST", body: "{}" });
+    const mensagem = await app.request("/api/candidaturas/c1/mensagens", { method: "POST", body: JSON.stringify({ texto: "oi" }) });
 
-    expect([criar.status, inscrever.status, checkout.status]).toEqual([401, 401, 401]);
+    expect([criar.status, inscrever.status, checkout.status, mensagem.status]).toEqual([401, 401, 401, 401]);
     expect(events.createEvent).not.toHaveBeenCalled();
     expect(payments.startCheckout).not.toHaveBeenCalled();
+  });
+
+  it("candidatura aceita proposta de valor e recusa valor abaixo do mínimo", async () => {
+    const { app, events } = setup();
+    const inscrever = (body: object) => app.request("/api/events/e1/candidatura", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+    const semProposta = await inscrever({});
+    const comProposta = await inscrever({ valorProposto: 800 });
+    const abaixo = await inscrever({ valorProposto: 50 });
+
+    expect([semProposta.status, comProposta.status, abaixo.status]).toEqual([204, 204, 400]);
+    expect(events.apply).toHaveBeenNthCalledWith(1, expect.anything(), "e1", null);
+    expect(events.apply).toHaveBeenNthCalledWith(2, expect.anything(), "e1", 800);
+    expect(await abaixo.json()).toEqual({ error: { code: "DADOS_INVALIDOS", message: "O cachê mínimo é de R$ 100,00." } });
   });
 
   it("POST /api/events rejeita cachê abaixo do mínimo antes de chegar ao serviço", async () => {

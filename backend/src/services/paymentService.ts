@@ -153,7 +153,7 @@ export function createPaymentService(deps: {
         await release(pending, now);
       }
 
-      const cobranca = calcularCobranca(event.cache);
+      const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache);
       const customer = await ensureCustomer(user);
       const asaasPaymentId = await asaas.createPixCharge({
         customer,

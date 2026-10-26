@@ -5,7 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import { asaasWebhookSchema, checkoutSchema, eventSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
+import { asaasWebhookSchema, candidaturaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
@@ -126,6 +126,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.use("/me", requireUser);
   app.use("/events", requireUser);
   app.use("/events/*", requireUser);
+  app.use("/candidaturas/*", requireUser);
 
   app.get("/me", async (c) => c.json(await accounts.getMe(c.get("user"))));
 
@@ -162,8 +163,21 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   });
 
   app.post("/events/:id/candidatura", async (c) => {
-    await events.apply(c.get("user"), c.req.param("id"));
+    const { valorProposto } = candidaturaSchema.parse(await readJson(c));
+    await events.apply(c.get("user"), c.req.param("id"), valorProposto);
     return c.body(null, 204);
+  });
+
+  app.patch("/events/:id/candidatura", async (c) => {
+    const { valorProposto } = candidaturaSchema.parse(await readJson(c));
+    await events.updateProposal(c.get("user"), c.req.param("id"), valorProposto);
+    return c.body(null, 204);
+  });
+
+  app.post("/candidaturas/:id/mensagens", async (c) => {
+    const { texto } = mensagemSchema.parse(await readJson(c));
+    const message = await events.sendMessage(c.get("user"), c.req.param("id"), texto);
+    return c.json(message, 201);
   });
 
   app.delete("/events/:id/candidatura", async (c) => {

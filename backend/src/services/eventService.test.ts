@@ -98,8 +98,8 @@ describe("candidatura", () => {
   it("músico compatível se inscreve uma única vez", async () => {
     const event = t.world.seedEvent();
 
-    await t.service.apply(musico, event.id, NOW);
-    await expect(t.service.apply(musico, event.id, NOW)).rejects.toMatchObject({ code: "JA_INSCRITO" });
+    await t.service.apply(musico, event.id, null, NOW);
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "JA_INSCRITO" });
     expect(t.world.candidates.size).toBe(1);
   });
 
@@ -109,33 +109,92 @@ describe("candidatura", () => {
     const longe = t.world.seedEvent({ cidade: "Curitiba" });
     const desconhecida = t.world.seedEvent({ cidade: "Cidade Inexistente" });
 
-    await expect(t.service.apply(musico, vizinha.id, NOW)).resolves.toBeUndefined();
-    await expect(t.service.apply(musico, noRaio.id, NOW)).resolves.toBeUndefined();
-    await expect(t.service.apply(musico, longe.id, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
-    await expect(t.service.apply(musico, desconhecida.id, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
+    await expect(t.service.apply(musico, vizinha.id, null, NOW)).resolves.toBeUndefined();
+    await expect(t.service.apply(musico, noRaio.id, null, NOW)).resolves.toBeUndefined();
+    await expect(t.service.apply(musico, longe.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
+    await expect(t.service.apply(musico, desconhecida.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
   });
 
   it("recusa contratante e evento de estilo fora do perfil", async () => {
     const outroEstilo = t.world.seedEvent({ estilosMusicais: ["Pagode"] });
     const compativel = t.world.seedEvent();
 
-    await expect(t.service.apply(contratante, compativel.id, NOW)).rejects.toMatchObject({ status: 403 });
-    await expect(t.service.apply(musico, outroEstilo.id, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
+    await expect(t.service.apply(contratante, compativel.id, null, NOW)).rejects.toMatchObject({ status: 403 });
+    await expect(t.service.apply(musico, outroEstilo.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
   });
 
   it("aceita a mesma cidade escrita com caixa e acentuação diferentes", async () => {
     t.world.accounts.get("m1")!.cidade = "São José dos Pinhais";
     const event = t.world.seedEvent({ cidade: "SAO JOSE DOS PINHAIS" });
 
-    await expect(t.service.apply(musico, event.id, NOW)).resolves.toBeUndefined();
+    await expect(t.service.apply(musico, event.id, null, NOW)).resolves.toBeUndefined();
   });
 
   it("recusa evento já contratado ou já iniciado", async () => {
     const contratado = t.world.seedEvent({ status: "CONTRATADO", musicoContratadoId: "m2" });
     const iniciado = t.world.seedEvent({ inicio: hoursFromNow(-1) });
 
-    await expect(t.service.apply(musico, contratado.id, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
-    await expect(t.service.apply(musico, iniciado.id, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
+    await expect(t.service.apply(musico, contratado.id, null, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
+    await expect(t.service.apply(musico, iniciado.id, null, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
+  });
+});
+
+describe("proposta de cachê", () => {
+  it("guarda o valor pedido pelo músico e ignora proposta igual ao cachê oferecido", async () => {
+    const pedindoMais = t.world.seedEvent();
+    const aceitando = t.world.seedEvent();
+
+    await t.service.apply(musico, pedindoMais.id, 800, NOW);
+    await t.service.apply(musico, aceitando.id, 500, NOW);
+
+    const [primeira, segunda] = [...t.world.candidates.values()];
+    expect([primeira.valorProposto, segunda.valorProposto]).toEqual([800, null]);
+  });
+
+  it("permite rever o valor enquanto a inscrição aguarda resposta, sem cobrança em andamento", async () => {
+    const event = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    await t.service.updateProposal(musico, event.id, 650, NOW);
+    expect(candidate.valorProposto).toBe(650);
+
+    await t.payments.startCheckout(contratante, event.id, candidate.id, NOW);
+    await expect(t.service.updateProposal(musico, event.id, 900, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_EM_ANDAMENTO" });
+    expect(candidate.valorProposto).toBe(650);
+  });
+
+  it("não altera proposta de inscrição já decidida", async () => {
+    const event = t.world.seedEvent({ status: "CONTRATADO", musicoContratadoId: "m1" });
+    t.world.seedCandidate(event.id, "m1", "APROVADO");
+
+    await expect(t.service.updateProposal(musico, event.id, 900, NOW)).rejects.toMatchObject({ code: "PROPOSTA_INDISPONIVEL" });
+  });
+});
+
+describe("conversa da candidatura", () => {
+  it("músico e dono do evento conversam; terceiros não acessam", async () => {
+    const event = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    await t.service.sendMessage(musico, candidate.id, "Consigo tocar por R$ 650?");
+    await t.service.sendMessage(contratante, candidate.id, "Fechado em R$ 600.");
+    await expect(t.service.sendMessage(outroMusico, candidate.id, "oi")).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.sendMessage(outroContratante, candidate.id, "oi")).rejects.toMatchObject({ status: 404 });
+
+    expect(t.world.messages.map((m) => [m.authorId, m.texto])).toEqual([
+      ["m1", "Consigo tocar por R$ 650?"],
+      ["c1", "Fechado em R$ 600."],
+    ]);
+  });
+
+  it("encerra a conversa de candidato não selecionado e de evento cancelado ou concluído", async () => {
+    const aberto = t.world.seedEvent();
+    const recusado = t.world.seedCandidate(aberto.id, "m1", "RECUSADO");
+    const concluido = t.world.seedEvent({ status: "CONCLUIDO", musicoContratadoId: "m1" });
+    const contratado = t.world.seedCandidate(concluido.id, "m1", "APROVADO");
+
+    await expect(t.service.sendMessage(musico, recusado.id, "oi")).rejects.toMatchObject({ code: "CONVERSA_ENCERRADA" });
+    await expect(t.service.sendMessage(musico, contratado.id, "oi")).rejects.toMatchObject({ code: "CONVERSA_ENCERRADA" });
   });
 });
 
@@ -263,9 +322,16 @@ describe("cancelamento da contratação", () => {
     t.world.stores.asaas.refundPayment = original;
   });
 
-  it("suspende confirmação, conclusão automática e repasse enquanto o estorno está em processamento", async () => {
-    const { event, payment } = await hired(hoursFromNow(1));
+  it("contratante que já confirmou o show não registra não comparecimento", async () => {
+    const { event } = await hired(hoursFromNow(1));
     await t.service.confirmCompletion(contratante, event.id, hoursFromNow(2));
+
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(3))).rejects.toMatchObject({ code: "CONTRATANTE_CONFIRMOU" });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+  });
+
+  it("suspende confirmação e repasse enquanto o estorno está em processamento", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
     t.world.stores.asaas.refundPayment = async (id) => {
       t.world.asaasCalls.refundPayment.push(id);
       t.world.asaasCharges.set(id, { status: "REFUND_REQUESTED", value: payment.valor });
@@ -315,6 +381,19 @@ describe("cancelamento da contratação", () => {
     t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
 
     await expect(t.service.cancelHiring(contratante, event.id, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("repasse de cancelamento em cima da hora é tentado de novo ao abrir o comprovante", async () => {
+    const { event, payment } = await hired(hoursFromNow(12));
+    t.world.failures.transfer = true;
+    await t.service.cancelHiring(contratante, event.id, NOW);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+
+    t.world.failures.transfer = false;
+    await t.service.getHiring(musico, event.id, NOW);
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
@@ -523,7 +602,7 @@ describe("perfil incompleto", () => {
     t.world.accounts.get("m1")!.chavePix = null;
     t.world.accounts.get("c1")!.documento = null;
 
-    await expect(t.service.apply(musico, event.id, NOW)).rejects.toMatchObject({ code: "PERFIL_INCOMPLETO", message: expect.stringContaining("chave Pix") });
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "PERFIL_INCOMPLETO", message: expect.stringContaining("chave Pix") });
     await expect(t.service.createEvent(contratante, novoEvento, banner(), NOW)).rejects.toMatchObject({ code: "PERFIL_INCOMPLETO", message: expect.stringContaining("CPF ou CNPJ") });
     expect(t.world.candidates.size).toBe(0);
   });
@@ -535,8 +614,8 @@ describe("estilos do evento", () => {
     const qualquer = t.world.seedEvent({ estilosMusicais: ["Qualquer estilo"] });
     const nenhum = t.world.seedEvent({ estilosMusicais: ["Forró", "Axé"] });
 
-    await expect(t.service.apply(musico, varios.id, NOW)).resolves.toBeUndefined();
-    await expect(t.service.apply(musico, qualquer.id, NOW)).resolves.toBeUndefined();
-    await expect(t.service.apply(musico, nenhum.id, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
+    await expect(t.service.apply(musico, varios.id, null, NOW)).resolves.toBeUndefined();
+    await expect(t.service.apply(musico, qualquer.id, null, NOW)).resolves.toBeUndefined();
+    await expect(t.service.apply(musico, nenhum.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
   });
 });

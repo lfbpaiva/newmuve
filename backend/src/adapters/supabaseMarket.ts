@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
 
 const UNIQUE_VIOLATION = "23505";
@@ -31,6 +31,15 @@ interface CandidateRow {
   event_id: string;
   musician_id: string;
   status: CandidateStatus;
+  valor_proposto: number | string | null;
+}
+
+interface MessageRow {
+  id: string;
+  candidate_id: string;
+  author_id: string;
+  texto: string;
+  created_at: string;
 }
 
 interface PaymentRow {
@@ -78,6 +87,15 @@ const toCandidate = (row: CandidateRow): CandidateRecord => ({
   eventId: row.event_id,
   musicianId: row.musician_id,
   status: row.status,
+  valorProposto: row.valor_proposto === null ? null : Number(row.valor_proposto),
+});
+
+const toMessage = (row: MessageRow): MessageRecord => ({
+  id: row.id,
+  candidateId: row.candidate_id,
+  authorId: row.author_id,
+  texto: row.texto,
+  createdAt: new Date(row.created_at),
 });
 
 const toPayment = (row: PaymentRow): PaymentRecord => ({
@@ -195,11 +213,26 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       return data && toCandidate(data);
     },
 
-    async insertCandidate(eventId, musicianId) {
-      const { data, error } = await admin.from("event_candidates").insert({ event_id: eventId, musician_id: musicianId }).select().single();
+    async insertCandidate(eventId, musicianId, valorProposto) {
+      const { data, error } = await admin.from("event_candidates").insert({ event_id: eventId, musician_id: musicianId, valor_proposto: valorProposto }).select().single();
       if (error?.code === UNIQUE_VIOLATION) throw new AppError(409, "JA_INSCRITO", "Você já se inscreveu neste evento.");
       if (error) throw error;
       return toCandidate(data);
+    },
+
+    async updateCandidateProposal(id, valorProposto) {
+      const { error } = await admin.from("event_candidates").update({ valor_proposto: valorProposto }).eq("id", id).eq("status", "PENDENTE");
+      if (error) throw error;
+    },
+
+    async insertMessage(message) {
+      const { data, error } = await admin
+        .from("candidate_messages")
+        .insert({ candidate_id: message.candidateId, author_id: message.authorId, texto: message.texto })
+        .select()
+        .single();
+      if (error) throw error;
+      return toMessage(data);
     },
 
     async deleteCandidate(id) {

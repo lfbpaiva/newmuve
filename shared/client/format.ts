@@ -4,6 +4,10 @@ const monthShort = new Intl.DateTimeFormat("pt-BR", { month: "short" });
 
 export const formatCurrency = (value: number) => currency.format(value);
 
+export const parseValor = (input: string) => Number(input.replace(/\./g, "").replace(",", "."));
+
+export const toValorInput = (value: number) => String(value).replace(".", ",");
+
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso)).replace(", ", " às ");
 
 export const dayOfMonth = (iso: string) => String(new Date(iso).getDate()).padStart(2, "0");

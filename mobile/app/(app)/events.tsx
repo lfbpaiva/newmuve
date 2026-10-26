@@ -14,6 +14,7 @@ export default function EventsScreen() {
 }
 
 function applicationLabel({ status, event }: Application): { text: string; tone: "accent" | "success" | "muted" } {
+  if (event.status === "CANCELADO") return { text: "Evento cancelado", tone: "muted" };
   if (status === "APROVADO") return { text: event.status === "CONCLUIDO" ? "Show concluído" : "Você foi contratado", tone: "success" };
   if (status === "RECUSADO") return { text: "Não selecionado", tone: "muted" };
   return { text: "Aguardando resposta", tone: "accent" };

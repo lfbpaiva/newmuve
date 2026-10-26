@@ -64,10 +64,17 @@
 2. O backend cria o usuário no Supabase Auth, com a versão dos termos e a data do aceite nos metadados do usuário, e grava o perfil só com o nome. O Supabase envia o e-mail de confirmação. Se a gravação falhar, desfaz o usuário.
 3. Foto, CPF/CNPJ, telefone, cidade, estilos e chave Pix são preenchidos por `PATCH /api/me`, quando a ação do usuário passar a exigi-los. O documento é checado contra duplicidade nesse momento.
 
+### Proposta de cachê e conversa
+
+1. Ao se inscrever, o músico aceita o cachê oferecido ou propõe outro valor (`POST /api/events/:id/candidatura` com `valorProposto`). A proposta fica em `event_candidates.valor_proposto`, com o mesmo mínimo do cachê; um valor igual ao oferecido é gravado como "sem proposta".
+2. Enquanto a inscrição aguarda resposta e não há cobrança em andamento, o músico pode rever o valor (`PATCH /api/events/:id/candidatura`).
+3. Cada inscrição tem uma conversa entre o músico e o dono do evento (`candidate_messages`). O envio passa pela API (`POST /api/candidaturas/:id/mensagens`), que confere se quem escreve é uma das partes e se a conversa está aberta: inscrição não recusada e evento aberto ou contratado. A leitura é direta do banco, com RLS restrita às duas partes, e as mensagens novas chegam pelo Supabase Realtime.
+4. Na aprovação, a cobrança usa o valor proposto pelo músico, se houver, ou o cachê do evento, sempre lidos do banco.
+
 ### Contratação e pagamento
 
 1. O contratante escolhe um candidato; o app chama `POST /api/events/:id/checkout` enviando apenas o ID da candidatura.
-2. O backend confere que o evento é dele e está aberto, lê o cachê **do banco**, soma a taxa de serviço de 10%, cria o cliente e a cobrança Pix na Asaas e grava o pagamento como `PENDENTE`, com validade de 15 minutos.
+2. O backend confere que o evento é dele e está aberto, lê o cachê **do banco** (a proposta do músico ou o valor do evento), soma a taxa de serviço de 10%, cria o cliente e a cobrança Pix na Asaas e grava o pagamento como `PENDENTE`, com validade de 15 minutos.
 3. O app mostra o QR Code e consulta `GET /api/events/:id/checkout` a cada 5 segundos. A cada consulta, o backend confere o status na Asaas: se pago, efetiva a contratação; se expirado, cancela a cobrança na Asaas (o QR Code da Asaas valeria por meses).
 4. A Asaas também notifica `POST /api/webhooks/asaas`. O backend confere o token, reconsulta o status e o valor na Asaas e chama a função `confirm_asaas_payment`, que em uma única transação marca o pagamento como `PAGO` e `RETIDO`, o evento como `CONTRATADO`, aprova o candidato e recusa os demais.
 5. A partir daí, as duas partes acessam o **comprovante** (`GET /api/events/:id/contratacao`): endereço do evento, telefone da outra parte, valores e situação do pagamento e do repasse.
@@ -123,6 +130,7 @@ Mocks existem apenas nos testes; a aplicação não tem dados simulados.
 - **Conclusão por prazo é avaliada sob demanda,** quando uma das partes consulta o comprovante; não há agendador.
 - **Limite de tentativas em memória:** vale para uma única instância do servidor.
 - **Avisos só por e-mail e só em três momentos;** não há aviso de nova candidatura nem notificações no app.
+- **Conversa sem moderação nem aviso de mensagem nova:** as mensagens aparecem em tempo real só com a conversa aberta.
 - **Sem mediação de disputas:** se o músico confirmou o show e o contratante diz que ele não compareceu, a plataforma não arbitra.
 - **Distância entre sedes de municípios,** não entre endereços; cidades homônimas são distinguidas pela UF.
 - **CNPJ alfanumérico** (formato novo da Receita Federal) não é aceito; apenas o numérico.

@@ -36,17 +36,17 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
 
 select results_eq(
-  $$ select event_id, distancia_km from public.musician_feed(0) $$,
+  $$ select event_id, distancia_km from public.musician_feed(0) where event_id::text like '00000000-%' $$,
   $$ values ('00000000-0000-0000-0000-0000000000e1'::uuid, 0::numeric), ('00000000-0000-0000-0000-0000000000e7'::uuid, 0::numeric), ('00000000-0000-0000-0000-0000000000e8'::uuid, 0::numeric) $$,
   'raio 0: só a mesma cidade; entra evento com estilo em comum ou aberto a qualquer estilo');
 
 select results_eq(
-  $$ select event_id from public.musician_feed(50) where event_id not in ('00000000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-0000000000e8') $$,
+  $$ select event_id from public.musician_feed(50) where event_id::text like '00000000-%' and event_id not in ('00000000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-0000000000e8') $$,
   $$ values ('00000000-0000-0000-0000-0000000000e1'::uuid), ('00000000-0000-0000-0000-0000000000e2'::uuid) $$,
   'raio 50 km: inclui Toledo, ordenado pela distância');
 
 select results_eq(
-  $$ select event_id from public.musician_feed(200) where event_id not in ('00000000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-0000000000e8') $$,
+  $$ select event_id from public.musician_feed(200) where event_id::text like '00000000-%' and event_id not in ('00000000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-0000000000e8') $$,
   $$ values ('00000000-0000-0000-0000-0000000000e1'::uuid), ('00000000-0000-0000-0000-0000000000e2'::uuid), ('00000000-0000-0000-0000-0000000000e3'::uuid) $$,
   'raio 200 km: inclui Foz do Iguaçu, não Curitiba');
 
