@@ -41,6 +41,7 @@ export interface SignupData {
   nome: string;
   email: string;
   password: string;
+  aceiteTermos: boolean;
 }
 
 const REMEMBERED_EMAIL_KEY = "muve.rememberedEmail";

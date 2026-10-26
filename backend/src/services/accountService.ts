@@ -1,4 +1,4 @@
-import { camposFaltantes, descreverFaltantes, imageProblem, type AcaoPerfil } from "../../../shared/dominio.ts";
+import { camposFaltantes, descreverFaltantes, imageProblem, TERMOS_VERSAO, type AcaoPerfil } from "../../../shared/dominio.ts";
 import type { Account, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 
@@ -11,7 +11,7 @@ export interface AccountStore {
 }
 
 export interface AuthGateway {
-  signUp(email: string, password: string, redirectTo?: string): Promise<{ userId: string } | { emailTaken: true }>;
+  signUp(email: string, password: string, termosVersao: string, redirectTo?: string): Promise<{ userId: string } | { emailTaken: true }>;
   verifyPassword(email: string, password: string): Promise<boolean>;
   deleteUser(userId: string): Promise<void>;
 }
@@ -48,7 +48,7 @@ export function createAccountService(deps: {
 
   return {
     async signup(input: SignupInput, redirectTo?: string): Promise<void> {
-      const created = await auth.signUp(input.email, input.password, redirectTo);
+      const created = await auth.signUp(input.email, input.password, TERMOS_VERSAO, redirectTo);
       if ("emailTaken" in created) throw emailEmUso();
       const { userId } = created;
       if (await store.findAccount(userId)) throw emailEmUso();

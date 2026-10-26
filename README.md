@@ -37,7 +37,9 @@ pnpm dev:app
 
 Leia o QR Code com o Expo Go. No terminal do Expo, a tecla `w` abre o app no navegador em `http://localhost:8081`. A API fica em `http://localhost:3333/api`.
 
-Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). O script `node scripts/contas-demo.mjs` recria as duas do zero.
+Os Termos de Uso ficam em `mobile/app/terms.tsx`; ao mudar as regras, atualize o texto e `TERMOS_VERSAO` em `shared/dominio.ts`.
+
+Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). O script `node scripts/contas-demo.mjs` recria as duas do zero, com fotos do Unsplash (uso livre).
 
 ### Banco
 

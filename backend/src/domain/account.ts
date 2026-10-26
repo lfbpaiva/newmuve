@@ -28,6 +28,7 @@ export const signupSchema = z.object({
   nome,
   email,
   password,
+  aceiteTermos: z.literal(true, { error: "Aceite os Termos de Uso para criar a conta." }),
   redirectTo: z.string().trim().max(300).optional(),
 });
 export type SignupInput = z.infer<typeof signupSchema>;

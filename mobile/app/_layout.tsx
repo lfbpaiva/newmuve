@@ -84,5 +84,6 @@ function AuthGate() {
       <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
       <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>
     </Stack.Protected>
+    <Stack.Screen name="terms" options={{ title: "TERMOS DE USO" }}/>
   </Stack>;
 }

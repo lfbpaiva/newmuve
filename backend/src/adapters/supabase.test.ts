@@ -25,7 +25,7 @@ describe("createAuthGateway.signUp", () => {
     auth.signUp.mockResolvedValue({ data: { user: { id: "u1", identities: [{}] } }, error: null });
 
     const gateway = createAuthGateway({} as SupabaseClient, "https://example.test", "anon");
-    await expect(gateway.signUp("novo@example.test", "senha-forte")).resolves.toEqual({ userId: "u1" });
+    await expect(gateway.signUp("novo@example.test", "senha-forte", "2026-10-25")).resolves.toEqual({ userId: "u1" });
   });
 
   it("mantém o 429 do provedor e o Retry-After quando fornecido", async () => {
@@ -33,7 +33,7 @@ describe("createAuthGateway.signUp", () => {
     auth.signUp.mockResolvedValue({ data: { user: null }, error: { status: 429, code: "over_email_send_rate_limit" } });
 
     const gateway = createAuthGateway({} as SupabaseClient, "https://example.test", "anon");
-    await expect(gateway.signUp("novo@example.test", "senha-forte")).rejects.toMatchObject({
+    await expect(gateway.signUp("novo@example.test", "senha-forte", "2026-10-25")).rejects.toMatchObject({
       status: 429, code: "LIMITE_DE_ENVIO", retryAfter: "120",
     });
   });
@@ -43,7 +43,7 @@ describe("createAuthGateway.signUp", () => {
     auth.signUp.mockResolvedValue({ data: { user: null }, error: { status: 429, code: "outro_limite" } });
 
     const gateway = createAuthGateway({} as SupabaseClient, "https://example.test", "anon");
-    await expect(gateway.signUp("novo@example.test", "senha-forte")).rejects.toMatchObject({
+    await expect(gateway.signUp("novo@example.test", "senha-forte", "2026-10-25")).rejects.toMatchObject({
       status: 429, code: "LIMITE_DE_ENVIO", retryAfter: undefined,
     });
   });

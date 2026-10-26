@@ -53,7 +53,7 @@ function setup() {
 
 const signupBody = (dados: object) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
 
-const contratante = { role: "CONTRACTOR", nome: "Bar do Zé", email: "  Contato@BarDoZe.com.br ", password: "segredo1" };
+const contratante = { role: "CONTRACTOR", nome: "Bar do Zé", email: "  Contato@BarDoZe.com.br ", password: "segredo1", aceiteTermos: true };
 
 describe("DELETE /api/events/:id/checkout", () => {
   it("exige autenticação para cancelar uma cobrança pendente", async () => {
@@ -82,6 +82,7 @@ describe("POST /api/auth/signup", () => {
     [{ password: "123" }, "A senha deve ter pelo menos 6 caracteres."],
     [{ nome: "" }, "Informe seu nome."],
     [{ role: "ADMIN" }, "Selecione o tipo de conta."],
+    [{ aceiteTermos: false }, "Aceite os Termos de Uso para criar a conta."],
   ])("rejeita %j", async (override, message) => {
     const { app, accounts } = setup();
 

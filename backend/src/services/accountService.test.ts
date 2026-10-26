@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { TERMOS_VERSAO } from "../../../shared/dominio.ts";
 import type { Account, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, createAccountService, type AccountStore, type AuthGateway, type ImageStore } from "./accountService.ts";
 
 function fakes() {
   const accounts = new Map<string, Account>();
-  const users = new Map<string, { email: string; password: string }>();
+  const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
   const state = { failCreateProfile: false, ongoingHiring: false };
   let nextId = 1;
@@ -27,10 +28,10 @@ function fakes() {
   };
 
   const auth: AuthGateway = {
-    signUp: async (email, password) => {
+    signUp: async (email, password, termosVersao) => {
       if ([...users.values()].some((u) => u.email === email)) return { emailTaken: true };
       const userId = `user-${nextId++}`;
-      users.set(userId, { email, password });
+      users.set(userId, { email, password, termosVersao });
       return { userId };
     },
     verifyPassword: async (email, password) => [...users.values()].some((u) => u.email === email && u.password === password),
@@ -62,7 +63,7 @@ function fakes() {
 }
 
 const png = (name = "foto.png") => new File(["x"], name, { type: "image/png" });
-const musico: SignupInput = { role: "MUSICIAN", nome: "Ana Souza", email: "ana@empresa.com.br", password: "segredo1" };
+const musico: SignupInput = { role: "MUSICIAN", nome: "Ana Souza", email: "ana@empresa.com.br", password: "segredo1", aceiteTermos: true };
 const user = { id: "user-1", email: "ana@empresa.com.br" };
 
 describe("cadastro mínimo", () => {
@@ -75,6 +76,12 @@ describe("cadastro mínimo", () => {
     await t.service.signup(musico);
 
     expect(t.accounts.get("user-1")).toMatchObject({ role: "MUSICIAN", nome: "Ana Souza", documento: null });
+  });
+
+  it("registra a versão dos Termos de Uso aceita no cadastro", async () => {
+    await t.service.signup(musico);
+
+    expect(t.users.get("user-1")).toMatchObject({ termosVersao: TERMOS_VERSAO });
   });
 
   it("recusa e-mail já vinculado a uma conta", async () => {

@@ -98,7 +98,7 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
   const publicClient = () => createClient(url, anonKey, serverOnly);
 
   return {
-    async signUp(email, password, redirectTo) {
+    async signUp(email, password, termosVersao, redirectTo) {
       let retryAfter: string | undefined;
       const signupClient = createClient(url, anonKey, {
         ...serverOnly,
@@ -113,7 +113,10 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       const { data, error } = await signupClient.auth.signUp({
         email,
         password,
-        options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+        options: {
+          emailRedirectTo: redirectTo,
+          data: { termos_versao: termosVersao, termos_aceitos_em: new Date().toISOString() },
+        },
       });
       if (error?.code === "user_already_exists" || error?.code === "email_exists") return { emailTaken: true };
       if (error?.status === 429 || error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {

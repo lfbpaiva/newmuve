@@ -24,6 +24,7 @@ export default function SettingsScreen() {
     </Group>
     <Group title="Conta">
       <ListItem icon="shield-checkmark-outline" title="Conta e privacidade" subtitle="Seus dados, e-mail de acesso e encerramento da conta" onPress={() => router.push("/account/privacy")}/>
+      <ListItem icon="document-text-outline" title="Termos de Uso" subtitle="Taxa, pagamento, cancelamentos e seus dados" onPress={() => router.push("/terms")}/>
       <ListItem icon="log-out-outline" title="Sair da conta" subtitle={me.email} onPress={confirmSignOut} trailing={null}/>
     </Group>
     <Text style={[type.bodySmall, { textAlign: "center" }]}>Muve · versão 1.0</Text>

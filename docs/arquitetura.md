@@ -50,7 +50,7 @@
 
 **Uma interface só: o app em React Native (Expo), que também roda no navegador.** O projeto chegou a ter um site React separado; manter as duas interfaces significava fazer cada tela duas vezes. O Expo gera o app de celular e a versão web a partir do mesmo código, e no computador o app aparece numa coluna com largura de celular. Serviços de API, leituras do banco, sessão, validações e formatação ficam em `shared/client/`, separados das telas. Links de confirmação e redefinição de senha abrem o app pelo esquema `muve://auth`.
 
-**Cadastro progressivo.** O cadastro pede só tipo de conta, nome, e-mail e senha. Cada dado do perfil é exigido no momento em que faz falta: cidade e estilos para montar o feed; foto, CPF/CNPJ, telefone e chave Pix para se candidatar; foto, documento, telefone e cidade para publicar um evento. A regra (`camposFaltantes` em `shared/dominio.ts`) é a mesma no app, que abre a tela "Complete seu perfil" só com o que falta, e na API, que recusa a ação com `PERFIL_INCOMPLETO` listando os campos.
+**Cadastro progressivo.** O cadastro pede só tipo de conta, nome, e-mail, senha e o aceite dos Termos de Uso. Cada dado do perfil é exigido no momento em que faz falta: cidade e estilos para montar o feed; foto, CPF/CNPJ, telefone e chave Pix para se candidatar; foto, documento, telefone e cidade para publicar um evento. A regra (`camposFaltantes` em `shared/dominio.ts`) é a mesma no app, que abre a tela "Complete seu perfil" só com o que falta, e na API, que recusa a ação com `PERFIL_INCOMPLETO` listando os campos.
 
 **Lista de estilos no código, com vários estilos por evento.** Os 25 gêneros vivem em `shared/dominio.ts` (sem restrição no banco), um evento pode pedir vários ou "Qualquer estilo", e o match é a interseção com os estilos do músico. "Outros" cobre quem não se encaixa e casa com eventos abertos a qualquer estilo.
 
@@ -60,8 +60,8 @@
 
 ### Cadastro
 
-1. O app envia tipo de conta, nome, e-mail e senha para `POST /api/auth/signup`.
-2. O backend cria o usuário no Supabase Auth, que envia o e-mail de confirmação, e grava o perfil só com o nome. Se a gravação falhar, desfaz o usuário.
+1. O app envia tipo de conta, nome, e-mail, senha e o aceite dos Termos de Uso para `POST /api/auth/signup`. Sem o aceite, a API recusa o cadastro.
+2. O backend cria o usuário no Supabase Auth, com a versão dos termos e a data do aceite nos metadados do usuário, e grava o perfil só com o nome. O Supabase envia o e-mail de confirmação. Se a gravação falhar, desfaz o usuário.
 3. Foto, CPF/CNPJ, telefone, cidade, estilos e chave Pix são preenchidos por `PATCH /api/me`, quando a ação do usuário passar a exigi-los. O documento é checado contra duplicidade nesse momento.
 
 ### Contratação e pagamento

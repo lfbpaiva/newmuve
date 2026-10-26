@@ -38,6 +38,7 @@ export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
 export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export const COMISSAO_PERCENTUAL = 10;
+export const TERMOS_VERSAO = "2026-10-25";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;
