@@ -1,4 +1,4 @@
-import { CONCLUSAO_AUTOMATICA_MS, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
+import { CONCLUSAO_AUTOMATICA_MS, EMAIL_SUPORTE, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
 import type { Account, Role } from "../domain/account.ts";
 import type { CandidateRecord, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
@@ -287,7 +287,7 @@ export function createEventService(deps: {
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
       if (event.inicio > now) throw new AppError(409, "EVENTO_NAO_INICIADO", "O não comparecimento só pode ser registrado após o horário do evento.");
       if (event.confirmacaoMusico) {
-        throw new AppError(409, "MUSICO_CONFIRMOU", "O músico confirmou a realização do show. Para contestar, entre em contato com o suporte.");
+        throw new AppError(409, "MUSICO_CONFIRMOU", `O músico confirmou a realização do show. Para contestar, escreva para ${EMAIL_SUPORTE}.`);
       }
       if (event.confirmacaoContratante) {
         throw new AppError(409, "CONTRATANTE_CONFIRMOU", "Você já confirmou a realização do show.");

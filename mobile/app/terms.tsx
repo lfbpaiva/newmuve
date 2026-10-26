@@ -1,11 +1,10 @@
 import { Text, View } from "react-native";
 import { formatCurrency } from "../../shared/client/format.ts";
-import { CACHE_MINIMO, COBRANCA_VALIDADE_MS, COMISSAO_PERCENTUAL, RAIO_MAXIMO_KM, TERMOS_VERSAO } from "../../shared/dominio.ts";
+import { CACHE_MINIMO, COBRANCA_VALIDADE_MS, COMISSAO_PERCENTUAL, EMAIL_SUPORTE, RAIO_MAXIMO_KM, TERMOS_VERSAO } from "../../shared/dominio.ts";
 import { Heading, Screen } from "../components/ui";
 import { colors, space, styles, type } from "../lib/theme";
 
 const versao = TERMOS_VERSAO.split("-").reverse().join("/");
-const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL?.trim();
 
 const secoes: { titulo: string; paragrafos: string[] }[] = [
   {
@@ -79,7 +78,10 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
       "Quando estes termos mudarem, a nova versão aparece nesta tela com a data atualizada.",
     ],
   },
-  ...(SUPPORT_EMAIL ? [{ titulo: "11. Contato", paragrafos: [`Dúvidas, problemas com pagamentos ou pedidos sobre seus dados: ${SUPPORT_EMAIL}.`] }] : []),
+  {
+    titulo: "11. Contato",
+    paragrafos: [`Dúvidas, problemas com pagamentos, contestações ou pedidos sobre seus dados: ${EMAIL_SUPORTE}.`],
+  },
 ];
 
 export default function TermsScreen() {

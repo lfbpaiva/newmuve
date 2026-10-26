@@ -1,4 +1,4 @@
-import { calcularCobranca, COBRANCA_VALIDADE_MS } from "../../../shared/dominio.ts";
+import { calcularCobranca, COBRANCA_VALIDADE_MS, EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import type { AsaasWebhook, PaymentRecord, RefundAction } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
@@ -243,7 +243,7 @@ export function createPaymentService(deps: {
         throw new AppError(409, "REPASSE_JA_REALIZADO", "O cachê deste evento já foi repassado ao músico.");
       }
       const remote = await asaas.getPayment(payment.asaasPaymentId);
-      if (!remote || remote.value < payment.valor) throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", "A cobrança no Asaas não corresponde ao pagamento registrado. Contate o suporte.");
+      if (!remote || remote.value < payment.valor) throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", `A cobrança no Asaas não corresponde ao pagamento registrado. Escreva para ${EMAIL_SUPORTE}.`);
       let current = payment;
       if (current.refundStatus === "PROCESSANDO") {
         current = await refreshRefund(current);
@@ -286,7 +286,7 @@ export function createPaymentService(deps: {
       if (payment?.status !== "PAGO" || payment.refundStatus === "PROCESSANDO") throw new AppError(409, "PAGAMENTO_INDISPONIVEL", "O pagamento deste evento não está disponível para cancelamento sem estorno.");
       const remote = await asaas.getPayment(payment.asaasPaymentId);
       if (!remote || !ASAAS_PAID.includes(remote.status) || remote.value < payment.valor) {
-        throw new AppError(409, "PAGAMENTO_DIVERGENTE", "O pagamento no Asaas não corresponde ao registro do evento. Contate o suporte.");
+        throw new AppError(409, "PAGAMENTO_DIVERGENTE", `O pagamento no Asaas não corresponde ao registro do evento. Escreva para ${EMAIL_SUPORTE}.`);
       }
     },
 

@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
 import { Text, View } from "react-native";
+import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import { Button, Heading, Icon, Screen, type IconName } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
@@ -9,7 +10,7 @@ export default function PrivacyScreen() {
   const router = useRouter();
 
   const items: { icon: IconName; title: string; text: string }[] = [
-    { icon: "mail-outline", title: "E-mail de acesso", text: `${me.email}. Para trocar, entre em contato com o suporte.` },
+    { icon: "mail-outline", title: "E-mail de acesso", text: `${me.email}. Para trocar, escreva para ${EMAIL_SUPORTE}.` },
     { icon: "card-outline", title: "CPF/CNPJ e telefone", text: "Usados para identificar a conta e, no caso do músico, para o repasse do cachê. Nunca aparecem para outros usuários; só o telefone é compartilhado com a outra parte depois de uma contratação." },
     { icon: "location-outline", title: "Cidade", text: "Define quais eventos aparecem para você e a que distância. O endereço exato de um evento só é mostrado ao músico contratado." },
     { icon: "star-outline", title: "Avaliações", text: "As notas que você recebe são públicas no seu perfil e ajudam a outra parte a decidir." },

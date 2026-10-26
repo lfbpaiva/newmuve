@@ -232,8 +232,7 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 
 ## 10. O que ainda falta
 
-1. **E-mail de suporte.** O app já mostra "Ajuda e suporte" em Ajustes e nos Termos, mas só depois que o grupo definir o endereço em `EXPO_PUBLIC_SUPPORT_EMAIL`.
-2. **Push no celular.** As notificações aparecem com o app aberto. Avisos com o app fechado exigem Expo Notifications num app gerado pelo EAS; o Expo Go no Android não recebe push.
-3. **Hospedagem da API e SMTP.** Passo a passo no README. Sem a API publicada, a Asaas não consegue avisar pagamentos e transferências (o app compensa consultando a Asaas); sem SMTP, a confirmação de cadastro e a recuperação de senha dependem do envio limitado do Supabase.
-4. **Autorização de transferências na Asaas.** No sandbox, cada repasse espera aprovação manual no painel.
-5. **Monografia.** Os itens "Adaptado" e "Não implementado" da seção 9 precisam ser reescritos ou listados como trabalhos futuros.
+1. **Push no celular.** As notificações aparecem com o app aberto. Avisos com o app fechado exigem Expo Notifications num app gerado pelo EAS; o Expo Go no Android não recebe push.
+2. **Hospedagem da API e SMTP.** Passo a passo no README. Sem a API publicada, a Asaas não consegue avisar pagamentos e transferências (o app compensa consultando a Asaas); sem SMTP, a confirmação de cadastro e a recuperação de senha dependem do envio limitado do Supabase.
+3. **Autorização de transferências na Asaas.** No sandbox, cada repasse espera aprovação manual no painel.
+4. **Monografia.** Os itens "Adaptado" e "Não implementado" da seção 9 precisam ser reescritos ou listados como trabalhos futuros.

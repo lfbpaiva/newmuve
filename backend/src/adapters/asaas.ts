@@ -1,3 +1,4 @@
+import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import { AppError } from "../domain/errors.ts";
 import type { AsaasGateway, AsaasPayment } from "../services/ports.ts";
 
@@ -38,13 +39,13 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
             : "O Asaas recusou o estorno. A contratação continua ativa; confira a situação da cobrança e tente novamente.");
       }
       if (path.endsWith("/refund") && response.status === 404) {
-        throw new AppError(409, "ESTORNO_COBRANCA_NAO_ENCONTRADA", "A cobrança não foi encontrada no Asaas. A contratação continua ativa; contate o suporte.");
+        throw new AppError(409, "ESTORNO_COBRANCA_NAO_ENCONTRADA", `A cobrança não foi encontrada no Asaas. A contratação continua ativa; escreva para ${EMAIL_SUPORTE}.`);
       }
       if (method === "DELETE" && (response.status === 400 || response.status === 422)) {
         throw new AppError(409, "CANCELAMENTO_COBRANCA_RECUSADO", "A cobrança não pôde ser cancelada no Asaas. Atualize o pagamento antes de tentar novamente.");
       }
       if (response.status === 401 || response.status === 403) {
-        throw new AppError(503, "PAGAMENTO_CREDENCIAIS_INVALIDAS", "O serviço de pagamentos não está configurado corretamente. Contate o suporte.");
+        throw new AppError(503, "PAGAMENTO_CREDENCIAIS_INVALIDAS", `O serviço de pagamentos não está configurado corretamente. Escreva para ${EMAIL_SUPORTE}.`);
       }
       if (response.status === 400 || response.status === 422) {
         if (method === "GET" && path.startsWith("/payments/")) {

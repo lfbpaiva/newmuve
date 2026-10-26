@@ -38,6 +38,7 @@ export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
 export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export const COMISSAO_PERCENTUAL = 10;
+export const EMAIL_SUPORTE = "muveapp.contato@gmail.com";
 
 const FUSOS_FORA_DE_BRASILIA: Record<string, { fuso: string; offset: string }> = {
   AC: { fuso: "America/Rio_Branco", offset: "-05:00" },
