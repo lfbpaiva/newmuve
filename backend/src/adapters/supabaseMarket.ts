@@ -307,6 +307,36 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       return data.length > 0;
     },
 
+    async hasAppliedToContractor(musicianId, contractorId) {
+      const { data, error } = await admin.from("event_candidates").select("id, event:events!inner(contractor_id)").eq("musician_id", musicianId).eq("event.contractor_id", contractorId).limit(1);
+      if (error) throw error;
+      return data.length > 0;
+    },
+
+    async setFavorite(contractorId, musicianId, favorite) {
+      const { error } = favorite
+        ? await admin.from("contractor_favorites").upsert({ contractor_id: contractorId, musician_id: musicianId })
+        : await admin.from("contractor_favorites").delete().eq("contractor_id", contractorId).eq("musician_id", musicianId);
+      if (error) throw error;
+    },
+
+    async isFavorite(contractorId, musicianId) {
+      const { data, error } = await admin.from("contractor_favorites").select("musician_id").eq("contractor_id", contractorId).eq("musician_id", musicianId).maybeSingle();
+      if (error) throw error;
+      return Boolean(data);
+    },
+
+    async insertInvite(eventId, musicianId) {
+      const { error } = await admin.from("event_invites").upsert({ event_id: eventId, musician_id: musicianId });
+      if (error) throw error;
+    },
+
+    async hasInvite(eventId, musicianId) {
+      const { data, error } = await admin.from("event_invites").select("event_id").eq("event_id", eventId).eq("musician_id", musicianId).maybeSingle();
+      if (error) throw error;
+      return Boolean(data);
+    },
+
     async musicianHasConflict(musicianId, eventId) {
       const { data, error } = await admin.rpc("musician_has_conflict", { p_musician_id: musicianId, p_event_id: eventId });
       if (error) throw error;

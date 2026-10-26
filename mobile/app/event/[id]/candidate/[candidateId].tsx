@@ -1,11 +1,12 @@
 import { useLocalSearchParams } from "expo-router";
 import { Linking, Text, View } from "react-native";
-import { fetchCandidateProfile, type CandidateStatus } from "../../../../../shared/client/events.ts";
+import { fetchCandidateProfile, fetchFavoriteIds, setFavorite, type CandidateStatus } from "../../../../../shared/client/events.ts";
 import { useAsync } from "../../../../../shared/client/useAsync.ts";
-import { isValidUrl } from "../../../../../shared/dominio.ts";
+import { isPro, isValidUrl } from "../../../../../shared/dominio.ts";
 import { ReviewsSection } from "../../../../components/events";
 import { Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Section, Tag } from "../../../../components/ui";
 import { space, styles, type } from "../../../../lib/theme";
+import { useMe } from "../../../../lib/useMe";
 
 const statusPill: Record<CandidateStatus, { text: string; tone: "accent" | "success" | "muted" }> = {
   PENDENTE: { text: "Candidatura pendente", tone: "accent" },
@@ -16,6 +17,9 @@ const statusPill: Record<CandidateStatus, { text: string; tone: "accent" | "succ
 export default function CandidateProfileScreen() {
   const { id: eventId, candidateId } = useLocalSearchParams<{ id: string; candidateId: string }>();
   const profile = useAsync(`candidate-profile:${eventId}:${candidateId}`, () => fetchCandidateProfile(eventId, candidateId));
+  const me = useMe();
+  const casa = isPro(me.casaAte);
+  const favoritos = useAsync(`favoritos-ids:${me.id}`, () => (casa ? fetchFavoriteIds(me.id) : Promise.resolve([])));
 
   if (profile.error) return <Screen><ErrorState message={profile.error} onRetry={profile.reload}/></Screen>;
   if (profile.loading && !profile.data) return <Screen><Loading cards={1}/></Screen>;
@@ -37,6 +41,9 @@ export default function CandidateProfileScreen() {
           <RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/>
         </View>
       </View>
+      {casa && favoritos.data && (favoritos.data.includes(musician.id)
+        ? <Button title="Nos favoritos" variant="tonal" icon="heart" onPress={() => void setFavorite(musician.id, false).then(favoritos.reload)}/>
+        : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" onPress={() => void setFavorite(musician.id, true).then(favoritos.reload)}/>)}
     </View>
     <Section title="Apresentação">
       <Text style={musician.bio ? type.body : type.bodySmall}>{musician.bio || "Descrição não informada."}</Text>

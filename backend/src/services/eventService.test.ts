@@ -29,6 +29,7 @@ const novoEvento: EventInput = {
   somDisponivel: true,
   cache: 350,
   descricao: "Voz e violão",
+  repetirSemanas: 1,
 };
 
 let t: ReturnType<typeof setup>;
@@ -935,6 +936,50 @@ describe("acesso antecipado do Muve Pro", () => {
 
     await expect(t.service.apply(musico, longe.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
     t.world.accounts.get("m1")!.proAte = hoursFromNow(24 * 30);
+    await expect(t.service.apply(musico, longe.id, null, NOW)).resolves.toBeUndefined();
+  });
+});
+
+describe("Muve Casa", () => {
+  const casa = () => {
+    t.world.accounts.get("c1")!.casaAte = hoursFromNow(24 * 30);
+  };
+
+  it("com o Casa ativo, a taxa do contratante cai para 6%", async () => {
+    casa();
+    const event = t.world.seedEvent({ cache: 500 });
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    const payment = await t.payments.startCheckout(contratante, event.id, candidate.id, NOW);
+
+    expect(payment).toMatchObject({ valor: 530, valorComissao: 30, valorCache: 500 });
+  });
+
+  it("eventos recorrentes criam uma semana após a outra, só para quem tem o Casa", async () => {
+    await expect(t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW)).rejects.toMatchObject({ code: "RECURSO_CASA" });
+    casa();
+
+    await t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW);
+
+    const inicios = [...t.world.events.values()].map((e) => e.inicio.getTime()).sort();
+    expect(inicios).toEqual([0, 1, 2].map((semana) => novoEvento.inicio.getTime() + semana * 7 * 24 * 60 * 60 * 1000));
+  });
+
+  it("favoritar exige o Casa e um músico que já se inscreveu; o convite libera a inscrição fora do alcance", async () => {
+    const antigo = t.world.seedEvent();
+    t.world.seedCandidate(antigo.id, "m1");
+    const longe = t.world.seedEvent({ cidade: "Curitiba", inscricoesEncerradas: true });
+
+    await expect(t.service.setFavorite(contratante, "m1", true, NOW)).rejects.toMatchObject({ code: "RECURSO_CASA" });
+    casa();
+    await expect(t.service.setFavorite(contratante, "m2", true, NOW)).rejects.toMatchObject({ code: "MUSICO_NAO_ENCONTRADO" });
+    await expect(t.service.inviteMusician(contratante, longe.id, "m1", NOW)).rejects.toMatchObject({ code: "NAO_FAVORITO" });
+    await t.service.setFavorite(contratante, "m1", true, NOW);
+
+    await t.service.inviteMusician(contratante, longe.id, "m1", NOW);
+    await flush();
+
+    expect(avisosDe("m1").at(-1)?.titulo).toContain("convidou você");
     await expect(t.service.apply(musico, longe.id, null, NOW)).resolves.toBeUndefined();
   });
 });

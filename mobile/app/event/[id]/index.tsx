@@ -11,7 +11,10 @@ import {
   fetchCheckoutStatus,
   fetchContractor,
   fetchEvent,
+  fetchFavoriteIds,
   fetchMyApplication,
+  fetchMyInvite,
+  setFavorite,
   declineCandidate,
   setApplicationsClosed,
   updateProposal,
@@ -20,7 +23,7 @@ import {
 } from "../../../../shared/client/events.ts";
 import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
-import { calcularCobranca, camposFaltantes, descreverFaltantes, hasCancellationNotice } from "../../../../shared/dominio.ts";
+import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, hasCancellationNotice, isPro } from "../../../../shared/dominio.ts";
 import { EventStatusPill, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../../components/ui";
@@ -79,8 +82,8 @@ function Opportunity({ eventId }: { eventId: string }) {
   const router = useRouter();
   const details = useAsync(`opportunity:${eventId}`, async () => {
     const event = await fetchEvent(eventId);
-    const [application, contractor] = await Promise.all([fetchMyApplication(eventId, me.id), fetchContractor(event.contractorId)]);
-    return { event, application, contractor };
+    const [application, contractor, convidado] = await Promise.all([fetchMyApplication(eventId, me.id), fetchContractor(event.contractorId), fetchMyInvite(eventId, me.id).catch(() => false)]);
+    return { event, application, contractor, convidado };
   });
   useRefreshOnFocus(details.reload);
   const { busy, error, run } = useAction(details.reload);
@@ -88,7 +91,7 @@ function Opportunity({ eventId }: { eventId: string }) {
 
   if (details.error) return <Screen><ErrorState message={details.error} onRetry={details.reload}/></Screen>;
   if (!details.data) return <Screen><Loading cards={1}/></Screen>;
-  const { event, application, contractor } = details.data;
+  const { event, application, contractor, convidado } = details.data;
   const hired = event.musicoContratadoId === me.id;
   const cancellable = hasCancellationNotice(new Date(event.inicio), new Date());
   const faltando = camposFaltantes(me, "candidatar");
@@ -119,7 +122,8 @@ function Opportunity({ eventId }: { eventId: string }) {
         <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>
         {conversar && <Button title="Conversar com o contratante" variant="outlined" icon="chatbubbles-outline" onPress={conversar}/>}
       </>}
-      {!hired && !application && (event.status === "ABERTO" && !event.inscricoesEncerradas
+      {!hired && !application && convidado && event.status === "ABERTO" && <Alert tone="success">{contractor?.nome ?? "O contratante"} convidou você para este evento. A inscrição está liberada para você.</Alert>}
+      {!hired && !application && (event.status === "ABERTO" && (!event.inscricoesEncerradas || convidado)
         ? faltando.length > 0
           ? <>
             <Alert tone="info">Para se inscrever, complete seu perfil: {descreverFaltantes(faltando)}.</Alert>
@@ -156,6 +160,9 @@ function Manage({ eventId }: { eventId: string }) {
   const { busy, error, run } = useAction(() => router.back());
   const decline = useAction(details.reload);
   const runDecline = decline.run;
+  const me = useMe();
+  const casa = isPro(me.casaAte);
+  const favoritos = useAsync(`favoritos-ids:${me.id}`, () => (casa ? fetchFavoriteIds(me.id) : Promise.resolve([])));
 
   if (details.error) return <Screen><ErrorState message={details.error} onRetry={details.reload}/></Screen>;
   if (!details.data) return <Screen><Loading cards={1}/></Screen>;
@@ -175,7 +182,7 @@ function Manage({ eventId }: { eventId: string }) {
     <Hero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></Hero>
     <View style={[styles.cardRaised, { gap: 4 }]}>
       <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(event.cache)}</Text></View>
-      <View style={styles.between}><Text style={type.bodySmall}>Total com a taxa de 10%</Text><Text style={type.price}>{formatCurrency(calcularCobranca(event.cache).total)}</Text></View>
+      <View style={styles.between}><Text style={type.bodySmall}>Total com a taxa de {comissaoPercentual(me.casaAte)}%</Text><Text style={type.price}>{formatCurrency(calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total)}</Text></View>
     </View>
     <Facts event={event}/>
     {event.status === "CONTRATADO" && <Alert tone="success">Músico contratado: os dados do evento não podem mais ser alterados.</Alert>}
@@ -202,17 +209,18 @@ function Manage({ eventId }: { eventId: string }) {
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
       {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. As inscrições aparecem aqui.</Text></EmptyState>}
       {payingFor && <Alert tone="info">Há um Pix em andamento para um dos candidatos. Conclua ou cancele esse pagamento antes de escolher outro.</Alert>}
-      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked && (!payingFor || payingFor === candidate.id)} canDecline={!locked && !payingFor} approveLabel={payingFor === candidate.id ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
+      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked && (!payingFor || payingFor === candidate.id)} canDecline={!locked && !payingFor} approveLabel={payingFor === candidate.id ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} favorito={casa ? (favoritos.data ?? []).includes(candidate.musician.id) : null} onFavorite={(on) => void runDecline(() => setFavorite(candidate.musician.id, on).then(favoritos.reload))} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
     </Section>
   </Screen>;
 }
 
-function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheOferecido, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; canDecline: boolean; approveLabel: string; cacheOferecido: number; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
+function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheOferecido, favorito, onFavorite, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; canDecline: boolean; approveLabel: string; cacheOferecido: number; favorito: boolean | null; onFavorite: (on: boolean) => void; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
   const { musician } = candidate;
   return <View style={[styles.card, { gap: space.md }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
       <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={56}/>
       <View style={{ flex: 1 }}><View style={[styles.row, { gap: 6 }]}><Text style={type.titleSmall}>{musician.nome}</Text>{musician.pro ? <Pill text="Pro" tone="accent"/> : null}</View><Text style={type.bodySmall}>{musician.cidade}, {musician.uf} · {musician.estilosMusicais.join(", ")}</Text><RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/></View>
+      {favorito !== null && <Pressable accessibilityRole="button" accessibilityLabel={favorito ? `Remover ${musician.nome} dos favoritos` : `Salvar ${musician.nome} nos favoritos`} onPress={() => onFavorite(!favorito)} hitSlop={8} style={{ padding: 6 }}><Icon name={favorito ? "heart" : "heart-outline"} size={22} color={favorito ? colors.accentText : colors.ink2}/></Pressable>}
       <Icon name="chevron-forward" size={18} color={colors.ink3}/>
     </Pressable>
     {musician.bio ? <Text style={type.bodySmall}>{musician.bio}</Text> : null}

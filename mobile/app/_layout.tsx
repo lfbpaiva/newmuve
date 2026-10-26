@@ -81,6 +81,9 @@ function AuthGate() {
       <Stack.Screen name="conversa/[candidateId]" options={{ title: "CONVERSA" }}/>
       <Stack.Screen name="notificacoes" options={{ title: "NOTIFICAÇÕES" }}/>
       <Stack.Screen name="pro" options={{ title: "MUVE PRO" }}/>
+      <Stack.Screen name="casa" options={{ title: "MUVE CASA" }}/>
+      <Stack.Screen name="favoritos" options={{ title: "FAVORITOS" }}/>
+      <Stack.Screen name="agenda" options={{ title: "AGENDA" }}/>
       <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
       <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
       <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>

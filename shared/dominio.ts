@@ -24,7 +24,10 @@ export const RAIOS_FEED_PRO_KM = [0, 50, 100, 200, 400] as const;
 export const RAIO_MAXIMO_KM = 200;
 export const PRO_RAIO_MAXIMO_KM = 400;
 export const PRO_PRECO = 19.9;
-export const PRO_DIAS_POR_PAGAMENTO = 31;
+export const PLANO_DIAS_POR_PAGAMENTO = 31;
+export const CASA_PRECO = 49.9;
+export const COMISSAO_CASA_PERCENTUAL = 6;
+export const CASA_SEMANAS_MAXIMAS = 8;
 export const PRO_ANTECIPACAO_HORAS = 24;
 export const PRO_ANTECEDENCIA_MINIMA_DIAS = 7;
 
@@ -169,9 +172,12 @@ export const estilosCompativeis = (doEvento: readonly string[], doMusico: readon
 export const hasCancellationNotice = (inicio: Date, now: Date) =>
   inicio.getTime() - now.getTime() > CANCELAMENTO_ANTECEDENCIA_MINIMA_MS;
 
-export function calcularCobranca(cache: number): { cache: number; comissao: number; total: number } {
+export const comissaoPercentual = (casaAte: Date | string | null | undefined, now = new Date()) =>
+  isPro(casaAte, now) ? COMISSAO_CASA_PERCENTUAL : COMISSAO_PERCENTUAL;
+
+export function calcularCobranca(cache: number, percentual: number = COMISSAO_PERCENTUAL): { cache: number; comissao: number; total: number } {
   const centavos = Math.round(cache * 100);
-  const comissao = Math.round((centavos * COMISSAO_PERCENTUAL) / 100);
+  const comissao = Math.round((centavos * percentual) / 100);
   return { cache: centavos / 100, comissao: comissao / 100, total: (centavos + comissao) / 100 };
 }
 

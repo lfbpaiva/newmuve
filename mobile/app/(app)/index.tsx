@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchFeed, fetchMyEvents, fetchOpenFines, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
-import { camposFaltantes, descreverFaltantes, emAcessoAntecipado, isPro, PRO_PRECO, RAIOS_FEED_KM, RAIOS_FEED_PRO_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
+import { CASA_PRECO, camposFaltantes, descreverFaltantes, emAcessoAntecipado, isPro, PRO_PRECO, RAIOS_FEED_KM, RAIOS_FEED_PRO_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import { EventCard, EventRow, EventStatusPill, withEncerrado } from "../../components/events";
 import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Field, Icon, Loading, Screen, Section } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
@@ -147,6 +147,16 @@ function Dashboard() {
       </View>}
       {investido > 0 && <Text style={type.bodySmall}>{formatCurrency(investido)} em cachês pagos a músicos até hoje.</Text>}
       {faltando.length > 0 && <Alert tone="info">Antes de publicar seu primeiro evento, complete o perfil: {descreverFaltantes(faltando)}.</Alert>}
+      {isPro(me.casaAte)
+        ? <View style={{ flexDirection: "row", gap: space.sm }}>
+          <View style={{ flex: 1 }}><Button title="Agenda" variant="tonal" icon="calendar-outline" onPress={() => router.push("/agenda")}/></View>
+          <View style={{ flex: 1 }}><Button title="Favoritos" variant="tonal" icon="heart-outline" onPress={() => router.push("/favoritos")}/></View>
+        </View>
+        : events.data && all.length > 0 && <Pressable accessibilityRole="button" onPress={() => router.push("/casa")} style={({ pressed }) => [styles.card, styles.row, { gap: space.md, borderWidth: 1, borderColor: colors.accent, opacity: pressed ? 0.8 : 1 }]}>
+          <Icon name="business-outline" size={20} color={colors.accentText}/>
+          <Text style={[type.bodySmall, { flex: 1 }]}>Contrata com frequência? No Muve Casa a taxa cai para 6%, com eventos recorrentes, favoritos e agenda. {formatCurrency(CASA_PRECO)}/mês.</Text>
+          <Icon name="chevron-forward" size={18} color={colors.ink3}/>
+        </Pressable>}
       <Section title="Em andamento" action={all.length > 0 ? <Button title="Ver todos" variant="text" block={false} onPress={() => router.push("/(app)/events")}/> : undefined}>
         {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
         {!events.error && !events.data && <Loading cards={1}/>}

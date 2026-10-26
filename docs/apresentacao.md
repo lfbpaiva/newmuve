@@ -9,7 +9,7 @@ Demonstração de 10 a 12 minutos, com dois aparelhos (ou duas abas do navegador
 - [ ] Entrar com as duas contas de demonstração (senha `teste123`):
   - **Contratante:** `contratante@teste.com` (Bar Teste)
   - **Músico:** `teste@teste.com` (Músico Teste)
-- [ ] Painel do sandbox da Asaas aberto em outra aba, na conta do Cleiton, para confirmar o Pix de teste.
+- [ ] Painel do sandbox da Asaas aberto em outra aba, na conta sandbox da Muve (a mesma da chave no `backend/.env`), para confirmar o Pix de teste.
 - [ ] Ter uma foto de evento no aparelho do contratante.
 - [ ] Não criar conta nova ao vivo se o SMTP não estiver configurado: o e-mail de confirmação pode não chegar.
 
@@ -59,6 +59,6 @@ Usar o evento já concluído "Noite acústica no terraço" para mostrar:
 | A plataforma pode reter dinheiro? | No protótipo, sim (sandbox, sem dinheiro real). Em produção, o caminho regulado é o split com Conta Escrow da Asaas, e os Termos de Uso explicam a retenção. |
 | E se o músico faltar? | O contratante registra a ausência em até 7 dias e recebe tudo de volta. |
 | E se alguém tentar mudar o valor pelo aplicativo? | O app só manda IDs; a API lê o valor do banco e a RLS impede escrita direta. |
-| Por que não tem Premium e Shadowban? | Ficaram como trabalho futuro; o foco foi o fluxo completo e seguro de contratação. |
+| Como a plataforma ganha dinheiro além da taxa? | Dois planos por Pix recorrente na Asaas: Muve Pro para o músico (R$ 19,90) e Muve Casa para o contratante (R$ 49,90, taxa cai para 6%). Nenhum plano muda garantia, cancelamento ou multa. |
 | Por que não tem notificação com o app fechado? | Exige gerar o app pelo EAS; as notificações dentro do app funcionam em tempo real. |
-| Como testaram? | 209 testes de regras e da API (Vitest) e 103 testes do banco (pgTAP), além de testes de ponta a ponta no navegador. |
+| Como testaram? | 232 testes de regras e da API (Vitest) e 124 testes do banco (pgTAP), além de testes de ponta a ponta no navegador. |

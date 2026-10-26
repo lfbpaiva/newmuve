@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
 import { eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
-import { calcularCobranca, ESTILOS_EVENTO, FORMACOES, horarioLocalDoEvento, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
-import { space } from "../lib/theme";
+import { calcularCobranca, CASA_SEMANAS_MAXIMAS, comissaoPercentual, ESTILOS_EVENTO, FORMACOES, horarioLocalDoEvento, isPro, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
+import { space, type } from "../lib/theme";
+import { useMe } from "../lib/useMe";
 import { ImageField, LocationFields } from "./fields";
 import { Alert, Button, Checkbox, Chips, Field, Section, Select } from "./ui";
 
 type EditableEvent = EventItem & { endereco: string };
+
+const SEMANAS = Array.from({ length: CASA_SEMANAS_MAXIMAS }, (_, i) => ({ value: String(i + 1), label: i === 0 ? "Só esta data" : `Toda semana, por ${i + 1} semanas` }));
 
 const maskDate = (v: string) => v.replace(/\D/g, "").slice(0, 8).replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})\/(\d{2})(\d)/, "$1/$2/$3");
 const maskTime = (v: string) => v.replace(/\D/g, "").slice(0, 4).replace(/(\d{2})(\d)/, "$1:$2");
@@ -31,6 +34,7 @@ function initialForm(event: EditableEvent | null, local?: { uf: string | null; c
     formacao: event?.formacao ?? "Indiferente",
     somDisponivel: event?.somDisponivel ?? false,
     descricao: event?.descricao ?? "",
+    repetirSemanas: 1,
   };
 }
 
@@ -42,6 +46,9 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
   const [submitting, setSubmitting] = useState(false);
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
   const cacheNumber = parseValor(form.cache);
+  const me = useMe();
+  const casa = isPro(me.casaAte);
+  const taxa = comissaoPercentual(me.casaAte);
 
   async function submit() {
     const inicio = horarioLocalDoEvento(toIsoDate(form.data), form.horario, form.uf);
@@ -69,6 +76,7 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
       somDisponivel: form.somDisponivel,
       cache: cacheNumber,
       descricao: form.descricao,
+      repetirSemanas: event ? 1 : form.repetirSemanas,
     };
     setSubmitting(true);
     try {
@@ -107,8 +115,13 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
       <Checkbox label="O local oferece equipamento de som (caixas, mesa e microfones)" checked={form.somDisponivel} onChange={(somDisponivel) => set({ somDisponivel })}/>
     </Section>
     <Section title="Cachê">
-      <Field label="Valor oferecido (R$)" value={form.cache} onChangeText={(v) => set({ cache: v.replace(/[^\d.,]/g, "") })} keyboardType="decimal-pad" placeholder="100,00 ou mais" hint={cacheNumber >= 100 ? `Com a taxa de serviço de 10%, você pagará ${formatCurrency(calcularCobranca(cacheNumber).total)}. O músico recebe ${formatCurrency(cacheNumber)}.` : "Mínimo de R$ 100,00. A taxa de serviço de 10% é somada ao cachê."}/>
+      <Field label="Valor oferecido (R$)" value={form.cache} onChangeText={(v) => set({ cache: v.replace(/[^\d.,]/g, "") })} keyboardType="decimal-pad" placeholder="100,00 ou mais" hint={cacheNumber >= 100 ? `Com a taxa de serviço de ${taxa}%, você pagará ${formatCurrency(calcularCobranca(cacheNumber, taxa).total)}. O músico recebe ${formatCurrency(cacheNumber)}.` : `Mínimo de R$ 100,00. A taxa de serviço de ${taxa}% é somada ao cachê.`}/>
     </Section>
+    {!event && <Section title="Repetir">
+      {casa
+        ? <Select label="Quantas semanas" value={String(form.repetirSemanas)} options={SEMANAS} onChange={(v) => set({ repetirSemanas: Number(v) })}/>
+        : <Text style={type.bodySmall}>Com o Muve Casa, um evento semanal vira até {CASA_SEMANAS_MAXIMAS} eventos de uma vez.</Text>}
+    </Section>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button title={event ? "Salvar alterações" : "Publicar evento"} icon={event ? "save-outline" : "megaphone-outline"} onPress={submit} loading={submitting}/>
   </>;

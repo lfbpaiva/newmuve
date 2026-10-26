@@ -40,6 +40,8 @@ export function memoryWorld() {
   const messages: MessageRecord[] = [];
   const penalties: (PenaltyRecord & { quitada: boolean })[] = [];
   const disputes: DisputeRecord[] = [];
+  const favorites = new Set<string>();
+  const invites = new Set<string>();
   const notifications: (NotificationInput & { lida: boolean })[] = [];
   const payments = new Map<string, PaymentRecord & { createdAt: number }>();
   const asaasTransfers = new Map<string, string>();
@@ -187,6 +189,16 @@ export function memoryWorld() {
       Object.assign(dispute, { status: "RESOLVIDA", decisao, observacao });
       return true;
     },
+    hasAppliedToContractor: async (musicianId, contractorId) =>
+      [...candidates.values()].some((c) => c.musicianId === musicianId && events.get(c.eventId)?.contractorId === contractorId),
+    setFavorite: async (contractorId, musicianId, favorite) => {
+      const key = `${contractorId}:${musicianId}`;
+      if (favorite) favorites.add(key);
+      else favorites.delete(key);
+    },
+    isFavorite: async (contractorId, musicianId) => favorites.has(`${contractorId}:${musicianId}`),
+    insertInvite: async (eventId, musicianId) => void invites.add(`${eventId}:${musicianId}`),
+    hasInvite: async (eventId, musicianId) => invites.has(`${eventId}:${musicianId}`),
     musicianHasConflict: async (musicianId, eventId) => {
       const alvo = events.get(eventId);
       if (!alvo) return false;
@@ -393,6 +405,8 @@ export function memoryWorld() {
     messages,
     penalties,
     disputes,
+    favorites,
+    invites,
     notifications,
     payments,
     reviews,

@@ -11,14 +11,14 @@ import {
   createTokenVerifier,
 } from "./adapters/supabase.ts";
 import { createExpoPush } from "./adapters/expoPush.ts";
-import { createProStore } from "./adapters/supabasePro.ts";
+import { createPlanStore } from "./adapters/supabasePlans.ts";
 import { createCnpjLookup } from "./adapters/receita.ts";
 import { createEventStore, createInbox, createPaymentStore } from "./adapters/supabaseMarket.ts";
 import { createApp } from "./http/app.ts";
 import { createAccountService } from "./services/accountService.ts";
 import { createEventService } from "./services/eventService.ts";
 import { createNotifier } from "./services/notifications.ts";
-import { createProService } from "./services/proService.ts";
+import { createPlanService } from "./services/planService.ts";
 import { createPaymentService } from "./services/paymentService.ts";
 
 const envFile = new URL("../.env", import.meta.url);
@@ -77,7 +77,7 @@ const payments = createPaymentService({
   asaas,
 });
 
-const pro = createProService({ accounts: accountStore, store: createProStore(admin), asaas, notifier });
+const plans = createPlanService({ accounts: accountStore, store: createPlanStore(admin), asaas, notifier });
 const events = createEventService({ events: eventStore, accounts: accountStore, images, payments, notifier });
 
 const app = createApp({
@@ -96,7 +96,7 @@ const app = createApp({
   verifyToken: createTokenVerifier(admin),
   asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || undefined,
   adminToken: process.env.ADMIN_TOKEN || undefined,
-  pro,
+  plans,
   allowedOrigins,
   allowedRedirects: (process.env.ALLOWED_REDIRECTS || "muve://auth,exp://*").split(",").map((u) => u.trim()).filter(Boolean),
 });

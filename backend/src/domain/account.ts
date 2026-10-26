@@ -119,4 +119,5 @@ export interface Account {
   portfolioUrl?: string | null;
   visibilidadeReduzidaAte?: Date | null;
   proAte?: Date | null;
+  casaAte?: Date | null;
 }

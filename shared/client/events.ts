@@ -46,6 +46,7 @@ export interface EventData {
   somDisponivel: boolean;
   cache: number;
   descricao?: string;
+  repetirSemanas?: number;
 }
 
 export interface Application {
@@ -411,7 +412,8 @@ export async function fetchOpenFines(): Promise<number> {
   return unwrap<{ multa: number | string }[]>(result).reduce((total, row) => total + Number(row.multa), 0);
 }
 
-export interface ProStatus {
+export interface PlanStatus {
+  plano: "PRO" | "CASA";
   ativoAte: string | null;
   assinatura: {
     status: "AGUARDANDO_PAGAMENTO" | "ATIVA" | "CANCELADA";
@@ -420,6 +422,44 @@ export interface ProStatus {
   } | null;
 }
 
-export const fetchProStatus = () => apiRequest<ProStatus>("/me/pro");
-export const subscribePro = () => apiRequest<ProStatus>("/me/pro", { method: "POST" });
-export const cancelPro = () => apiRequest<ProStatus>("/me/pro", { method: "DELETE" });
+export const fetchPlanStatus = () => apiRequest<PlanStatus>("/me/plano");
+export const subscribePlan = () => apiRequest<PlanStatus>("/me/plano", { method: "POST" });
+export const cancelPlan = () => apiRequest<PlanStatus>("/me/plano", { method: "DELETE" });
+
+export interface Favorite {
+  musician: PublicProfile & { estilosMusicais: string[]; pro: boolean };
+}
+
+export async function fetchFavorites(contractorId: string): Promise<Favorite[]> {
+  const result = await supabase()
+    .from("contractor_favorites")
+    .select(`musician:musician_profiles(nome_completo, estilos_musicais, pro_ate, ${PUBLIC_PROFILE})`)
+    .eq("contractor_id", contractorId)
+    .order("created_at", { ascending: false });
+  return unwrap<{ musician: ProfileRow & { estilos_musicais: string[] | null; pro_ate: string | null } | null }[]>(result)
+    .filter((row) => row.musician)
+    .map((row) => ({
+      musician: {
+        ...toPublicProfile(row.musician!, "nome_completo"),
+        estilosMusicais: row.musician!.estilos_musicais ?? [],
+        pro: Boolean(row.musician!.pro_ate && new Date(row.musician!.pro_ate) > new Date()),
+      },
+    }));
+}
+
+export async function fetchFavoriteIds(contractorId: string): Promise<string[]> {
+  const result = await supabase().from("contractor_favorites").select("musician_id").eq("contractor_id", contractorId);
+  return unwrap<{ musician_id: string }[]>(result).map((row) => row.musician_id);
+}
+
+export const setFavorite = (musicianId: string, favorito: boolean) =>
+  apiRequest(`/me/favoritos/${musicianId}`, { method: favorito ? "POST" : "DELETE" });
+
+export const inviteMusician = (eventId: string, musicianId: string) =>
+  apiRequest(`/events/${eventId}/convites`, { method: "POST", body: { musicianId } });
+
+export async function fetchMyInvite(eventId: string, musicianId: string): Promise<boolean> {
+  const { data, error } = await supabase().from("event_invites").select("event_id").eq("event_id", eventId).eq("musician_id", musicianId).maybeSingle();
+  if (error) unwrap({ data: null, error });
+  return Boolean(data);
+}

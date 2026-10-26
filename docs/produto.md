@@ -118,6 +118,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Contestação | Depois do início do show e até o repasse, qualquer parte contesta; o repasse fica suspenso e o suporte decide (pagar o músico ou devolver ao contratante) |
 | CNPJ | Conferido na Receita Federal (BrasilAPI) ao ser cadastrado; CNPJ inexistente ou inativo é recusado. CPF é validado pelos dígitos |
 | Muve Pro (músico) | R$ 19,90/mês por Pix, assinatura recorrente na Asaas. Eventos novos com mais de 7 dias de antecedência aparecem 24h antes; destaque com selo no topo da lista de candidatos; raio de até 400 km. Cancelar encerra a renovação e mantém o Pro até o fim do período pago. Não muda garantia, cancelamentos, multas nem avaliações |
+| Muve Casa (contratante) | R$ 49,90/mês por Pix, assinatura recorrente na Asaas. Taxa de serviço de 6% em vez de 10% nos pagamentos feitos com o plano ativo; evento semanal repetido em até 8 datas de uma vez; favoritar músicos que já se inscreveram em eventos seus e convidá-los para um evento aberto (o convidado pode se inscrever mesmo com inscrições encerradas ou fora do raio); agenda do mês em calendário. Não muda nada para o músico |
 | Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
 | Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
@@ -133,6 +134,8 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Voltou a concorrer (o contratado desistiu) | Inscritos que tinham perdido para ele | não |
 | Pix recebido fora de hora / devolução pendente | Contratante | sim |
 | Muve Pro ativado ou renovado | Músico | sim |
+| Muve Casa ativado ou renovado | Contratante | sim |
+| Convite de um contratante (Muve Casa) | Músico | não |
 | Devolução recusada pela Asaas | Contratante (e o músico, se foi ele quem desistiu) | sim |
 | Repasse falhou (conferir chave Pix) | Músico | sim |
 | Pagamento confirmado | Músico contratado e contratante | sim |
@@ -253,6 +256,5 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 3. **Gerar o app pelo EAS** para as notificações com o app fechado funcionarem (o Expo Go no Android não recebe push).
 4. **Hospedagem da API e SMTP** (passo a passo no README).
 5. **Autorização de transferências na Asaas** no modelo atual (manual no sandbox).
-6. **Muve Casa** (plano para bares e casas de show: taxa menor, eventos recorrentes, músicos favoritos): proposta registrada, sem implementação.
-7. **Público geral** (agenda de shows abertos ao público): ideia registrada, sem implementação.
-8. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.
+6. **Público geral** (agenda de shows abertos ao público): ideia registrada, sem implementação.
+7. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.

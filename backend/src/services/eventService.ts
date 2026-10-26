@@ -44,7 +44,7 @@ export function createEventService(deps: {
   accounts: AccountStore;
   images: ImageStore;
   payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
-  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved">;
+  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved" | "invited">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
 
@@ -120,14 +120,23 @@ export function createEventService(deps: {
       assertFuture(input.inicio, now);
       if (!imagem) throw new AppError(400, "IMAGEM_OBRIGATORIA", "Adicione uma foto ilustrativa do evento.");
       assertImage(imagem);
-
-      const imagemUrl = await images.upload("event-banners", user.id, imagem);
-      try {
-        return await events.insertEvent(user.id, { ...input, imagemUrl });
-      } catch (error) {
-        await images.removeByUrl("event-banners", imagemUrl).catch(() => {});
-        throw error;
+      if (input.repetirSemanas > 1 && !isPro(contractor.casaAte, now)) {
+        throw new AppError(403, "RECURSO_CASA", "Eventos recorrentes fazem parte do Muve Casa.");
       }
+
+      const criados: EventRecord[] = [];
+      for (let semana = 0; semana < input.repetirSemanas; semana++) {
+        const inicio = new Date(input.inicio.getTime() + semana * 7 * 24 * 60 * 60 * 1000);
+        const imagemUrl = await images.upload("event-banners", user.id, imagem);
+        try {
+          criados.push(await events.insertEvent(user.id, { ...input, inicio, imagemUrl }));
+        } catch (error) {
+          await images.removeByUrl("event-banners", imagemUrl).catch(() => {});
+          if (criados.length === 0) throw error;
+          break;
+        }
+      }
+      return criados[0];
     },
 
     async updateEvent(user: AuthUser, eventId: string, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord> {
@@ -166,16 +175,17 @@ export function createEventService(deps: {
       assertProfileComplete(musician, "candidatar");
       const event = await events.findEvent(eventId);
       if (!event) throw naoEncontrado();
-      if (event.status !== "ABERTO" || event.inscricoesEncerradas || event.inicio <= now) {
+      const convidado = await events.hasInvite(eventId, user.id);
+      if (event.status !== "ABERTO" || event.inicio <= now || (event.inscricoesEncerradas && !convidado)) {
         throw new AppError(409, "INSCRICOES_ENCERRADAS", "As inscrições para este evento estão encerradas.");
       }
       const pro = isPro(musician.proAte, now);
-      if (!pro && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt }, now)) {
+      if (!pro && !convidado && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt }, now)) {
         const libera = formatDateTime(liberadoParaTodosEm(event.createdAt), event.uf);
         throw new AppError(409, "ACESSO_ANTECIPADO", `Este evento está em acesso antecipado para músicos Pro. Ele abre para todos em ${libera}.`);
       }
       const distanciaKm = await events.distanceKm(eventId, user.id);
-      if (!eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm, pro ? PRO_RAIO_MAXIMO_KM : RAIO_MAXIMO_KM)) {
+      if (!convidado && !eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm, pro ? PRO_RAIO_MAXIMO_KM : RAIO_MAXIMO_KM)) {
         throw new AppError(403, "EVENTO_INCOMPATIVEL", "Este evento não é compatível com a região e os estilos do seu perfil.");
       }
       if (await events.musicianHasConflict(user.id, eventId)) throw musicoOcupado();
@@ -207,6 +217,27 @@ export function createEventService(deps: {
         await payments.refundHiring(event.id, "NAO_COMPARECIMENTO");
       }
       void notifier.disputeResolved(event, decisao, observacao);
+    },
+
+    async setFavorite(user: AuthUser, musicianId: string, favorite: boolean, now = new Date()): Promise<void> {
+      const contractor = await requireRole(user, "CONTRACTOR", "Apenas contratantes salvam músicos favoritos.");
+      if (favorite && !isPro(contractor.casaAte, now)) throw new AppError(403, "RECURSO_CASA", "Músicos favoritos fazem parte do Muve Casa.");
+      if (favorite && !(await events.hasAppliedToContractor(musicianId, user.id))) {
+        throw new AppError(404, "MUSICO_NAO_ENCONTRADO", "Só é possível favoritar músicos que já se inscreveram nos seus eventos.");
+      }
+      await events.setFavorite(user.id, musicianId, favorite);
+    },
+
+    async inviteMusician(user: AuthUser, eventId: string, musicianId: string, now = new Date()): Promise<void> {
+      const contractor = await requireRole(user, "CONTRACTOR", "Apenas contratantes convidam músicos.");
+      if (!isPro(contractor.casaAte, now)) throw new AppError(403, "RECURSO_CASA", "Convidar músicos faz parte do Muve Casa.");
+      const event = await events.findEvent(eventId);
+      if (!event || event.contractorId !== user.id) throw naoEncontrado();
+      if (event.status !== "ABERTO" || event.inicio <= now) throw new AppError(409, "EVENTO_INDISPONIVEL", "Só é possível convidar para eventos abertos.");
+      if (!(await events.isFavorite(user.id, musicianId))) throw new AppError(409, "NAO_FAVORITO", "Salve o músico nos favoritos antes de convidar.");
+      if (await events.findCandidate(eventId, musicianId)) throw new AppError(409, "JA_INSCRITO", "Este músico já está inscrito neste evento.");
+      await events.insertInvite(eventId, musicianId);
+      void notifier.invited(event, musicianId, contractor.nome);
     },
 
     async releaseAccount(user: AuthUser, role: Role): Promise<void> {

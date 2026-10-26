@@ -6,16 +6,18 @@ import { errorMessage } from "../../../../shared/client/api.ts";
 import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
 import { formatCountdown, formatCurrency, formatEventDateTime } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
-import { calcularCobranca } from "../../../../shared/dominio.ts";
+import { calcularCobranca, comissaoPercentual } from "../../../../shared/dominio.ts";
 import { Alert, Button, ErrorState, Icon, Loading, Screen, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
+import { useMe } from "../../../lib/useMe";
 
 const POLLING_INTERVAL_MS = 5000;
 const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
 
 export default function CheckoutScreen() {
   const { id: eventId, candidateId } = useLocalSearchParams<{ id: string; candidateId: string }>();
+  const me = useMe();
   const router = useRouter();
   const event = useAsync(`checkout-event:${eventId}`, () => fetchEvent(eventId));
   const [checkout, setCheckout] = useState<Checkout | null>(null);
@@ -133,8 +135,8 @@ export default function CheckoutScreen() {
           <Text style={type.bodySmall}>{formatEventDateTime(event.data.inicio, event.data.uf)}</Text>
           <View style={[styles.divider, { marginVertical: 6 }]}/>
           <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(checkout?.cache ?? event.data.cache)}</Text></View>
-          <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço (10%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache).comissao)}</Text></View>
-          <View style={styles.between}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache).total)}</Text></View>
+          <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço ({checkout ? Math.round((checkout.comissao / checkout.cache) * 100) : comissaoPercentual(me.casaAte)}%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).comissao)}</Text></View>
+          <View style={styles.between}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).total)}</Text></View>
         </> : <Text style={type.bodySmall}>{event.error ?? "Carregando..."}</Text>}
       </View>
       <Alert tone="info">O cachê fica retido e só é repassado ao músico depois que vocês dois confirmarem o show. A taxa cobre essa garantia: se o músico não comparecer, ou se você cancelar com mais de 24h, recebe o valor integral de volta.</Alert>

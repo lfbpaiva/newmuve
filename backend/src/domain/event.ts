@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CACHE_MINIMO, ESTILOS_EVENTO, FORMACOES, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../../shared/dominio.ts";
+import { CACHE_MINIMO, CASA_SEMANAS_MAXIMAS, ESTILOS_EVENTO, FORMACOES, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import { cidade, texto, uf } from "./fields.ts";
 
 export type EventStatus = "ABERTO" | "CONTRATADO" | "CANCELADO" | "CONCLUIDO";
@@ -40,6 +40,7 @@ export const eventSchema = z.object({
   somDisponivel: z.boolean().default(false),
   cache: valorEmReais,
   descricao: z.string().trim().max(2000, "A descrição deve ter no máximo 2000 caracteres.").optional(),
+  repetirSemanas: z.number().int().min(1).max(CASA_SEMANAS_MAXIMAS, `Repita por no máximo ${CASA_SEMANAS_MAXIMAS} semanas.`).default(1),
 });
 export type EventInput = z.infer<typeof eventSchema>;
 
@@ -54,6 +55,10 @@ export const contestacaoSchema = z.object({
 export const resolucaoSchema = z.object({
   decisao: z.enum(["PAGAR_MUSICO", "DEVOLVER_CONTRATANTE"], { error: "Decisão inválida." }),
   observacao: z.string().trim().max(1000).optional(),
+});
+
+export const conviteSchema = z.object({
+  musicianId: z.uuid({ error: "Músico inválido." }),
 });
 
 export const inscricoesSchema = z.object({

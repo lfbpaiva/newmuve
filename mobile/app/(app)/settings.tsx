@@ -23,6 +23,7 @@ export default function SettingsScreen() {
     <Heading title="Ajustes"/>
     <Group title="Perfil">
       <ListItem icon="person-outline" title="Editar perfil" subtitle="Nome, foto, CPF/CNPJ, telefone e cidade" onPress={() => router.push("/account/edit")}/>
+      {me.role === "CONTRACTOR" && <ListItem icon="business-outline" title="Muve Casa" subtitle={isPro(me.casaAte) ? `Ativo até ${new Date(me.casaAte!).toLocaleDateString("pt-BR")}` : "Taxa de 6%, eventos recorrentes e favoritos"} onPress={() => router.push("/casa")}/>}
       {me.role === "MUSICIAN" && <ListItem icon="flash-outline" title="Muve Pro" subtitle={isPro(me.proAte) ? `Ativo até ${new Date(me.proAte!).toLocaleDateString("pt-BR")}` : "Eventos 24h antes e destaque nas inscrições"} onPress={() => router.push("/pro")}/>}
       {me.role === "MUSICIAN" && <ListItem icon="musical-notes-outline" title="Estilos e recebimento" subtitle={`${(me.estilosMusicais ?? []).join(", ")} · chave Pix`} onPress={() => router.push("/account/edit")}/>}
     </Group>

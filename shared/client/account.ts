@@ -23,6 +23,7 @@ export interface Me {
   portfolioUrl?: string | null;
   visibilidadeReduzidaAte?: string | null;
   proAte?: string | null;
+  casaAte?: string | null;
 }
 
 export interface ProfileData {

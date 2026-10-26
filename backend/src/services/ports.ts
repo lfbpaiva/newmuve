@@ -25,6 +25,11 @@ export interface EventStore {
   setApplicationsClosed(eventId: string, closed: boolean): Promise<void>;
   declineCandidate(id: string, motivo: MotivoRecusa): Promise<boolean>;
   musicianHasConflict(musicianId: string, eventId: string): Promise<boolean>;
+  hasAppliedToContractor(musicianId: string, contractorId: string): Promise<boolean>;
+  setFavorite(contractorId: string, musicianId: string, favorite: boolean): Promise<void>;
+  isFavorite(contractorId: string, musicianId: string): Promise<boolean>;
+  insertInvite(eventId: string, musicianId: string): Promise<void>;
+  hasInvite(eventId: string, musicianId: string): Promise<boolean>;
   insertCandidate(eventId: string, musicianId: string, valorProposto: number | null): Promise<CandidateRecord>;
   updateCandidateProposal(id: string, valorProposto: number | null): Promise<void>;
   deleteCandidate(id: string): Promise<void>;

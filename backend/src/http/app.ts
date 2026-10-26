@@ -5,11 +5,11 @@ import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { completarPerfilSchema, deleteAccountSchema, dispositivoSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, contestacaoSchema, inscricoesSchema, propostaSchema, resolucaoSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
+import { asaasWebhookSchema, cancelamentoSchema, conviteSchema, candidaturaSchema, contestacaoSchema, inscricoesSchema, propostaSchema, resolucaoSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
-import type { ProService } from "../services/proService.ts";
+import type { PlanService } from "../services/planService.ts";
 import { rateLimit } from "./rateLimit.ts";
 
 export interface AppDeps {
@@ -21,7 +21,7 @@ export interface AppDeps {
   allowedRedirects?: string[];
   asaasWebhookToken: string | undefined;
   adminToken?: string;
-  pro?: ProService;
+  plans?: PlanService;
 }
 
 type Env = { Variables: { user: AuthUser; signupInput: SignupInput } };
@@ -56,10 +56,10 @@ function sameToken(received: string | undefined, expected: string | undefined): 
   return diff === 0;
 }
 
-export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken, adminToken, pro }: AppDeps) {
-  const requirePro = () => {
-    if (!pro) throw new AppError(503, "PRO_INDISPONIVEL", "O Muve Pro não está disponível agora.");
-    return pro;
+export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken, adminToken, plans }: AppDeps) {
+  const requirePlans = () => {
+    if (!plans) throw new AppError(503, "PLANOS_INDISPONIVEIS", "As assinaturas não estão disponíveis agora.");
+    return plans;
   };
   const redirectAllowed = (url: string | undefined) => Boolean(url && (
     allowedOrigins.some((origin) => url === origin || url === `${origin}/auth`)
@@ -124,7 +124,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     }
     const notification = asaasWebhookSchema.parse(await readJson(c));
     const subscription = notification.payment?.subscription;
-    if (subscription && pro) await pro.handleWebhook(subscription);
+    if (subscription && plans) await plans.handleWebhook(subscription);
     else await payments.handleWebhook(notification);
     return c.json({ received: true });
   });
@@ -149,11 +149,21 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.body(null, 201);
   });
 
-  app.get("/me/pro", async (c) => c.json(await requirePro().status(c.get("user"))));
+  app.get("/me/plano", async (c) => c.json(await requirePlans().status(c.get("user"))));
 
-  app.post("/me/pro", async (c) => c.json(await requirePro().subscribe(c.get("user")), 201));
+  app.post("/me/plano", async (c) => c.json(await requirePlans().subscribe(c.get("user")), 201));
 
-  app.delete("/me/pro", async (c) => c.json(await requirePro().cancel(c.get("user"))));
+  app.delete("/me/plano", async (c) => c.json(await requirePlans().cancel(c.get("user"))));
+
+  app.post("/me/favoritos/:musicianId", async (c) => {
+    await events.setFavorite(c.get("user"), c.req.param("musicianId"), true);
+    return c.body(null, 204);
+  });
+
+  app.delete("/me/favoritos/:musicianId", async (c) => {
+    await events.setFavorite(c.get("user"), c.req.param("musicianId"), false);
+    return c.body(null, 204);
+  });
 
   app.post("/me/dispositivos", async (c) => {
     const { token } = dispositivoSchema.parse(await readJson(c));
@@ -269,6 +279,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.delete("/events/:id/contratacao", async (c) => {
     const { esperado } = cancelamentoSchema.parse({ esperado: c.req.query("esperado") });
     return c.json(await events.cancelHiring(c.get("user"), c.req.param("id"), esperado));
+  });
+
+  app.post("/events/:id/convites", async (c) => {
+    const { musicianId } = conviteSchema.parse(await readJson(c));
+    await events.inviteMusician(c.get("user"), c.req.param("id"), musicianId);
+    return c.body(null, 201);
   });
 
   app.post("/events/:id/contestacao", async (c) => {

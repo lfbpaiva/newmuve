@@ -55,6 +55,7 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
         avaliacaoMedia: Number(data.avaliacao_media),
         totalAvaliacoes: data.total_avaliacoes,
       };
+      if (role === "CONTRACTOR") account.casaAte = data.casa_ate ? new Date(data.casa_ate) : null;
       if (role === "MUSICIAN") {
         account.bio = data.bio;
         account.estilosMusicais = data.estilos_musicais;

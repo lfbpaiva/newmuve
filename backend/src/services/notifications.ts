@@ -262,12 +262,24 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       ]);
     },
 
-    async proActivated(musicianId: string, ate: Date): Promise<void> {
+    async planActivated(userId: string, plano: "PRO" | "CASA", ate: Date): Promise<void> {
+      const quando = formatDateTime(ate).split(" às ")[0];
+      await notify(
+        userId,
+        plano === "PRO" ? "Muve Pro ativo" : "Muve Casa ativo",
+        plano === "PRO"
+          ? `Seu Muve Pro vale até ${quando}: eventos novos 24h antes, destaque nas inscrições e raio de até 400 km.`
+          : `Seu Muve Casa vale até ${quando}: taxa de 6%, eventos recorrentes, favoritos com convite direto e agenda do mês.`,
+        plano === "PRO" ? "/pro" : "/casa",
+      );
+    },
+
+    async invited(event: EventRecord, musicianId: string, contratante: string): Promise<void> {
       await notify(
         musicianId,
-        "Muve Pro ativo",
-        `Seu Muve Pro vale até ${formatDateTime(ate).split(" às ")[0]}: eventos novos 24h antes, destaque nas inscrições e raio de até 400 km.`,
-        "/pro",
+        `${contratante} convidou você: "${event.titulo}"`,
+        `Você foi convidado para tocar em ${when(event)}, com cachê oferecido de ${formatCurrency(event.cache)}. Abra o evento para se inscrever.`,
+        eventLink(event),
       );
     },
 

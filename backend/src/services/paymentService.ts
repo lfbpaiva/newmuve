@@ -1,4 +1,4 @@
-import { calcularCobranca, COBRANCA_VALIDADE_MS, EMAIL_SUPORTE, hasCancellationNotice, MULTA_AUSENCIA_PERCENTUAL, VISIBILIDADE_REDUZIDA_DIAS } from "../../../shared/dominio.ts";
+import { calcularCobranca, COBRANCA_VALIDADE_MS, comissaoPercentual, EMAIL_SUPORTE, hasCancellationNotice, MULTA_AUSENCIA_PERCENTUAL, VISIBILIDADE_REDUZIDA_DIAS } from "../../../shared/dominio.ts";
 import type { AsaasWebhook, EventRecord, PaymentRecord, RefundAction } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
@@ -196,7 +196,8 @@ export function createPaymentService(deps: {
         await release(pending, now);
       }
 
-      const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache);
+      const contratante = await accounts.findAccount(user.id);
+      const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache, comissaoPercentual(contratante?.casaAte, now));
       const customer = await ensureCustomer(user);
       const asaasPaymentId = await asaas.createPixCharge({
         customer,
