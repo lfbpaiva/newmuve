@@ -85,6 +85,7 @@ const app = createApp({
   payments,
   verifyToken: createTokenVerifier(admin),
   asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || undefined,
+  adminToken: process.env.ADMIN_TOKEN || undefined,
   allowedOrigins,
   allowedRedirects: (process.env.ALLOWED_REDIRECTS || "muve://auth,exp://*").split(",").map((u) => u.trim()).filter(Boolean),
 });

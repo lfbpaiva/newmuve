@@ -20,6 +20,7 @@ function fakes() {
     findAccount: async (userId) => accounts.get(userId) ?? null,
     findEmail: async (userId) => users.get(userId)?.email ?? null,
     resetPaymentCustomer: async (userId) => void state.customerResets.push(userId),
+    reduceVisibility: async () => {},
     updateProfile: async (userId, _role: Role, changes) => {
       const current = accounts.get(userId)!;
       const next = { ...current };

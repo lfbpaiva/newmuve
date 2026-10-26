@@ -1,4 +1,4 @@
-import type { CandidateRecord, EventInput, EventRecord, MessageRecord, MotivoRecusa, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, DecisaoContestacao, DisputeRecord, EventInput, EventRecord, MessageRecord, MotivoRecusa, PenaltyRecord, StatusProposta, TipoPenalidade, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 
 export type ConfirmPaymentResult = "CONTRATADO" | "JA_PROCESSADO" | "PAGAMENTO_NAO_ENCONTRADO" | "EVENTO_INDISPONIVEL";
 
@@ -18,6 +18,10 @@ export interface EventStore {
   findCandidateById(id: string): Promise<CandidateRecord | null>;
   listCandidates(eventId: string): Promise<CandidateRecord[]>;
   listEventsOf(userId: string, role: "MUSICIAN" | "CONTRACTOR"): Promise<EventRecord[]>;
+  openDispute(dispute: { eventId: string; abertaPor: string; motivo: string }): Promise<DisputeRecord>;
+  findOpenDispute(eventId: string): Promise<DisputeRecord | null>;
+  findDispute(id: string): Promise<DisputeRecord | null>;
+  resolveDispute(id: string, decisao: DecisaoContestacao, observacao: string | null): Promise<boolean>;
   setApplicationsClosed(eventId: string, closed: boolean): Promise<void>;
   declineCandidate(id: string, motivo: MotivoRecusa): Promise<boolean>;
   musicianHasConflict(musicianId: string, eventId: string): Promise<boolean>;
@@ -34,6 +38,10 @@ export interface EventStore {
 }
 
 export interface PaymentStore {
+  addPenalty(penalty: { musicianId: string; eventId: string | null; tipo: TipoPenalidade; multa: number }): Promise<void>;
+  openFines(musicianId: string): Promise<PenaltyRecord[]>;
+  settleFines(ids: string[], paymentId: string): Promise<void>;
+  setPayoutDiscount(paymentId: string, valor: number): Promise<void>;
   findPendingPayment(eventId: string): Promise<PaymentRecord | null>;
   findLatestPayment(eventId: string): Promise<PaymentRecord | null>;
   findPaymentByAsaasId(asaasPaymentId: string): Promise<PaymentRecord | null>;

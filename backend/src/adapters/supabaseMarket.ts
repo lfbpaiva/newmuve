@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, CandidateStatus, DisputeRecord, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 import type { Inbox } from "../services/notifications.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
 
@@ -59,6 +59,7 @@ interface PaymentRow {
   status: PaymentStatus;
   repasse_status: PayoutStatus | null;
   repasse_asaas_id: string | null;
+  multa_descontada: number | string;
   refund_status: RefundStatus | null;
   refund_action: RefundAction | null;
   refund_requested_at: string | null;
@@ -98,6 +99,28 @@ const toCandidate = (row: CandidateRow): CandidateRecord => ({
   motivoRecusa: row.motivo_recusa ?? null,
 });
 
+interface DisputeRow {
+  id: string;
+  event_id: string;
+  aberta_por: string | null;
+  motivo: string;
+  status: "ABERTA" | "RESOLVIDA";
+  decisao: DisputeRecord["decisao"];
+  observacao: string | null;
+  created_at: string;
+}
+
+const toDispute = (row: DisputeRow): DisputeRecord => ({
+  id: row.id,
+  eventId: row.event_id,
+  abertaPor: row.aberta_por,
+  motivo: row.motivo,
+  status: row.status,
+  decisao: row.decisao,
+  observacao: row.observacao,
+  createdAt: new Date(row.created_at),
+});
+
 const toMessage = (row: MessageRow): MessageRecord => ({
   id: row.id,
   candidateId: row.candidate_id,
@@ -120,6 +143,7 @@ const toPayment = (row: PaymentRow): PaymentRecord => ({
   status: row.status,
   repasseStatus: row.repasse_status,
   asaasTransferId: row.repasse_asaas_id ?? null,
+  multaDescontada: Number(row.multa_descontada ?? 0),
   refundStatus: row.refund_status ?? null,
   refundAction: row.refund_action ?? null,
   refundRequestedAt: row.refund_requested_at ? new Date(row.refund_requested_at) : null,
@@ -247,6 +271,40 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       return (data as unknown as { event: EventRow }[]).map((row) => toEvent(row.event));
     },
 
+    async openDispute(dispute) {
+      const { data, error } = await admin
+        .from("disputes")
+        .insert({ event_id: dispute.eventId, aberta_por: dispute.abertaPor, motivo: dispute.motivo })
+        .select()
+        .single();
+      if (error?.code === UNIQUE_VIOLATION) throw new AppError(409, "CONTESTACAO_EXISTENTE", "Já existe uma contestação aberta para este evento.");
+      if (error) throw error;
+      return toDispute(data);
+    },
+
+    async findOpenDispute(eventId) {
+      const { data, error } = await admin.from("disputes").select("*").eq("event_id", eventId).eq("status", "ABERTA").maybeSingle();
+      if (error) throw error;
+      return data && toDispute(data);
+    },
+
+    async findDispute(id) {
+      const { data, error } = await admin.from("disputes").select("*").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data && toDispute(data);
+    },
+
+    async resolveDispute(id, decisao, observacao) {
+      const { data, error } = await admin
+        .from("disputes")
+        .update({ status: "RESOLVIDA", decisao, observacao, resolvida_em: new Date().toISOString() })
+        .eq("id", id)
+        .eq("status", "ABERTA")
+        .select("id");
+      if (error) throw error;
+      return data.length > 0;
+    },
+
     async musicianHasConflict(musicianId, eventId) {
       const { data, error } = await admin.rpc("musician_has_conflict", { p_musician_id: musicianId, p_event_id: eventId });
       if (error) throw error;
@@ -330,6 +388,28 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
   }
 
   return {
+    async addPenalty(penalty) {
+      const { error } = await admin.from("penalties").insert({ musician_id: penalty.musicianId, event_id: penalty.eventId, tipo: penalty.tipo, multa: penalty.multa });
+      if (error) throw error;
+    },
+
+    async openFines(musicianId) {
+      const { data, error } = await admin.from("penalties").select("*").eq("musician_id", musicianId).is("quitada_em", null).gt("multa", 0).order("created_at");
+      if (error) throw error;
+      return data.map((row) => ({ id: row.id, musicianId: row.musician_id, eventId: row.event_id, tipo: row.tipo, multa: Number(row.multa) }));
+    },
+
+    async settleFines(ids, paymentId) {
+      if (ids.length === 0) return;
+      const { error } = await admin.from("penalties").update({ quitada_em: new Date().toISOString(), payment_id: paymentId }).in("id", ids).is("quitada_em", null);
+      if (error) throw error;
+    },
+
+    async setPayoutDiscount(paymentId, valor) {
+      const { error } = await admin.from("payments").update({ multa_descontada: valor }).eq("id", paymentId);
+      if (error) throw error;
+    },
+
     async findPendingPayment(eventId) {
       const { data, error } = await admin.from("payments").select("*").eq("event_id", eventId).eq("status", "PENDENTE").maybeSingle();
       if (error) throw error;

@@ -1,6 +1,6 @@
 import type { Account } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, EventRecord, MessageRecord, PaymentRecord } from "../domain/event.ts";
+import type { CandidateRecord, DisputeRecord, EventRecord, MessageRecord, PaymentRecord, PenaltyRecord } from "../domain/event.ts";
 import type { AccountStore, ImageStore } from "./accountService.ts";
 import type { Inbox, Mailer, NotificationInput } from "./notifications.ts";
 import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
@@ -38,6 +38,8 @@ export function memoryWorld() {
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
   const messages: MessageRecord[] = [];
+  const penalties: (PenaltyRecord & { quitada: boolean })[] = [];
+  const disputes: DisputeRecord[] = [];
   const notifications: (NotificationInput & { lida: boolean })[] = [];
   const payments = new Map<string, PaymentRecord & { createdAt: number }>();
   const asaasTransfers = new Map<string, string>();
@@ -67,6 +69,10 @@ export function memoryWorld() {
   const accountStore = {
     findAccount: async (id: string) => accounts.get(id) ?? null,
     findEmail: async (id: string) => (accounts.has(id) ? `${id}@exemplo.com` : null),
+    reduceVisibility: async (id: string, until: Date) => {
+      const account = accounts.get(id);
+      if (account) account.visibilidadeReduzidaAte = until;
+    },
   } as unknown as AccountStore;
   const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430]]);
   const sent: { to: string; subject: string; text: string }[] = [];
@@ -163,6 +169,22 @@ export function memoryWorld() {
       role === "CONTRACTOR"
         ? [...events.values()].filter((e) => e.contractorId === userId)
         : [...candidates.values()].filter((c) => c.musicianId === userId && c.status === "PENDENTE").map((c) => events.get(c.eventId)!),
+    openDispute: async (dispute) => {
+      if (disputes.some((d) => d.eventId === dispute.eventId && d.status === "ABERTA")) {
+        throw new AppError(409, "CONTESTACAO_EXISTENTE", "Já existe uma contestação aberta para este evento.");
+      }
+      const record: DisputeRecord = { ...dispute, id: nextId("disp"), status: "ABERTA", decisao: null, observacao: null, createdAt: new Date() };
+      disputes.push(record);
+      return record;
+    },
+    findOpenDispute: async (eventId) => disputes.find((d) => d.eventId === eventId && d.status === "ABERTA") ?? null,
+    findDispute: async (id) => disputes.find((d) => d.id === id) ?? null,
+    resolveDispute: async (id, decisao, observacao) => {
+      const dispute = disputes.find((d) => d.id === id);
+      if (dispute?.status !== "ABERTA") return false;
+      Object.assign(dispute, { status: "RESOLVIDA", decisao, observacao });
+      return true;
+    },
     musicianHasConflict: async (musicianId, eventId) => {
       const alvo = events.get(eventId);
       if (!alvo) return false;
@@ -212,6 +234,12 @@ export function memoryWorld() {
   };
 
   const paymentStore: PaymentStore = {
+    addPenalty: async (penalty) => void penalties.push({ ...penalty, id: nextId("pen"), quitada: false }),
+    openFines: async (musicianId) => penalties.filter((p) => p.musicianId === musicianId && !p.quitada && p.multa > 0),
+    settleFines: async (ids) => {
+      for (const penalty of penalties) if (ids.includes(penalty.id)) penalty.quitada = true;
+    },
+    setPayoutDiscount: async (paymentId, valor) => void (payments.get(paymentId)!.multaDescontada = valor),
     findPendingPayment: async (eventId) => [...payments.values()].find((p) => p.eventId === eventId && p.status === "PENDENTE") ?? null,
     findLatestPayment: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null,
@@ -230,6 +258,7 @@ export function memoryWorld() {
         valorCache: Math.round((data.valor - data.valorComissao) * 100) / 100,
         repasseStatus: null,
         asaasTransferId: null,
+        multaDescontada: 0,
         refundStatus: null,
         refundAction: null,
         refundRequestedAt: null,
@@ -350,6 +379,8 @@ export function memoryWorld() {
     enderecos,
     candidates,
     messages,
+    penalties,
+    disputes,
     notifications,
     payments,
     reviews,

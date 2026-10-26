@@ -1,5 +1,5 @@
-import { calcularCobranca, COBRANCA_VALIDADE_MS, EMAIL_SUPORTE } from "../../../shared/dominio.ts";
-import type { AsaasWebhook, PaymentRecord, RefundAction } from "../domain/event.ts";
+import { calcularCobranca, COBRANCA_VALIDADE_MS, EMAIL_SUPORTE, hasCancellationNotice, MULTA_AUSENCIA_PERCENTUAL, VISIBILIDADE_REDUZIDA_DIAS } from "../../../shared/dominio.ts";
+import type { AsaasWebhook, EventRecord, PaymentRecord, RefundAction } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
@@ -18,7 +18,7 @@ export function createPaymentService(deps: {
   payments: PaymentStore;
   accounts: AccountStore;
   asaas: AsaasGateway;
-  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported" | "payoutDone" | "payoutFailed" | "latePayment" | "refundDenied">;
+  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported" | "payoutDone" | "payoutFailed" | "latePayment" | "refundDenied" | "penaltyApplied">;
 }) {
   const { events, payments, accounts, asaas, notifier } = deps;
 
@@ -48,8 +48,21 @@ export function createPaymentService(deps: {
     else void notifier.refundDenied(event, payment.refundAction === "REABRIR" ? "musico" : "contratante");
   }
 
+  async function penalize(event: EventRecord, musicianId: string | null, payment: PaymentRecord): Promise<void> {
+    if (!musicianId) return;
+    const ausencia = payment.refundAction === "NAO_COMPARECIMENTO";
+    const desistenciaTardia = payment.refundAction === "REABRIR" && payment.refundRequestedAt !== null && !hasCancellationNotice(event.inicio, payment.refundRequestedAt);
+    if (!ausencia && !desistenciaTardia) return;
+    const multa = ausencia ? Math.round(payment.valorCache * MULTA_AUSENCIA_PERCENTUAL) / 100 : 0;
+    const ate = new Date(Date.now() + VISIBILIDADE_REDUZIDA_DIAS * 24 * 60 * 60 * 1000);
+    await payments.addPenalty({ musicianId, eventId: event.id, tipo: ausencia ? "AUSENCIA" : "DESISTENCIA_TARDIA", multa });
+    await accounts.reduceVisibility(musicianId, ate);
+    void notifier.penaltyApplied(event, musicianId, multa, ate);
+  }
+
   async function completeRefund(payment: PaymentRecord): Promise<void> {
     const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    const musicianId = event?.musicoContratadoId ?? null;
     const result = await payments.finalizeRefund(payment.id);
     if (result === "REPASSE_CONFLITANTE") {
       console.error("Estorno confirmado depois do início do repasse; requer conciliação manual", payment.id);
@@ -58,6 +71,7 @@ export function createPaymentService(deps: {
     if (payment.refundAction === "REABRIR") void notifier.hiringCancelled(event, "musico", true);
     if (payment.refundAction === "CANCELAR") void notifier.hiringCancelled(event, "contratante", true);
     if (payment.refundAction === "NAO_COMPARECIMENTO") void notifier.noShowReported(event);
+    await penalize(event, musicianId, payment).catch((error: unknown) => console.error("Falha ao registrar penalidade", payment.id, error));
   }
 
   const reload = async (payment: PaymentRecord) => (await payments.findPaymentByAsaasId(payment.asaasPaymentId)) ?? payment;
@@ -241,6 +255,7 @@ export function createPaymentService(deps: {
         return;
       }
       if (payment?.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return;
+      if (await events.findOpenDispute(eventId)) return;
       if (!(await payments.claimPayout(payment.id))) return;
 
       try {
@@ -248,14 +263,24 @@ export function createPaymentService(deps: {
         const musician = event?.musicoContratadoId ? await accounts.findAccount(event.musicoContratadoId) : null;
         if (!musician?.chavePix || !musician.chavePixTipo) throw new Error("músico sem chave Pix cadastrada");
 
+        const multas: string[] = [];
+        let desconto = 0;
+        for (const fine of await payments.openFines(musician.id)) {
+          if (desconto + fine.multa >= payment.valorCache) break;
+          desconto = Math.round((desconto + fine.multa) * 100) / 100;
+          multas.push(fine.id);
+        }
+        await payments.setPayoutDiscount(payment.id, desconto);
+
         const transfer = await asaas.transferPix({
-          value: payment.valorCache,
+          value: Math.round((payment.valorCache - desconto) * 100) / 100,
           pixAddressKey: musician.chavePix,
           pixAddressKeyType: musician.chavePixTipo,
           description: `Muve — cachê de "${event!.titulo}"`,
           externalReference: payment.id,
         });
         await payments.setPayout(payment.id, { status: transfer.status === "DONE" ? "REPASSADO" : "PROCESSANDO", asaasTransferId: transfer.id });
+        await payments.settleFines(multas, payment.id);
       } catch (error) {
         console.error("Falha no repasse do pagamento", payment.id, error);
         await payments.setPayout(payment.id, { status: "FALHOU" }).catch(() => {});

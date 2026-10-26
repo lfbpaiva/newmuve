@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { cancelHiring, confirmCompletion, fetchHiring, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
+import { cancelHiring, confirmCompletion, fetchHiring, openDispute, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
 import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { maskPhone } from "../../../../shared/client/validators.ts";
@@ -39,6 +39,8 @@ export default function HiringScreen() {
   const hideSnack = useCallback(() => setSnack(""), []);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [contestando, setContestando] = useState(false);
 
   async function run(action: () => Promise<unknown>, done?: string) {
     setBusy(true);
@@ -81,7 +83,7 @@ export default function HiringScreen() {
   </Screen>;
   if (hiring.error) return <Screen><ErrorState message={hiring.error} onRetry={hiring.reload}/></Screen>;
   if (!hiring.data) return <Screen><Loading cards={1}/></Screen>;
-  const { papel, evento, contratante, musico, pagamento, avaliou, cancelamento, naoComparecimento } = hiring.data;
+  const { papel, evento, contratante, musico, pagamento, avaliou, cancelamento, naoComparecimento, contestacao, podeContestar } = hiring.data;
   const isContractor = papel === "contratante";
   const other = isContractor ? musico : contratante;
   const started = new Date(evento.inicio) <= new Date();
@@ -139,6 +141,10 @@ export default function HiringScreen() {
               <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(pagamento.cache)}</Text></View>
               <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço</Text><Text style={type.body}>{formatCurrency(pagamento.comissao)}</Text></View>
               <View style={styles.between}><Text style={type.titleSmall}>Total pago</Text><Text style={type.price}>{formatCurrency(pagamento.total)}</Text></View>
+            </> : pagamento.multaDescontada > 0 ? <>
+              <View style={styles.between}><Text style={type.bodySmall}>Cachê</Text><Text style={type.body}>{formatCurrency(pagamento.cache)}</Text></View>
+              <View style={styles.between}><Text style={type.bodySmall}>Multa por ausência descontada</Text><Text style={type.body}>− {formatCurrency(pagamento.multaDescontada)}</Text></View>
+              <View style={styles.between}><Text style={type.titleSmall}>Você recebe</Text><Text style={type.price}>{formatCurrency(pagamento.cache - pagamento.multaDescontada)}</Text></View>
             </> : <View style={styles.between}><Text style={type.titleSmall}>Seu cachê</Text><Text style={type.price}>{formatCurrency(pagamento.cache)}</Text></View>}
             <View style={styles.divider}/>
             <Text style={type.bodySmall}>{paymentLabels[pagamento.status]}{pagamento.repasseStatus ? ` · ${payoutLabels[pagamento.repasseStatus]}` : ""}</Text>
@@ -161,6 +167,18 @@ export default function HiringScreen() {
               ? <Button title="Confirmar" block={false} loading={busy} onPress={() => run(() => confirmCompletion(evento.id))}/>
               : <Text style={type.bodySmall}>Após o início</Text>)}
         </View>)}
+      </Section>}
+
+      {contestacao && <Alert tone="info">{contestacao.abertaPorMim ? "Você abriu uma contestação" : "A outra parte abriu uma contestação"}: "{contestacao.motivo}". O repasse fica suspenso até o suporte decidir; as duas partes serão avisadas.</Alert>}
+      {podeContestar && <Section title="Algo deu errado?">
+        {contestando
+          ? <View style={[styles.card, { gap: space.sm }]}>
+            <Field label="O que aconteceu?" value={motivo} onChangeText={setMotivo} multiline maxLength={1000} placeholder="Ex.: o músico não apareceu; o show durou metade do combinado..."/>
+            <Text style={type.bodySmall}>O suporte analisa os dois lados e decide se o cachê vai para o músico ou volta para o contratante. Enquanto isso, nada é repassado.</Text>
+            <Button title="Enviar contestação" variant="danger" loading={busy} disabled={motivo.trim().length < 10} onPress={() => run(() => openDispute(evento.id, motivo.trim()), "Contestação enviada ao suporte.")}/>
+            <Button title="Voltar" variant="text" onPress={() => setContestando(false)}/>
+          </View>
+          : <Button title="Contestar o que aconteceu" variant="text" icon="flag-outline" block={false} onPress={() => setContestando(true)}/>}
       </Section>}
 
       {concluded && !avaliou && <Section title="Como foi a experiência?">

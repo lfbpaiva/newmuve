@@ -61,6 +61,7 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
         account.chavePixTipo = data.chave_pix_tipo;
         account.chavePix = data.chave_pix;
         account.portfolioUrl = data.portfolio_url;
+        account.visibilidadeReduzidaAte = data.visibilidade_reduzida_ate ? new Date(data.visibilidade_reduzida_ate) : null;
       }
       return account;
     },
@@ -89,6 +90,11 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       }
       const { error } = await admin.from(detailTable(role)).update(row).eq("user_id", userId);
       if (error?.code === UNIQUE_VIOLATION) throw new AppError(409, "DOCUMENTO_EM_USO", "Este CPF/CNPJ já está vinculado a outra conta.");
+      if (error) throw error;
+    },
+
+    async reduceVisibility(musicianId, until) {
+      const { error } = await admin.from("musician_profiles").update({ visibilidade_reduzida_ate: until.toISOString() }).eq("user_id", musicianId);
       if (error) throw error;
     },
 

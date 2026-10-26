@@ -5,7 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { completarPerfilSchema, deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, inscricoesSchema, propostaSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
+import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, contestacaoSchema, inscricoesSchema, propostaSchema, resolucaoSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
@@ -19,6 +19,7 @@ export interface AppDeps {
   allowedOrigins: string[];
   allowedRedirects?: string[];
   asaasWebhookToken: string | undefined;
+  adminToken?: string;
 }
 
 type Env = { Variables: { user: AuthUser; signupInput: SignupInput } };
@@ -53,7 +54,7 @@ function sameToken(received: string | undefined, expected: string | undefined): 
   return diff === 0;
 }
 
-export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken }: AppDeps) {
+export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken, adminToken }: AppDeps) {
   const redirectAllowed = (url: string | undefined) => Boolean(url && (
     allowedOrigins.some((origin) => url === origin || url === `${origin}/auth`)
     || allowedRedirects.some((allowed) => (allowed.endsWith("*") ? url.startsWith(allowed.slice(0, -1)) : url === allowed))
@@ -241,6 +242,19 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.delete("/events/:id/contratacao", async (c) => {
     const { esperado } = cancelamentoSchema.parse({ esperado: c.req.query("esperado") });
     return c.json(await events.cancelHiring(c.get("user"), c.req.param("id"), esperado));
+  });
+
+  app.post("/events/:id/contestacao", async (c) => {
+    const { motivo } = contestacaoSchema.parse(await readJson(c));
+    await events.openDispute(c.get("user"), c.req.param("id"), motivo);
+    return c.body(null, 201);
+  });
+
+  app.post("/admin/contestacoes/:id/resolucao", async (c) => {
+    if (!sameToken(c.req.header("x-admin-token"), adminToken)) throw new AppError(401, "NAO_AUTORIZADO", "Acesso restrito ao suporte.");
+    const { decisao, observacao } = resolucaoSchema.parse(await readJson(c));
+    await events.resolveDispute(c.req.param("id"), decisao, observacao || null);
+    return c.body(null, 204);
   });
 
   app.post("/events/:id/nao-comparecimento", async (c) => {

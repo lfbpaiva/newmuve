@@ -10,6 +10,7 @@ export interface AccountStore {
   findEmail(userId: string): Promise<string | null>;
   updateProfile(userId: string, role: Role, changes: ProfileChanges & { fotoPerfilUrl?: string }): Promise<void>;
   resetPaymentCustomer(userId: string): Promise<void>;
+  reduceVisibility(musicianId: string, until: Date): Promise<void>;
 }
 
 export interface AuthGateway {

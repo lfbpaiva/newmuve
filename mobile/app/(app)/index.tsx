@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchFeed, fetchMyEvents, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
+import { fetchFeed, fetchMyEvents, fetchOpenFines, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { camposFaltantes, descreverFaltantes, RAIOS_FEED_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
@@ -76,6 +76,8 @@ function Feed() {
   const router = useRouter();
   const [radius, setRadius] = useState(50);
   const [filtros, setFiltros] = useState<FeedFilters>(FILTROS_VAZIOS);
+  const reduzida = Boolean(me.visibilidadeReduzidaAte && new Date(me.visibilidadeReduzidaAte) > new Date());
+  const multas = useAsync(`multas:${me.id}`, fetchOpenFines);
   const setupPending = camposFaltantes(me, "feed").length > 0;
   const feed = useAsync(`feed:${radius}:${setupPending}`, () => (setupPending ? Promise.resolve([]) : fetchFeed(radius)));
   useRefreshOnFocus(feed.reload);
@@ -100,6 +102,8 @@ function Feed() {
       {setupPending && <EmptyState title={"Monte\nseu feed"} action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
+      {reduzida && <Alert tone="info">Por causa de uma desistência em cima da hora ou de uma ausência, novos eventos não aparecem para você até {new Date(me.visibilidadeReduzidaAte!).toLocaleDateString("pt-BR")}.</Alert>}
+      {(multas.data ?? 0) > 0 && <Alert tone="info">Você tem {formatCurrency(multas.data!)} em multa por ausência, que será descontado do seu próximo cachê.</Alert>}
       {!setupPending && <Chips scroll options={RAIOS_FEED_KM.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
       {!setupPending && (feed.data?.length ?? 0) > 0 && <FeedFiltersPanel filtros={filtros} onChange={setFiltros}/>}
       {!setupPending && (feed.data?.length ?? 0) > 0 && visiveis.length === 0 && <EmptyState title="Nenhum evento com esses filtros" action={<Button title="Limpar filtros" variant="tonal" block={false} onPress={() => setFiltros(FILTROS_VAZIOS)}/>}/>}

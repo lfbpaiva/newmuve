@@ -47,6 +47,15 @@ export const cancelamentoSchema = z.object({
   esperado: z.enum(["COM_ESTORNO", "SEM_ESTORNO"]).optional(),
 });
 
+export const contestacaoSchema = z.object({
+  motivo: texto("Explique o que aconteceu.").min(10, "Explique o que aconteceu em pelo menos 10 caracteres.").max(1000, "O texto deve ter no máximo 1000 caracteres."),
+});
+
+export const resolucaoSchema = z.object({
+  decisao: z.enum(["PAGAR_MUSICO", "DEVOLVER_CONTRATANTE"], { error: "Decisão inválida." }),
+  observacao: z.string().trim().max(1000).optional(),
+});
+
 export const inscricoesSchema = z.object({
   encerradas: z.boolean({ error: "Informe se as inscrições estão encerradas." }),
 });
@@ -129,6 +138,29 @@ export interface CandidateRecord {
   motivoRecusa: MotivoRecusa | null;
 }
 
+export type TipoPenalidade = "DESISTENCIA_TARDIA" | "AUSENCIA";
+
+export interface PenaltyRecord {
+  id: string;
+  musicianId: string;
+  eventId: string | null;
+  tipo: TipoPenalidade;
+  multa: number;
+}
+
+export type DecisaoContestacao = "PAGAR_MUSICO" | "DEVOLVER_CONTRATANTE";
+
+export interface DisputeRecord {
+  id: string;
+  eventId: string;
+  abertaPor: string | null;
+  motivo: string;
+  status: "ABERTA" | "RESOLVIDA";
+  decisao: DecisaoContestacao | null;
+  observacao: string | null;
+  createdAt: Date;
+}
+
 export type MotivoRecusa = "CONTRATANTE" | "OUTRO_CONTRATADO" | "EVENTO_ALTERADO";
 
 export interface PaymentRecord {
@@ -142,6 +174,7 @@ export interface PaymentRecord {
   status: PaymentStatus;
   repasseStatus: PayoutStatus | null;
   asaasTransferId: string | null;
+  multaDescontada: number;
   refundStatus: RefundStatus | null;
   refundAction: RefundAction | null;
   refundRequestedAt: Date | null;

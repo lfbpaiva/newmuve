@@ -221,6 +221,38 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       );
     },
 
+    async penaltyApplied(event: EventRecord, musicianId: string, multa: number, ate: Date): Promise<void> {
+      const quando = formatDateTime(ate).split(" às ")[0];
+      await notify(
+        musicianId,
+        multa > 0 ? `Multa por ausência: "${event.titulo}"` : `Desistência em cima da hora: "${event.titulo}"`,
+        `${multa > 0 ? `Foi registrada uma multa de ${formatCurrency(multa)}, que será descontada do seu próximo cachê. ` : ""}Até ${quando}, novos eventos não aparecem no seu início. Se discordar, escreva para ${EMAIL_SUPORTE}.`,
+        hiringLink(event),
+      );
+    },
+
+    async disputeOpened(event: EventRecord, openedBy: "contratante" | "musico", motivo: string): Promise<void> {
+      await notify(
+        openedBy === "contratante" ? event.musicoContratadoId : event.contractorId,
+        `Contestação aberta: "${event.titulo}"`,
+        `A outra parte contestou o que aconteceu no show. O repasse fica suspenso até o suporte analisar. Motivo: "${motivo}"`,
+        hiringLink(event),
+      );
+      await mailer.send({
+        to: EMAIL_SUPORTE,
+        subject: `Muve — contestação em "${event.titulo}"`,
+        text: `Evento ${event.id} (${when(event)}).\nAberta por: ${openedBy}.\nMotivo: ${motivo}\n\nPara decidir: node scripts/resolver-contestacao.mjs`,
+      }).catch((error: unknown) => console.error("Falha ao avisar o suporte", error));
+    },
+
+    async disputeResolved(event: EventRecord, decisao: "PAGAR_MUSICO" | "DEVOLVER_CONTRATANTE", observacao: string | null): Promise<void> {
+      const texto = `${decisao === "PAGAR_MUSICO" ? "O suporte decidiu que o show aconteceu: o cachê será repassado ao músico." : "O suporte decidiu pela devolução do valor ao contratante."}${observacao ? ` Observação: ${observacao}` : ""}`;
+      await Promise.all([
+        notify(event.contractorId, `Contestação resolvida: "${event.titulo}"`, texto, hiringLink(event)),
+        notify(event.musicoContratadoId, `Contestação resolvida: "${event.titulo}"`, texto, hiringLink(event)),
+      ]);
+    },
+
     async payoutDone(event: EventRecord): Promise<void> {
       await notify(event.musicoContratadoId, `Cachê repassado: "${event.titulo}"`, "A transferência para a sua chave Pix foi concluída.", hiringLink(event));
     },

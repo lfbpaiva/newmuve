@@ -117,8 +117,10 @@ export interface Hiring {
   };
   contratante: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
   musico: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
-  pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null } | null;
+  pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null; multaDescontada: number } | null;
   avaliou: boolean;
+  contestacao: { motivo: string; abertaPorMim: boolean } | null;
+  podeContestar: boolean;
   naoComparecimento: { permitido: boolean };
   cancelamento: { permitido: boolean; reembolso: boolean };
 }
@@ -341,6 +343,7 @@ export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candi
 
 export const fetchHiring = (id: string) => apiRequest<Hiring>(`/events/${id}/contratacao`);
 export type CancellationResult = { situacao: "COBRANCA_CANCELADA" | "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" };
+export const openDispute = (id: string, motivo: string) => apiRequest(`/events/${id}/contestacao`, { method: "POST", body: { motivo } });
 export const reportNoShow = (id: string) => apiRequest<CancellationResult>(`/events/${id}/nao-comparecimento`, { method: "POST" });
 export const cancelHiring = (id: string, esperado?: "COM_ESTORNO" | "SEM_ESTORNO") =>
   apiRequest<CancellationResult>(`/events/${id}/contratacao${esperado ? `?esperado=${esperado}` : ""}`, { method: "DELETE" });
@@ -398,3 +401,8 @@ export function filterFeed(events: EventItem[], filtros: FeedFilters, now = new 
 
 export const filtrosAtivos = (filtros: FeedFilters) =>
   (filtros.busca.trim() ? 1 : 0) + (filtros.periodo !== "QUALQUER" ? 1 : 0) + filtros.tipos.length + (filtros.cacheMinimo > 0 ? 1 : 0);
+
+export async function fetchOpenFines(): Promise<number> {
+  const result = await supabase().from("penalties").select("multa").is("quitada_em", null).gt("multa", 0);
+  return unwrap<{ multa: number | string }[]>(result).reduce((total, row) => total + Number(row.multa), 0);
+}

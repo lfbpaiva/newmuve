@@ -1,7 +1,7 @@
-import { CONCLUSAO_AUTOMATICA_MS, EMAIL_SUPORTE, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
+import { CONCLUSAO_AUTOMATICA_MS, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
 import { formatCurrency } from "../../../shared/formato.ts";
 import type { Account, Role } from "../domain/account.ts";
-import type { CandidateRecord, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
+import type { CandidateRecord, DecisaoContestacao, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser, type ImageStore } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
@@ -9,6 +9,13 @@ import type { PaymentService } from "./paymentService.ts";
 import type { EventStore } from "./ports.ts";
 
 const prazoEncerrado = (event: EventRecord, now: Date) => now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS;
+
+const podeContestar = (event: EventRecord, payment: { status: string; repasseStatus: string | null; refundStatus: string | null } | null, now: Date) =>
+  (event.status === "CONTRATADO" || event.status === "CONCLUIDO")
+  && event.inicio <= now
+  && payment?.status === "PAGO"
+  && (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")
+  && payment.refundStatus !== "PROCESSANDO";
 
 const musicoOcupado = () => new AppError(409, "MUSICO_OCUPADO", "O músico já tem um show contratado nesse horário.");
 
@@ -37,7 +44,7 @@ export function createEventService(deps: {
   accounts: AccountStore;
   images: ImageStore;
   payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
-  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft">;
+  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
 
@@ -171,6 +178,32 @@ export function createEventService(deps: {
       void notifier.newApplication(event, candidate.valorProposto);
     },
 
+    async openDispute(user: AuthUser, eventId: string, motivo: string, now = new Date()): Promise<void> {
+      const { event, party } = await findEventAsParty(user, eventId);
+      const payment = await payments.findPayment(eventId);
+      if (!podeContestar(event, payment, now)) {
+        throw new AppError(409, "CONTESTACAO_INDISPONIVEL", "A contestação fica disponível depois do início do show e até o repasse do cachê.");
+      }
+      await events.openDispute({ eventId, abertaPor: user.id, motivo });
+      void notifier.disputeOpened(event, party, motivo);
+    },
+
+    async resolveDispute(disputeId: string, decisao: DecisaoContestacao, observacao: string | null): Promise<void> {
+      const dispute = await events.findDispute(disputeId);
+      const event = dispute && (await events.findEvent(dispute.eventId));
+      if (!dispute || !event) throw new AppError(404, "CONTESTACAO_NAO_ENCONTRADA", "Contestação não encontrada.");
+      if (!(await events.resolveDispute(disputeId, decisao, observacao))) {
+        throw new AppError(409, "CONTESTACAO_RESOLVIDA", "Esta contestação já foi resolvida.");
+      }
+      if (decisao === "PAGAR_MUSICO") {
+        if (event.status === "CONTRATADO") await events.concludeEvent(event.id);
+        await payments.payout(event.id);
+      } else {
+        await payments.refundHiring(event.id, "NAO_COMPARECIMENTO");
+      }
+      void notifier.disputeResolved(event, decisao, observacao);
+    },
+
     async releaseAccount(user: AuthUser, role: Role): Promise<void> {
       const mine = await events.listEventsOf(user.id, role);
       for (const event of mine) {
@@ -275,7 +308,8 @@ export function createEventService(deps: {
       if (event.status === "ABERTO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento ainda não tem um músico contratado.");
 
       const estornoPendente = (await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO";
-      if (event.status === "CONTRATADO" && !estornoPendente && prazoEncerrado(event, now)) {
+      const contestacao = await events.findOpenDispute(eventId);
+      if (event.status === "CONTRATADO" && !estornoPendente && !contestacao && prazoEncerrado(event, now)) {
         event = await events.concludeEvent(eventId);
       }
       if ((event.status === "CONCLUIDO" || event.status === "CANCELADO") && !estornoPendente) await payments.payout(eventId);
@@ -316,9 +350,12 @@ export function createEventService(deps: {
           status: payment.status,
           repasseStatus: payment.repasseStatus,
           refundStatus: payment.refundStatus,
+          multaDescontada: payment.multaDescontada,
         },
         avaliou,
-        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && !prazoEncerrado(event, now) && payment?.refundStatus !== "PROCESSANDO" },
+        contestacao: contestacao && { motivo: contestacao.motivo, abertaPorMim: contestacao.abertaPor === user.id },
+        podeContestar: !contestacao && podeContestar(event, payment, now),
+        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && !prazoEncerrado(event, now) && !contestacao && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
           permitido: event.status === "CONTRATADO" && antesDoInicio && payment?.refundStatus !== "PROCESSANDO",
           reembolso: party === "musico" || hasCancellationNotice(event.inicio, now),
@@ -358,7 +395,7 @@ export function createEventService(deps: {
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
       if (event.inicio > now) throw new AppError(409, "EVENTO_NAO_INICIADO", "O não comparecimento só pode ser registrado após o horário do evento.");
       if (event.confirmacaoMusico) {
-        throw new AppError(409, "MUSICO_CONFIRMOU", `O músico confirmou a realização do show. Para contestar, escreva para ${EMAIL_SUPORTE}.`);
+        throw new AppError(409, "MUSICO_CONFIRMOU", "O músico confirmou a realização do show. Se ele não compareceu, abra uma contestação no comprovante.");
       }
       if (event.confirmacaoContratante) {
         throw new AppError(409, "CONTRATANTE_CONFIRMOU", "Você já confirmou a realização do show.");
@@ -377,6 +414,9 @@ export function createEventService(deps: {
       if (event.inicio > now) throw new AppError(409, "EVENTO_NAO_INICIADO", "A confirmação fica disponível após o início do evento.");
       if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO") {
         throw new AppError(409, "ESTORNO_PENDENTE", "A confirmação do show fica suspensa até a resolução do estorno.");
+      }
+      if (await events.findOpenDispute(eventId)) {
+        throw new AppError(409, "CONTESTACAO_ABERTA", "Há uma contestação aberta; o suporte vai decidir o resultado do show.");
       }
 
       const updated = await events.setConfirmation(eventId, party);

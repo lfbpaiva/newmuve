@@ -591,7 +591,10 @@ describe("avisos por e-mail", () => {
     t.world.sent.length = 0;
     await t.service.reportNoShow(contratante, outro.event.id, hoursFromNow(4));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(t.world.sent).toEqual([expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Não comparecimento") })]);
+    expect(t.world.sent).toEqual([
+      expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Não comparecimento") }),
+      expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Multa por ausência") }),
+    ]);
   });
 
   it("falha no envio não afeta a operação", async () => {
@@ -848,5 +851,69 @@ describe("contraproposta no chat", () => {
 
     const recusada = t.world.seedCandidate(t.world.seedEvent().id, "m1", "RECUSADO");
     await expect(t.service.proposeValue(musico, recusada.id, 900, NOW)).rejects.toMatchObject({ code: "NEGOCIACAO_ENCERRADA" });
+  });
+});
+
+describe("penalidades do músico", () => {
+  it("ausência registrada gera multa de 20% e visibilidade reduzida; a multa sai do próximo cachê", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    expect(t.world.penalties).toEqual([expect.objectContaining({ musicianId: "m1", tipo: "AUSENCIA", multa: 100 })]);
+    expect(t.world.accounts.get("m1")?.visibilidadeReduzidaAte).toBeInstanceOf(Date);
+
+    const proximo = await hired(hoursFromNow(48));
+    await t.service.confirmCompletion(contratante, proximo.event.id, hoursFromNow(50));
+    await t.service.confirmCompletion(musico, proximo.event.id, hoursFromNow(50));
+
+    expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(400);
+    expect(t.world.payments.get(proximo.payment.id)?.multaDescontada).toBe(100);
+    expect(t.world.penalties[0].quitada).toBe(true);
+  });
+
+  it("desistência com menos de 24h reduz a visibilidade sem multa; com antecedência, nada acontece", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    const tarde = await hired(hoursFromNow(12));
+    await t.service.cancelHiring(musico, tarde.event.id, undefined, NOW);
+    const cedo = await hired(hoursFromNow(72));
+    await t.service.cancelHiring(musico, cedo.event.id, undefined, NOW);
+
+    expect(t.world.penalties).toEqual([expect.objectContaining({ tipo: "DESISTENCIA_TARDIA", multa: 0, eventId: tarde.event.id })]);
+    vi.useRealTimers();
+  });
+});
+
+describe("contestação", () => {
+  it("congela o repasse até o suporte decidir, e a decisão paga o músico", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.confirmCompletion(musico, event.id, hoursFromNow(3));
+
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(4))).rejects.toMatchObject({ code: "MUSICO_CONFIRMOU" });
+    await t.service.openDispute(contratante, event.id, "O músico não apareceu no bar.", hoursFromNow(4));
+    await expect(t.service.confirmCompletion(contratante, event.id, hoursFromNow(5))).rejects.toMatchObject({ code: "CONTESTACAO_ABERTA" });
+    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 9))).evento.status).toBe("CONTRATADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    await t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", "Fotos do show enviadas pelo músico.");
+
+    expect(t.world.events.get(event.id)?.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    await expect(t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA" });
+  });
+
+  it("a decisão de devolver estorna o contratante e penaliza o músico", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.openDispute(contratante, event.id, "Ninguém apareceu para tocar.", hoursFromNow(3));
+
+    await t.service.resolveDispute(t.world.disputes[0].id, "DEVOLVER_CONTRATANTE", null);
+
+    expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
+    expect(t.world.penalties).toEqual([expect.objectContaining({ tipo: "AUSENCIA" })]);
+  });
+
+  it("não abre contestação antes do show nem depois do repasse", async () => {
+    const { event } = await hired(hoursFromNow(48));
+    await expect(t.service.openDispute(contratante, event.id, "Quero contestar antes.", NOW)).rejects.toMatchObject({ code: "CONTESTACAO_INDISPONIVEL" });
   });
 });
