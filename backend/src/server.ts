@@ -10,6 +10,7 @@ import {
   createImageStore,
   createTokenVerifier,
 } from "./adapters/supabase.ts";
+import { createExpoPush } from "./adapters/expoPush.ts";
 import { createCnpjLookup } from "./adapters/receita.ts";
 import { createEventStore, createInbox, createPaymentStore } from "./adapters/supabaseMarket.ts";
 import { createApp } from "./http/app.ts";
@@ -58,7 +59,8 @@ const smtp = process.env.SMTP_HOST
     })
   : createLogMailer();
 const inbox = createInbox(admin);
-const notifier = createNotifier({ accounts: accountStore, events: eventStore, inbox, mailer: smtp, appUrl: allowedOrigins[0] });
+const push = createExpoPush(admin);
+const notifier = createNotifier({ accounts: accountStore, events: eventStore, inbox, mailer: smtp, appUrl: allowedOrigins[0], push });
 
 const payments = createPaymentService({
   events: eventStore,
@@ -82,6 +84,7 @@ const app = createApp({
     inbox,
     releaseAccount: (user, role) => events.releaseAccount(user, role),
     cnpj: createCnpjLookup(),
+    devices: push,
   }),
   events,
   payments,

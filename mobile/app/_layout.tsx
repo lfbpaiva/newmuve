@@ -9,6 +9,7 @@ import { useEffect, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { consumeAuthLink } from "../lib/authLinks";
+import { usePushNotifications } from "../lib/push";
 import { colors, stackOptions } from "../lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -45,6 +46,7 @@ function AuthGate() {
   const { state, recoveringPassword, retrySession } = useAuth();
   const router = useRouter();
   useAuthLinks();
+  usePushNotifications(state.status === "signedIn");
   const loading = state.status === "loading";
   const signedIn = state.status === "signedIn" && !recoveringPassword;
 

@@ -6,6 +6,7 @@ import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import { Heading, ListItem, Screen } from "../../components/ui";
 import { confirmAction } from "../../lib/confirm";
+import { forgetPushToken } from "../../lib/push";
 import { colors, space, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
@@ -15,7 +16,7 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   function confirmSignOut() {
-    confirmAction({ title: "Sair da conta", message: "Você precisará entrar de novo para usar o app.", confirmLabel: "Sair", cancelLabel: "Ficar", destructive: false, onConfirm: () => void signOut() });
+    confirmAction({ title: "Sair da conta", message: "Você precisará entrar de novo para usar o app.", confirmLabel: "Sair", cancelLabel: "Ficar", destructive: false, onConfirm: () => void forgetPushToken().finally(() => signOut()) });
   }
 
   return <Screen>

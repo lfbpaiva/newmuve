@@ -77,6 +77,9 @@ export async function signIn(email: string, password: string): Promise<void> {
   if (error) throw authError(error);
 }
 
+export const registerDevice = (token: string) => apiRequest("/me/dispositivos", { method: "POST", body: { token } });
+export const unregisterDevice = (token: string) => apiRequest("/me/dispositivos/remover", { method: "POST", body: { token } });
+
 export const completeProfile = (dados: { role: Role; nome: string; aceiteTermos: boolean }) =>
   apiRequest("/me/perfil", { method: "POST", body: dados });
 

@@ -40,7 +40,13 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#6d4aff"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

@@ -15,13 +15,19 @@ export interface NotificationInput {
   link: string | null;
 }
 
+export interface PushGateway {
+  register(userId: string, token: string): Promise<void>;
+  unregister(userId: string, token: string): Promise<void>;
+  send(userId: string, message: { titulo: string; texto: string; link: string | null }): Promise<void>;
+}
+
 export interface Inbox {
   add(notification: NotificationInput): Promise<void>;
   markAllRead(userId: string): Promise<void>;
 }
 
-export function createNotifier(deps: { accounts: AccountStore; events: EventStore; inbox: Inbox; mailer: Mailer; appUrl: string }) {
-  const { accounts, events, inbox, mailer, appUrl } = deps;
+export function createNotifier(deps: { accounts: AccountStore; events: EventStore; inbox: Inbox; mailer: Mailer; appUrl: string; push?: PushGateway }) {
+  const { accounts, events, inbox, mailer, appUrl, push } = deps;
 
   async function notify(userId: string | null, titulo: string, texto: string, link: string | null, { email = true } = {}): Promise<void> {
     if (!userId) return;
@@ -29,6 +35,9 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       await inbox.add({ userId, titulo, texto, link });
     } catch (error) {
       console.error("Falha ao registrar notificação", titulo, error);
+    }
+    if (push) {
+      await push.send(userId, { titulo, texto, link }).catch((error: unknown) => console.error("Falha ao enviar push", titulo, error));
     }
     if (!email) return;
     try {

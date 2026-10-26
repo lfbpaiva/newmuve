@@ -33,6 +33,10 @@ export const signupSchema = z.object({
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
+export const dispositivoSchema = z.object({
+  token: z.string({ error: "Token inválido." }).regex(/^Expo(nent)?PushToken\[.+\]$/, "Token inválido."),
+});
+
 export const completarPerfilSchema = z.object({
   role: z.enum(["MUSICIAN", "CONTRACTOR"], { error: "Selecione o tipo de conta." }),
   nome,

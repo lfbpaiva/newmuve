@@ -1,7 +1,7 @@
 import { camposFaltantes, descreverFaltantes, imageProblem, TERMOS_VERSAO, type AcaoPerfil } from "../../../shared/dominio.ts";
 import type { Account, CompletarPerfilInput, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import type { Inbox } from "./notifications.ts";
+import type { Inbox, PushGateway } from "./notifications.ts";
 
 export interface AccountStore {
   documentExists(documento: string, exceptUserId?: string): Promise<boolean>;
@@ -54,6 +54,7 @@ export function createAccountService(deps: {
   inbox: Pick<Inbox, "markAllRead">;
   releaseAccount(user: AuthUser, role: Role): Promise<void>;
   cnpj: CnpjLookup;
+  devices?: Pick<PushGateway, "register" | "unregister">;
 }) {
   const { store, auth, images } = deps;
 
@@ -78,6 +79,14 @@ export function createAccountService(deps: {
       if (await store.findAccount(user.id)) throw new AppError(409, "PERFIL_EXISTENTE", "Esta conta já tem um perfil.");
       await store.createProfile(user.id, { role: input.role, nome: input.nome });
       await auth.recordTermsAcceptance(user.id, TERMOS_VERSAO);
+    },
+
+    async registerDevice(user: AuthUser, token: string): Promise<void> {
+      await deps.devices?.register(user.id, token);
+    },
+
+    async unregisterDevice(user: AuthUser, token: string): Promise<void> {
+      await deps.devices?.unregister(user.id, token);
     },
 
     async markNotificationsRead(user: AuthUser): Promise<void> {

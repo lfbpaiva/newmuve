@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
-import { completarPerfilSchema, deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
+import { completarPerfilSchema, deleteAccountSchema, dispositivoSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, contestacaoSchema, inscricoesSchema, propostaSchema, resolucaoSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
@@ -138,6 +138,18 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.post("/me/perfil", async (c) => {
     await accounts.completeProfile(c.get("user"), completarPerfilSchema.parse(await readJson(c)));
     return c.body(null, 201);
+  });
+
+  app.post("/me/dispositivos", async (c) => {
+    const { token } = dispositivoSchema.parse(await readJson(c));
+    await accounts.registerDevice(c.get("user"), token);
+    return c.body(null, 204);
+  });
+
+  app.post("/me/dispositivos/remover", async (c) => {
+    const { token } = dispositivoSchema.parse(await readJson(c));
+    await accounts.unregisterDevice(c.get("user"), token);
+    return c.body(null, 204);
   });
 
   app.post("/me/notificacoes/lidas", async (c) => {
