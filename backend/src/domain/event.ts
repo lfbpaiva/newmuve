@@ -97,6 +97,7 @@ export interface PaymentRecord {
   valorCache: number;
   status: PaymentStatus;
   repasseStatus: PayoutStatus | null;
+  asaasTransferId: string | null;
   refundStatus: RefundStatus | null;
   refundAction: RefundAction | null;
   refundRequestedAt: Date | null;

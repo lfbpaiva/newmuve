@@ -37,7 +37,8 @@ export function memoryWorld() {
   const events = new Map<string, EventRecord>();
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
-  const payments = new Map<string, PaymentRecord & { asaasTransferId?: string; createdAt: number }>();
+  const payments = new Map<string, PaymentRecord & { createdAt: number }>();
+  const asaasTransfers = new Map<string, string>();
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
   const images = new Set<string>();
   const customers = new Map<string, string>();
@@ -166,6 +167,7 @@ export function memoryWorld() {
         status: "PENDENTE" as const,
         valorCache: Math.round((data.valor - data.valorComissao) * 100) / 100,
         repasseStatus: null,
+        asaasTransferId: null,
         refundStatus: null,
         refundAction: null,
         refundRequestedAt: null,
@@ -271,8 +273,11 @@ export function memoryWorld() {
     transferPix: async (transfer) => {
       if (failures.transfer) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada na transferência");
       asaasCalls.transferPix.push({ value: transfer.value, pixAddressKey: transfer.pixAddressKey, pixAddressKeyType: transfer.pixAddressKeyType });
-      return { id: nextId("tra_"), status: "PENDING" };
+      const id = nextId("tra_");
+      asaasTransfers.set(id, "PENDING");
+      return { id, status: "PENDING" };
     },
+    getTransferStatus: async (transferId) => asaasTransfers.get(transferId) ?? null,
   };
 
   return {
@@ -285,6 +290,7 @@ export function memoryWorld() {
     images,
     webhookEvents,
     asaasCharges,
+    asaasTransfers,
     asaasCalls,
     failures,
     sent,

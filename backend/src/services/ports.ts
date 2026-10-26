@@ -76,4 +76,5 @@ export interface AsaasGateway {
     description: string;
     externalReference: string;
   }): Promise<{ id: string; status: string }>;
+  getTransferStatus(transferId: string): Promise<string | null>;
 }

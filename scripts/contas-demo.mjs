@@ -7,7 +7,7 @@ const PASSWORD = "teste123";
 const unsplash = (id) => `https://images.unsplash.com/photo-${id}?w=400&h=400&fit=crop`;
 
 const contas = [
-  { email: "teste@teste.com", role: "MUSICIAN", perfil: { nome_completo: "Músico Teste", documento: "52998224725", telefone: "45999990001", foto_perfil_url: unsplash("1510915361894-db8b60106cb1"), uf: "PR", cidade: "Cascavel", estilos_musicais: ["Rock", "MPB", "Sertanejo"], bio: "Conta de demonstração. Voz e violão, repertório variado.", chave_pix_tipo: "EMAIL", chave_pix: "teste@teste.com" } },
+  { email: "teste@teste.com", role: "MUSICIAN", perfil: { nome_completo: "Músico Teste", documento: "52998224725", telefone: "45999990001", foto_perfil_url: unsplash("1510915361894-db8b60106cb1"), uf: "PR", cidade: "Cascavel", estilos_musicais: ["Rock", "MPB", "Sertanejo"], bio: "Conta de demonstração. Voz e violão, repertório variado.", chave_pix_tipo: "EMAIL", chave_pix: "cliente-a00001@pix.bcb.gov.br" } },
   { email: "contratante@teste.com", role: "CONTRACTOR", perfil: { nome_fantasia: "Bar Teste", documento: "11222333000181", telefone: "45322210001", foto_perfil_url: unsplash("1514933651103-005eec06c04b"), uf: "PR", cidade: "Cascavel" } },
 ];
 

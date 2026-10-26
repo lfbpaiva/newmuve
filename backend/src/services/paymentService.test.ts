@@ -324,6 +324,20 @@ describe("repasse ao músico", () => {
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
   });
 
+  it("consulta a transferência na Asaas quando a notificação não chega", async () => {
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const transferId = t.world.payments.get(payment.id)!.asaasTransferId!;
+
+    await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+
+    t.world.asaasTransfers.set(transferId, "DONE");
+    await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
   it("falha na transferência fica registrada e pode ser tentada de novo", async () => {
     const payment = await contratado();
     t.world.failures.transfer = true;

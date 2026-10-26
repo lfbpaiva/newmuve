@@ -111,7 +111,7 @@ export default function CheckoutScreen() {
   return <View style={styles.screen}>
     <Screen>
       {generating && <Loading label="Gerando cobrança Pix..." cards={1}/>}
-      {!generating && error && <ErrorState message={error} onRetry={generate}/>}
+      {!generating && error ? <ErrorState message={error} onRetry={generate}/> : null}
       {!generating && !error && checkout && <View style={[styles.cardRaised, { alignItems: "center", gap: space.md }]}>
         <Text style={type.title}>{expired ? "Cobrança expirada" : "Pague com Pix"}</Text>
         {checkout.pixQrCode ? <View style={{ padding: 10, backgroundColor: "#fff", borderRadius: radius.md, opacity: expired ? 0.25 : 1 }}><Image source={{ uri: `data:image/png;base64,${checkout.pixQrCode}` }} style={{ width: 196, height: 196 }} accessibilityLabel="QR Code Pix"/></View> : null}

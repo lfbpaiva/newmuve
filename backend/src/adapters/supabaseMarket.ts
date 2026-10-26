@@ -43,6 +43,7 @@ interface PaymentRow {
   valor_cache: number | string;
   status: PaymentStatus;
   repasse_status: PayoutStatus | null;
+  repasse_asaas_id: string | null;
   refund_status: RefundStatus | null;
   refund_action: RefundAction | null;
   refund_requested_at: string | null;
@@ -89,6 +90,7 @@ const toPayment = (row: PaymentRow): PaymentRecord => ({
   valorCache: Number(row.valor_cache),
   status: row.status,
   repasseStatus: row.repasse_status,
+  asaasTransferId: row.repasse_asaas_id ?? null,
   refundStatus: row.refund_status ?? null,
   refundAction: row.refund_action ?? null,
   refundRequestedAt: row.refund_requested_at ? new Date(row.refund_requested_at) : null,

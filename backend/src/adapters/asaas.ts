@@ -26,7 +26,7 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
     if (response.status === 404 && options.allowNotFound) return null;
     if (!response.ok) {
       const detail = await response.json().catch(() => null) as { errors?: Array<{ code?: string; description?: string }> } | null;
-      console.error(`Asaas ${method} ${path}: HTTP ${response.status}`, detail?.errors?.map((item) => item.code) ?? []);
+      console.error(`Asaas ${method} ${path}: HTTP ${response.status}`, detail?.errors?.map((item) => `${item.code}: ${item.description}`) ?? []);
       if (path.endsWith("/pixQrCode") && response.status === 400 && detail?.errors?.some((item) => item.code === "invalid_action")) {
         throw new AppError(503, "PAGAMENTO_QR_INDISPONIVEL", "O QR Code Pix ainda não está disponível. Tente novamente em instantes.");
       }
@@ -117,6 +117,11 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
     async transferPix(transfer) {
       const created = await request<{ id: string; status: string }>("POST", "/transfers", transfer);
       return { id: requireId(created?.id, "POST /transfers"), status: created?.status ?? "PENDING" };
+    },
+
+    async getTransferStatus(transferId) {
+      const transfer = await request<{ status: string }>("GET", `/transfers/${encodeURIComponent(transferId)}`, undefined, { allowNotFound: true });
+      return transfer?.status ?? null;
     },
   };
 }

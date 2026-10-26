@@ -115,7 +115,7 @@ function Opportunity({ eventId }: { eventId: string }) {
           : <Button title="Inscrever-se" icon="paper-plane-outline" onPress={() => run(() => applyToEvent(event.id))} loading={busy}/>
         : <Alert tone="info">As inscrições para este evento estão encerradas.</Alert>)}
       {!hired && application && <>
-        <Alert tone={application.status === "RECUSADO" ? "info" : "success"}>{application.status === "RECUSADO" ? "Outro músico foi contratado para este evento." : "Inscrição enviada. Você será avisado por e-mail se for aprovado."}</Alert>
+        <Alert tone={application.status === "RECUSADO" ? "info" : "success"}>{application.status === "RECUSADO" ? "Outro músico foi contratado para este evento." : "Inscrição enviada. Acompanhe a resposta do contratante em Inscrições."}</Alert>
         {application.status === "PENDENTE" && <Button variant="outlined" title={cancellable ? "Cancelar inscrição" : "Cancelamento indisponível (menos de 24h)"} disabled={!cancellable} loading={busy} onPress={() => run(() => cancelApplication(event.id))}/>}
       </>}
       {error ? <Alert tone="error">{error}</Alert> : null}

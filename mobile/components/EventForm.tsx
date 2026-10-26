@@ -16,7 +16,7 @@ const maskTime = (v: string) => v.replace(/\D/g, "").slice(0, 4).replace(/(\d{2}
 const toIsoDate = (br: string) => br.split("/").reverse().join("-");
 const fromIsoDate = (iso: string) => iso.split("-").reverse().join("/");
 
-function initialForm(event: EditableEvent | null) {
+function initialForm(event: EditableEvent | null, local?: { uf: string | null; cidade: string | null }) {
   const inicio = event ? new Date(event.inicio) : null;
   return {
     titulo: event?.titulo ?? "",
@@ -25,8 +25,8 @@ function initialForm(event: EditableEvent | null) {
     horario: inicio ? toTimeInput(inicio) : "",
     duracao: event ? minutesToTimeInput(event.duracaoMinutos) : "",
     cache: event ? String(event.cache).replace(".", ",") : "",
-    uf: event?.uf ?? "",
-    cidade: event?.cidade ?? "",
+    uf: event?.uf ?? local?.uf ?? "",
+    cidade: event?.cidade ?? local?.cidade ?? "",
     endereco: event?.endereco ?? "",
     estilosMusicais: event?.estilosMusicais ?? [],
     formacao: event?.formacao ?? "Indiferente",
@@ -35,8 +35,8 @@ function initialForm(event: EditableEvent | null) {
   };
 }
 
-export default function EventForm({ event, onSaved }: { event: EditableEvent | null; onSaved: (id: string) => void }) {
-  const [form, setForm] = useState(() => initialForm(event));
+export default function EventForm({ event, local, onSaved }: { event: EditableEvent | null; local?: { uf: string | null; cidade: string | null }; onSaved: (id: string) => void }) {
+  const [form, setForm] = useState(() => initialForm(event, local));
   const [imagem, setImagem] = useState<UploadFile | null>(null);
   const [preview, setPreview] = useState(event?.imagemUrl ?? "");
   const [error, setError] = useState("");

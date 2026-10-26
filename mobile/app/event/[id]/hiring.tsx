@@ -132,9 +132,11 @@ export default function HiringScreen() {
       <Section title="Valores">
         <View style={[styles.card, { gap: 6 }]}>
           {pagamento ? <>
-            <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(pagamento.cache)}</Text></View>
-            <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço</Text><Text style={type.body}>{formatCurrency(pagamento.comissao)}</Text></View>
-            <View style={styles.between}><Text style={type.titleSmall}>Total pago</Text><Text style={type.price}>{formatCurrency(pagamento.total)}</Text></View>
+            {isContractor ? <>
+              <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(pagamento.cache)}</Text></View>
+              <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço</Text><Text style={type.body}>{formatCurrency(pagamento.comissao)}</Text></View>
+              <View style={styles.between}><Text style={type.titleSmall}>Total pago</Text><Text style={type.price}>{formatCurrency(pagamento.total)}</Text></View>
+            </> : <View style={styles.between}><Text style={type.titleSmall}>Seu cachê</Text><Text style={type.price}>{formatCurrency(pagamento.cache)}</Text></View>}
             <View style={styles.divider}/>
             <Text style={type.bodySmall}>{paymentLabels[pagamento.status]}{pagamento.repasseStatus ? ` · ${payoutLabels[pagamento.repasseStatus]}` : ""}</Text>
           </> : <Text style={type.bodySmall}>Sem pagamento registrado.</Text>}

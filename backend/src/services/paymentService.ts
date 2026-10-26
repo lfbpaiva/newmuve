@@ -22,6 +22,11 @@ export function createPaymentService(deps: {
 }) {
   const { events, payments, accounts, asaas, notifier } = deps;
 
+  async function settlePayout(paymentId: string, transferStatus: string): Promise<void> {
+    if (transferStatus === "DONE") await payments.setPayout(paymentId, { status: "REPASSADO" });
+    if (transferStatus === "FAILED" || transferStatus === "CANCELLED") await payments.setPayout(paymentId, { status: "FALHOU" });
+  }
+
   async function completeRefund(payment: PaymentRecord): Promise<void> {
     const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
     const result = await payments.finalizeRefund(payment.id);
@@ -200,6 +205,11 @@ export function createPaymentService(deps: {
 
     async payout(eventId: string): Promise<void> {
       const payment = await payments.findLatestPayment(eventId);
+      if (payment?.status === "PAGO" && payment.repasseStatus === "PROCESSANDO" && payment.asaasTransferId) {
+        const transferStatus = await asaas.getTransferStatus(payment.asaasTransferId).catch(() => null);
+        if (transferStatus) await settlePayout(payment.id, transferStatus);
+        return;
+      }
       if (payment?.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return;
       if (!(await payments.claimPayout(payment.id))) return;
 
@@ -291,12 +301,7 @@ export function createPaymentService(deps: {
 
       if (notification.transfer) {
         const payment = await payments.findPaymentByTransferId(notification.transfer.id);
-        if (payment?.repasseStatus === "PROCESSANDO") {
-          if (notification.event === "TRANSFER_DONE") await payments.setPayout(payment.id, { status: "REPASSADO" });
-          if (notification.event === "TRANSFER_FAILED" || notification.event === "TRANSFER_CANCELLED") {
-            await payments.setPayout(payment.id, { status: "FALHOU" });
-          }
-        }
+        if (payment?.repasseStatus === "PROCESSANDO") await settlePayout(payment.id, notification.event.replace("TRANSFER_", ""));
       }
 
       const asaasPaymentId = notification.payment?.id;

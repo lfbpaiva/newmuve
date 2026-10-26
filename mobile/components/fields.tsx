@@ -56,7 +56,7 @@ export function ImageField({ label, preview, shape = "circle", onPick, onError }
     const problem = imageProblem({ type: mime, size: asset.fileSize ?? 0 });
     if (problem) return onError(problem);
     const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
-    onPick({ uri: asset.uri, name: `imagem.${extension}`, type: mime }, asset.uri);
+    onPick(asset.file ?? { uri: asset.uri, name: `imagem.${extension}`, type: mime }, asset.uri);
   }
 
   if (shape === "banner") {
