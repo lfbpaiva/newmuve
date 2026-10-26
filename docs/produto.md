@@ -109,10 +109,15 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Horário do evento | Digitado e exibido no fuso do estado do evento (Acre, Amazonas, Rondônia, Roraima, Mato Grosso e Mato Grosso do Sul fora do horário de Brasília) |
 | Cancelamento pelo contratante | Mais de 24h antes: estorno integral. Menos de 24h: sem estorno, cachê vai ao músico. Se o prazo virar enquanto a tela está aberta, a API pede nova confirmação. |
 | Desistência do músico contratado | Antes do início: estorno integral e o evento reabre; só voltam a concorrer os inscritos que perderam para ele (os recusados pelo contratante continuam recusados) |
-| Não comparecimento | Depois do horário, até 7 dias, se ninguém confirmou o show: estorno integral |
+| Não comparecimento | Depois do horário, até 7 dias, se ninguém confirmou o show: estorno integral. Se o músico já confirmou, o caminho é a contestação |
 | Conclusão | Duas confirmações, ou 7 dias após a data sem registro de ausência |
 | Avaliação | 1 a 5 estrelas, uma por pessoa por evento, só depois de concluído |
 | Conversa | Entre o músico e o dono do evento; fecha quando a inscrição é recusada ou o evento termina |
+| Contraproposta | No chat, qualquer uma das partes propõe um valor; a outra aceita ou recusa. Aceita, ela vira o valor da inscrição. Uma proposta nova substitui a anterior |
+| Penalidades do músico | Ausência: multa de 20% do cachê, descontada do próximo repasse, e 15 dias sem ver novos eventos. Desistência com menos de 24h: 15 dias sem ver novos eventos |
+| Contestação | Depois do início do show e até o repasse, qualquer parte contesta; o repasse fica suspenso e o suporte decide (pagar o músico ou devolver ao contratante) |
+| CNPJ | Conferido na Receita Federal (BrasilAPI) ao ser cadastrado; CNPJ inexistente ou inativo é recusado. CPF é validado pelos dígitos |
+| Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
 | Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
 
@@ -219,28 +224,33 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 | RN01/RN02: taxa de 15% descontada do artista, split 85/15 | Adaptado | Taxa de 10% somada ao cachê, paga pelo contratante. A plataforma recebe e transfere por Pix (custódia própria). Em produção, o caminho regulado é o split com Conta Escrow da Asaas. |
 | RN03: cancelamento sem penalidade só com 24h | Implementado | |
 | RN04: cancelamento tardio retém 20% (10% artista, 10% plataforma) | Adaptado | Hoje o músico recebe o cachê inteiro. Mais simples de explicar e mais justo com quem reservou a data. |
-| RN05: ausência gera estorno e multa de 20% no cartão do artista | Parcial | Estorno integral implementado. Sem multa: exigiria cartão do músico na inscrição (RF05), uma barreira grande para quem quer receber, não pagar. |
+| RN05: ausência gera estorno e multa de 20% no cartão do artista | Adaptado | Estorno integral e multa de 20%. A multa é descontada do próximo cachê em vez de cobrada no cartão, para não exigir cartão de quem quer receber. |
 | RN06: data, horário e duração obrigatórios | Implementado | |
 | RN07: busca prioriza Premium e nota alta | Não implementado | Sem plano Premium. O feed ordena por distância e depois por data. |
-| RN08: Shadowban de 15 dias | Não implementado | Trabalho futuro. Hoje a reputação aparece nas avaliações. |
+| RN08: Shadowban de 15 dias | Implementado | Ausência ou desistência com menos de 24h: o músico fica 15 dias sem ver novos eventos no feed. |
 | RN09: informações estratégicas só para contratantes | Interpretado | Perfil completo do músico só para o dono do evento em que ele se inscreveu. |
-| RN10/RF01: KYC de CPF/CNPJ na Receita | Parcial | Validação dos dígitos e um documento por conta; sem consulta à Receita. |
-| RF04: filtro por público-alvo | Não implementado | |
+| RN10/RF01: KYC de CPF/CNPJ na Receita | Parcial | CNPJ consultado na Receita (BrasilAPI); CPF só pelos dígitos, porque não há consulta gratuita. Um documento por conta. |
+| RF04: filtros de busca | Parcial | Busca por texto, período, tipo de evento, cachê mínimo e distância. Sem filtro por público-alvo. |
 | RF05: cartão tokenizado do artista | Não implementado | Ver RN05. |
 | RF06/RF08: escrow e split no gateway | Adaptado | Retenção na conta da plataforma e transferência Pix (sandbox). |
 | RF07: duplo OK | Implementado | Com conclusão automática em 7 dias. |
-| RF09: multas automáticas | Parcial | Só a regra das 24h do contratante. |
+| RF09: multas automáticas | Implementado | Regra das 24h do contratante e multa por ausência do músico. |
 | RF10: avaliação mútua | Implementado | |
 | RNF01: PCI-DSS | Não se aplica | Só Pix; nenhum dado de cartão passa pelo sistema. |
 | RNF02: Docker e Azure | Adaptado | API Node simples de hospedar (Render, Railway); banco no Supabase. |
 | RNF03: log imutável | Parcial | Webhooks registrados e datas em cada tabela; sem trilha de auditoria completa. |
 | RNF04: notificações e webhooks assíncronos | Implementado | |
 | Protótipo: aba Contratos | Adaptado | O comprovante da contratação cumpre esse papel. |
-| Mediação de disputas | Não implementado | Regras objetivas no lugar de mediação manual. |
+| Mediação de disputas | Implementado | Contestação no app; o suporte decide pelo script `scripts/resolver-contestacao.mjs`. |
+| Notificações com o app fechado | Implementado no código | Push da Expo; funciona no app gerado pelo EAS (ver README). |
 
 ## 10. O que ainda falta
 
-1. **Push no celular.** As notificações aparecem com o app aberto. Avisos com o app fechado exigem Expo Notifications num app gerado pelo EAS; o Expo Go no Android não recebe push.
-2. **Hospedagem da API e SMTP.** Passo a passo no README. Sem a API publicada, a Asaas não consegue avisar pagamentos e transferências (o app compensa consultando a Asaas); sem SMTP, a confirmação de cadastro e a recuperação de senha dependem do envio limitado do Supabase.
-3. **Autorização de transferências na Asaas.** No sandbox, cada repasse espera aprovação manual no painel.
-4. **Monografia.** Os itens "Adaptado" e "Não implementado" da seção 9 precisam ser reescritos ou listados como trabalhos futuros.
+1. **Conta Escrow com subcontas.** Desenho completo em [conta-escrow.md](conta-escrow.md). Depende de uma conta sandbox da Asaas como pessoa jurídica.
+2. **Ativar o login com Google** no Supabase e no Google Cloud (passo a passo no README).
+3. **Gerar o app pelo EAS** para as notificações com o app fechado funcionarem (o Expo Go no Android não recebe push).
+4. **Hospedagem da API e SMTP** (passo a passo no README).
+5. **Autorização de transferências na Asaas** no modelo atual (manual no sandbox).
+6. **Plano Premium**: falta o grupo definir o que ele oferece.
+7. **Público geral** (agenda de shows abertos ao público): ideia registrada, sem implementação.
+8. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.

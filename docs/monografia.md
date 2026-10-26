@@ -39,7 +39,7 @@ Trechos prontos para substituir ou complementar as seções do documento "Projet
 - **RF07:** confirmação de realização do evento por ambas as partes (duplo OK).
 - **RF08:** cancelamento, desistência e não comparecimento com devolução ou repasse automáticos.
 - **RF09:** avaliação mútua por estrelas, liberada após a conclusão.
-- **RF10:** notificações dentro do aplicativo, em tempo real.
+- **RF10:** notificações em tempo real dentro do aplicativo e por push, com o aplicativo fechado.
 
 ## 4.4.3 Requisitos não funcionais (como implementados)
 
@@ -63,15 +63,24 @@ A tela "Contratos" do protótipo foi substituída pelo **comprovante da contrata
 | Pagamentos | Asaas (sandbox) | Pix, retenção e transferência por API |
 | Testes | Vitest e pgTAP | Regras, API e banco testados de forma automática |
 
+## Funcionalidades além do escopo inicial (já implementadas)
+
+- Contraproposta de cachê dentro do chat.
+- Busca e filtros no feed (texto, período, tipo de evento, cachê mínimo).
+- Entrada com conta Google.
+- Multa por ausência (20% do cachê, descontada do próximo repasse) e Shadowban de 15 dias.
+- Contestação com decisão do suporte (mediação de disputas).
+- Consulta de CNPJ na Receita Federal.
+- Notificações em tempo real no app e com o app fechado (push).
+
 ## Trabalhos futuros
 
-- Split de pagamento com Conta Escrow da Asaas, o modelo regulado para produção.
-- Plano Premium e prioridade no feed; penalidade (Shadowban) para cancelamentos tardios.
-- Multa ao artista em caso de ausência, por cartão tokenizado.
-- Validação de CPF/CNPJ junto à Receita Federal (KYC).
-- Mediação de disputas e trilha de auditoria completa.
-- Notificações com o aplicativo fechado (push) e publicação nas lojas.
-- Filtro por público-alvo.
+- Split de pagamento com Conta Escrow da Asaas, o modelo regulado para produção (desenho em `docs/conta-escrow.md`).
+- Plano Premium e prioridade no feed.
+- Validação de CPF junto à Receita Federal.
+- Trilha de auditoria completa.
+- Publicação nas lojas, com login pela Apple.
+- Filtro por público-alvo e agenda pública de shows.
 
 ## 5 Considerações finais (complemento)
 

@@ -85,6 +85,32 @@ Atrás de proxy, preencha `TRUSTED_PROXY_IPS`. Railway ou qualquer serviço Node
 
 **Links de confirmação e senha:** em *Authentication → URL Configuration*, inclua `http://localhost:8081/**`, `exp://**` e `muve://**` (e o endereço do app publicado, se houver).
 
+**Entrar com Google:**
+
+1. No [Google Cloud Console](https://console.cloud.google.com/apis/credentials), crie um *ID do cliente OAuth* do tipo *Aplicativo da Web*. Em *URIs de redirecionamento autorizados*, coloque `https://SEU-PROJETO.supabase.co/auth/v1/callback`.
+2. No Supabase, em *Authentication → Sign In / Providers → Google*, ative e cole o *Client ID* e o *Client Secret*.
+3. Confira os redirecionamentos (`http://localhost:8081/**`, `exp://**`, `muve://**`) em *Authentication → URL Configuration*.
+
+Sem isso, o botão "Continuar com Google" avisa que o login ainda não foi ativado.
+
+**Notificações com o app fechado (push):** o Expo Go no Android não recebe push. Para testar:
+
+1. `npm i -g eas-cli`, `eas login` e, na pasta `mobile`, `eas init` (grava o `projectId` no `app.json`).
+2. `eas build --profile development --platform android` e instale o app gerado.
+3. A API envia pelo serviço gratuito da Expo; não precisa de chave.
+
+Dentro do app, as notificações já funcionam em tempo real sem nada disso.
+
+**Contestações:** defina `ADMIN_TOKEN` em `backend/.env` (um texto longo e aleatório). Com a API rodando:
+
+```bash
+node scripts/resolver-contestacao.mjs
+```
+
+lista as contestações abertas, e `node scripts/resolver-contestacao.mjs <id> pagar|devolver "observação"` decide. O aviso de cada contestação nova também vai por e-mail para o suporte, se houver SMTP.
+
+**Conta Escrow (próximo passo do pagamento):** veja [docs/conta-escrow.md](docs/conta-escrow.md). Exige uma conta sandbox da Asaas como pessoa jurídica.
+
 ## Estrutura
 
 ```text
