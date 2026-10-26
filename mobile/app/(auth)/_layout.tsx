@@ -7,5 +7,6 @@ export default function AuthLayout() {
     <Stack.Screen name="signup" options={{ title: "" }}/>
     <Stack.Screen name="recover" options={{ title: "" }}/>
     <Stack.Screen name="reset" options={{ title: "Nova senha", headerShown: false }}/>
+    <Stack.Screen name="completar" options={{ headerShown: false }}/>
   </Stack>;
 }

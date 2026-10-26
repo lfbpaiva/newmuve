@@ -39,7 +39,8 @@
           "photosPermission": "O Muve usa suas fotos para a foto de perfil e a imagem do evento."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": false

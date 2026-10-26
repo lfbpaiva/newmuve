@@ -7,7 +7,8 @@ type AuthState =
   | { status: "loading" }
   | { status: "signedOut"; notice?: string }
   | { status: "error"; notice: string }
-  | { status: "signedIn"; me: Me };
+  | { status: "signedIn"; me: Me }
+  | { status: "needsProfile"; email: string; nomeSugerido: string };
 
 interface AuthContextValue {
   state: AuthState;
@@ -47,6 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .catch(async (error: unknown) => {
           if (!active) return;
           loadedUserId = null;
+          if (error instanceof ApiError && error.status === 404 && session.user.app_metadata?.provider !== "email") {
+            const metadata = session.user.user_metadata ?? {};
+            setState({ status: "needsProfile", email: session.user.email ?? "", nomeSugerido: String(metadata.full_name ?? metadata.name ?? "") });
+            return;
+          }
           const semPerfil = error instanceof ApiError && error.status === 404;
           const sessaoInvalida = error instanceof ApiError && error.status === 401;
           if (semPerfil || sessaoInvalida) {

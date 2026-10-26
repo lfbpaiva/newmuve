@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
-import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
+import { completarPerfilSchema, deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, inscricoesSchema, propostaSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
@@ -133,6 +133,11 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.use("/candidaturas/*", requireUser);
 
   app.get("/me", async (c) => c.json(await accounts.getMe(c.get("user"))));
+
+  app.post("/me/perfil", async (c) => {
+    await accounts.completeProfile(c.get("user"), completarPerfilSchema.parse(await readJson(c)));
+    return c.body(null, 201);
+  });
 
   app.post("/me/notificacoes/lidas", async (c) => {
     await accounts.markNotificationsRead(c.get("user"));

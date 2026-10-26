@@ -8,7 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
-import { supabase } from "../lib/client";
+import { consumeAuthLink } from "../lib/authLinks";
 import { colors, stackOptions } from "../lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -34,16 +34,7 @@ function WebFrame({ children }: { children: ReactNode }) {
 function useAuthLinks() {
   const { beginPasswordRecovery } = useAuth();
   useEffect(() => {
-    async function handle(url: string | null) {
-      if (!url?.includes("access_token=")) return;
-      const params = new URLSearchParams(url.split("#")[1] ?? url.split("?")[1] ?? "");
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
-      if (!access_token || !refresh_token) return;
-      if (params.get("type") === "recovery") beginPasswordRecovery();
-      await supabase.auth.setSession({ access_token, refresh_token });
-      if (Platform.OS === "web") window.history.replaceState(null, "", window.location.pathname);
-    }
+    const handle = (url: string | null) => consumeAuthLink(url, beginPasswordRecovery);
     Linking.getInitialURL().then(handle);
     const subscription = Linking.addEventListener("url", (event) => handle(event.url));
     return () => subscription.remove();
@@ -61,7 +52,8 @@ function AuthGate() {
     if (loading) return;
     SplashScreen.hideAsync().catch(() => {});
     if (recoveringPassword) router.replace("/(auth)/reset");
-  }, [loading, recoveringPassword, router]);
+    else if (state.status === "needsProfile") router.replace("/(auth)/completar");
+  }, [loading, recoveringPassword, state.status, router]);
 
   if (loading) return null;
 

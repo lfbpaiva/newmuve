@@ -36,6 +36,10 @@ function fakes() {
       return { userId };
     },
     verifyPassword: async (email, password) => [...users.values()].some((u) => u.email === email && u.password === password),
+    recordTermsAcceptance: async (userId, termosVersao) => {
+      const existing = users.get(userId);
+      if (existing) existing.termosVersao = termosVersao;
+    },
     deleteUser: async (userId) => {
       users.delete(userId);
       accounts.delete(userId);
@@ -172,5 +176,19 @@ describe("exclusão de conta", () => {
 
     expect(t.accounts.size).toBe(0);
     await expect(t.service.signup(musico)).resolves.toBeUndefined();
+  });
+});
+
+describe("cadastro pelo Google", () => {
+  it("cria o perfil de quem entrou sem cadastro e registra o aceite dos Termos", async () => {
+    const t = fakes();
+    t.users.set("google-1", { email: "ana@gmail.com", password: "", termosVersao: "" });
+    const google = { id: "google-1", email: "ana@gmail.com" };
+
+    await t.service.completeProfile(google, { role: "CONTRACTOR", nome: "Ana Eventos", aceiteTermos: true });
+
+    expect(t.accounts.get("google-1")).toMatchObject({ role: "CONTRACTOR", nome: "Ana Eventos" });
+    expect(t.users.get("google-1")?.termosVersao).toBe(TERMOS_VERSAO);
+    await expect(t.service.completeProfile(google, { role: "MUSICIAN", nome: "Outro", aceiteTermos: true })).rejects.toMatchObject({ code: "PERFIL_EXISTENTE" });
   });
 });

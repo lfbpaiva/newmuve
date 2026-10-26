@@ -33,6 +33,13 @@ export const signupSchema = z.object({
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
+export const completarPerfilSchema = z.object({
+  role: z.enum(["MUSICIAN", "CONTRACTOR"], { error: "Selecione o tipo de conta." }),
+  nome,
+  aceiteTermos: z.literal(true, { error: "Aceite os Termos de Uso para criar a conta." }),
+});
+export type CompletarPerfilInput = z.infer<typeof completarPerfilSchema>;
+
 const optionalText = <T>(schema: z.ZodType<T, string>) =>
   z
     .string()

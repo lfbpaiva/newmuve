@@ -6,6 +6,7 @@ import { forgetEmail, rememberedEmail, rememberEmail, signIn } from "../../../sh
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { isValidEmail, sanitizeEmail } from "../../../shared/client/validators.ts";
+import { GoogleButton } from "../../components/GoogleButton";
 import { Alert, Button, Checkbox, Field, PasswordField, Screen } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 
@@ -59,6 +60,7 @@ export default function LoginScreen() {
       </View>
       {(error || notice) ? <Alert tone="error">{error || notice}</Alert> : null}
       <Button title="Entrar" icon="log-in-outline" onPress={login} loading={submitting}/>
+      <GoogleButton onError={setError}/>
       <Text style={[type.bodySmall, { textAlign: "center" }]}>Ainda não tem uma conta? <Link href="/(auth)/signup" style={[type.label, { color: colors.accentText }]}>Criar conta</Link></Text>
     </View>
   </Screen>;

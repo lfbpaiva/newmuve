@@ -5,10 +5,11 @@ import { signUp, type Role } from "../../../shared/client/account.ts";
 import { ApiError, errorMessage } from "../../../shared/client/api.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
 import { isValidEmail, SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
+import { GoogleButton } from "../../components/GoogleButton";
 import { Alert, Button, Checkbox, Field, Heading, Icon, PasswordField, Screen, type IconName } from "../../components/ui";
 import { colors, radius, space, type } from "../../lib/theme";
 
-const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
+export const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
   { value: "MUSICIAN", icon: "musical-notes-outline", title: "Sou músico", sub: "Quero encontrar shows" },
   { value: "CONTRACTOR", icon: "storefront-outline", title: "Sou contratante", sub: "Quero contratar talentos" },
 ];
@@ -86,5 +87,6 @@ export default function SignupScreen() {
     {error ? <Alert tone="error">{error}</Alert> : null}
     {waiting && !error ? <Alert tone="info">Muitas tentativas de cadastro em pouco tempo. Aguarde alguns instantes; o botão volta a funcionar sozinho.</Alert> : null}
     <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting}/>
+    <GoogleButton onError={setError}/>
   </Screen>;
 }

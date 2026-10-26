@@ -1,5 +1,5 @@
 import { camposFaltantes, descreverFaltantes, imageProblem, TERMOS_VERSAO, type AcaoPerfil } from "../../../shared/dominio.ts";
-import type { Account, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
+import type { Account, CompletarPerfilInput, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import type { Inbox } from "./notifications.ts";
 
@@ -16,6 +16,7 @@ export interface AuthGateway {
   signUp(email: string, password: string, termosVersao: string, redirectTo?: string): Promise<{ userId: string } | { emailTaken: true }>;
   verifyPassword(email: string, password: string): Promise<boolean>;
   deleteUser(userId: string): Promise<void>;
+  recordTermsAcceptance(userId: string, termosVersao: string): Promise<void>;
 }
 
 export type ImageBucket = "avatars" | "event-banners";
@@ -65,6 +66,12 @@ export function createAccountService(deps: {
         });
         throw error;
       }
+    },
+
+    async completeProfile(user: AuthUser, input: CompletarPerfilInput): Promise<void> {
+      if (await store.findAccount(user.id)) throw new AppError(409, "PERFIL_EXISTENTE", "Esta conta já tem um perfil.");
+      await store.createProfile(user.id, { role: input.role, nome: input.nome });
+      await auth.recordTermsAcceptance(user.id, TERMOS_VERSAO);
     },
 
     async markNotificationsRead(user: AuthUser): Promise<void> {

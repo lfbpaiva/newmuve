@@ -76,6 +76,9 @@ export async function signIn(email: string, password: string): Promise<void> {
   if (error) throw authError(error);
 }
 
+export const completeProfile = (dados: { role: Role; nome: string; aceiteTermos: boolean }) =>
+  apiRequest("/me/perfil", { method: "POST", body: dados });
+
 export async function signOut(): Promise<void> {
   await supabase().auth.signOut({ scope: "local" });
 }

@@ -141,6 +141,13 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       throw error;
     },
 
+    async recordTermsAcceptance(userId, termosVersao) {
+      const { error } = await admin.auth.admin.updateUserById(userId, {
+        user_metadata: { termos_versao: termosVersao, termos_aceitos_em: new Date().toISOString() },
+      });
+      if (error) throw error;
+    },
+
     async deleteUser(userId) {
       const { error } = await admin.auth.admin.deleteUser(userId);
       if (error) throw error;
