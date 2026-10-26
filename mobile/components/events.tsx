@@ -26,14 +26,14 @@ export function EventStatusPill({ status, encerrado, inscricoesEncerradas }: { s
 }
 
 
-export function EventCard({ event }: { event: EventItem }) {
+export function EventCard({ event, antecipado = false }: { event: EventItem; antecipado?: boolean }) {
   const router = useRouter();
   const { day, month, time } = eventDateParts(event.inicio, event.uf);
   return <Pressable accessibilityRole="button" accessibilityLabel={`${event.titulo}, ${formatCurrency(event.cache)}`} onPress={() => router.push(`/event/${event.id}`)} style={({ pressed }) => ({ gap: space.md, opacity: pressed ? 0.85 : 1 })}>
     <View style={{ height: 240, borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surface }}>
       <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }}/>
       <LinearGradient colors={["#0a0a0c66", "transparent", "#0a0a0ce6"]} locations={[0, 0.4, 1]} style={{ position: "absolute", inset: 0 }}/>
-      <View style={{ position: "absolute", top: 12, left: 12, flexDirection: "row", gap: 6 }}><Tag text={event.estilosMusicais.length > 1 ? `${event.estilosMusicais[0]} +${event.estilosMusicais.length - 1}` : event.estilosMusicais[0]} onImage/>{event.distanciaKm ? <Tag text={`${event.distanciaKm} km`} onImage/> : <Tag text="Sua cidade" onImage/>}</View>
+      <View style={{ position: "absolute", top: 12, left: 12, flexDirection: "row", gap: 6 }}><Tag text={event.estilosMusicais.length > 1 ? `${event.estilosMusicais[0]} +${event.estilosMusicais.length - 1}` : event.estilosMusicais[0]} onImage/>{event.distanciaKm ? <Tag text={`${event.distanciaKm} km`} onImage/> : <Tag text="Sua cidade" onImage/>}{antecipado ? <Tag text="Pro · 24h antes" onImage/> : null}</View>
       <View style={{ position: "absolute", right: 12, top: 12, alignItems: "flex-end" }}>
         <Text style={[type.stat, { fontSize: 34, lineHeight: 34 }]}>{day}</Text>
         <Text style={[type.labelSmall, { color: colors.ink }]}>{month} · {time}</Text>

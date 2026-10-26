@@ -22,6 +22,7 @@ export interface Me {
   chavePix?: string | null;
   portfolioUrl?: string | null;
   visibilidadeReduzidaAte?: string | null;
+  proAte?: string | null;
 }
 
 export interface ProfileData {

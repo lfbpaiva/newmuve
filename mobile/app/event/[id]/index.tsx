@@ -23,7 +23,7 @@ import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, camposFaltantes, descreverFaltantes, hasCancellationNotice } from "../../../../shared/dominio.ts";
 import { EventStatusPill, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
-import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, RatingSummary, Screen, Section, Tag, type IconName } from "../../../components/ui";
+import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
 import { useMe } from "../../../lib/useMe";
@@ -212,7 +212,7 @@ function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheO
   return <View style={[styles.card, { gap: space.md }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
       <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={56}/>
-      <View style={{ flex: 1 }}><Text style={type.titleSmall}>{musician.nome}</Text><Text style={type.bodySmall}>{musician.cidade}, {musician.uf} · {musician.estilosMusicais.join(", ")}</Text><RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/></View>
+      <View style={{ flex: 1 }}><View style={[styles.row, { gap: 6 }]}><Text style={type.titleSmall}>{musician.nome}</Text>{musician.pro ? <Pill text="Pro" tone="accent"/> : null}</View><Text style={type.bodySmall}>{musician.cidade}, {musician.uf} · {musician.estilosMusicais.join(", ")}</Text><RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/></View>
       <Icon name="chevron-forward" size={18} color={colors.ink3}/>
     </Pressable>
     {musician.bio ? <Text style={type.bodySmall}>{musician.bio}</Text> : null}

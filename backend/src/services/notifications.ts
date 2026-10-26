@@ -262,6 +262,15 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       ]);
     },
 
+    async proActivated(musicianId: string, ate: Date): Promise<void> {
+      await notify(
+        musicianId,
+        "Muve Pro ativo",
+        `Seu Muve Pro vale até ${formatDateTime(ate).split(" às ")[0]}: eventos novos 24h antes, destaque nas inscrições e raio de até 400 km.`,
+        "/pro",
+      );
+    },
+
     async payoutDone(event: EventRecord): Promise<void> {
       await notify(event.musicoContratadoId, `Cachê repassado: "${event.titulo}"`, "A transferência para a sua chave Pix foi concluída.", hiringLink(event));
     },

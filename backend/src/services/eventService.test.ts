@@ -106,7 +106,7 @@ describe("candidatura", () => {
   it("aceita cidade vizinha dentro do raio máximo e recusa o que está além dele", async () => {
     const vizinha = t.world.seedEvent({ cidade: "Toledo" });
     const noRaio = t.world.seedEvent({ cidade: "Foz do Iguacu" });
-    const longe = t.world.seedEvent({ cidade: "Curitiba" });
+    const longe = t.world.seedEvent({ cidade: "Londrina" });
     const desconhecida = t.world.seedEvent({ cidade: "Cidade Inexistente" });
 
     await expect(t.service.apply(musico, vizinha.id, null, NOW)).resolves.toBeUndefined();
@@ -915,5 +915,26 @@ describe("contestação", () => {
   it("não abre contestação antes do show nem depois do repasse", async () => {
     const { event } = await hired(hoursFromNow(48));
     await expect(t.service.openDispute(contratante, event.id, "Quero contestar antes.", NOW)).rejects.toMatchObject({ code: "CONTESTACAO_INDISPONIVEL" });
+  });
+});
+
+describe("acesso antecipado do Muve Pro", () => {
+  it("evento novo com mais de 7 dias de antecedência só aceita músicos Pro nas primeiras 24h", async () => {
+    const novo = t.world.seedEvent({ createdAt: hoursFromNow(-2), inicio: hoursFromNow(24 * 10) });
+    const emCimaDaHora = t.world.seedEvent({ createdAt: hoursFromNow(-2), inicio: hoursFromNow(24 * 3) });
+
+    await expect(t.service.apply(musico, novo.id, null, NOW)).rejects.toMatchObject({ code: "ACESSO_ANTECIPADO" });
+    await expect(t.service.apply(musico, emCimaDaHora.id, null, NOW)).resolves.toBeUndefined();
+
+    t.world.accounts.get("m1")!.proAte = hoursFromNow(24 * 30);
+    await expect(t.service.apply(musico, novo.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("músico Pro se inscreve em eventos a até 400 km", async () => {
+    const longe = t.world.seedEvent({ cidade: "Londrina" });
+
+    await expect(t.service.apply(musico, longe.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
+    t.world.accounts.get("m1")!.proAte = hoursFromNow(24 * 30);
+    await expect(t.service.apply(musico, longe.id, null, NOW)).resolves.toBeUndefined();
   });
 });

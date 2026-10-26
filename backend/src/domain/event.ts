@@ -102,7 +102,7 @@ export type ReviewInput = z.infer<typeof reviewSchema>;
 export const asaasWebhookSchema = z.object({
   id: z.string().min(1),
   event: z.string().min(1),
-  payment: z.object({ id: z.string().min(1) }).optional(),
+  payment: z.object({ id: z.string().min(1), subscription: z.string().nullish() }).optional(),
   transfer: z.object({ id: z.string().min(1) }).optional(),
 });
 export type AsaasWebhook = z.infer<typeof asaasWebhookSchema>;
@@ -127,6 +127,7 @@ export interface EventRecord {
   confirmacaoMusico: boolean;
   confirmacaoContratante: boolean;
   inscricoesEncerradas: boolean;
+  createdAt: Date;
 }
 
 export interface CandidateRecord {

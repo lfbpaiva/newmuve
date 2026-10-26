@@ -20,7 +20,13 @@ export const FORMACOES = ["Indiferente", "Solo", "Dupla", "Trio", "Banda"] as co
 export type Formacao = (typeof FORMACOES)[number];
 
 export const RAIOS_FEED_KM = [0, 50, 100, 200] as const;
+export const RAIOS_FEED_PRO_KM = [0, 50, 100, 200, 400] as const;
 export const RAIO_MAXIMO_KM = 200;
+export const PRO_RAIO_MAXIMO_KM = 400;
+export const PRO_PRECO = 19.9;
+export const PRO_DIAS_POR_PAGAMENTO = 31;
+export const PRO_ANTECIPACAO_HORAS = 24;
+export const PRO_ANTECEDENCIA_MINIMA_DIAS = 7;
 
 export const TIPOS_CHAVE_PIX = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"] as const;
 export type TipoChavePix = (typeof TIPOS_CHAVE_PIX)[number];
@@ -136,14 +142,25 @@ export const normalizeCidade = (value: string) =>
     .trim()
     .toLowerCase();
 
+export const isPro = (proAte: Date | string | null | undefined, now = new Date()) => Boolean(proAte && new Date(proAte).getTime() > now.getTime());
+
+export function emAcessoAntecipado(evento: { inicio: Date | string; criadoEm: Date | string }, now = new Date()): boolean {
+  const criado = new Date(evento.criadoEm).getTime();
+  const inicio = new Date(evento.inicio).getTime();
+  return now.getTime() - criado < PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000 && inicio - criado > PRO_ANTECEDENCIA_MINIMA_DIAS * 24 * 60 * 60 * 1000;
+}
+
+export const liberadoParaTodosEm = (criadoEm: Date | string) => new Date(new Date(criadoEm).getTime() + PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000);
+
 export function eventMatchesMusician(
   event: { uf: string; cidade: string; estilosMusicais: readonly string[] },
   musician: { uf: string; cidade: string; estilosMusicais: readonly string[] },
   distanciaKm: number | null = null,
+  raioMaximoKm: number = RAIO_MAXIMO_KM,
 ): boolean {
   if (!estilosCompativeis(event.estilosMusicais, musician.estilosMusicais)) return false;
   const mesmaCidade = event.uf === musician.uf && normalizeCidade(event.cidade) === normalizeCidade(musician.cidade);
-  return mesmaCidade || (distanciaKm !== null && distanciaKm <= RAIO_MAXIMO_KM);
+  return mesmaCidade || (distanciaKm !== null && distanciaKm <= raioMaximoKm);
 }
 
 export const estilosCompativeis = (doEvento: readonly string[], doMusico: readonly string[]) =>

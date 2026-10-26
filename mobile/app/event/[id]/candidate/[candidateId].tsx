@@ -31,7 +31,7 @@ export default function CandidateProfileScreen() {
       <View style={[styles.row, { gap: space.lg }]}>
         <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={88}/>
         <View style={{ flex: 1, gap: space.sm }}>
-          <Pill text={pill.text} tone={pill.tone}/>
+          <View style={[styles.row, { gap: 6, flexWrap: "wrap" }]}><Pill text={pill.text} tone={pill.tone}/>{musician.pro ? <Pill text="Pro" tone="accent"/> : null}</View>
           <Text style={type.headline} accessibilityRole="header">{musician.nome}</Text>
           <Text style={type.bodySmall}>{musician.cidade && musician.uf ? `${musician.cidade}, ${musician.uf}` : "Cidade não informada"}</Text>
           <RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/>

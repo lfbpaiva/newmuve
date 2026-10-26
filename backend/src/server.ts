@@ -11,12 +11,14 @@ import {
   createTokenVerifier,
 } from "./adapters/supabase.ts";
 import { createExpoPush } from "./adapters/expoPush.ts";
+import { createProStore } from "./adapters/supabasePro.ts";
 import { createCnpjLookup } from "./adapters/receita.ts";
 import { createEventStore, createInbox, createPaymentStore } from "./adapters/supabaseMarket.ts";
 import { createApp } from "./http/app.ts";
 import { createAccountService } from "./services/accountService.ts";
 import { createEventService } from "./services/eventService.ts";
 import { createNotifier } from "./services/notifications.ts";
+import { createProService } from "./services/proService.ts";
 import { createPaymentService } from "./services/paymentService.ts";
 
 const envFile = new URL("../.env", import.meta.url);
@@ -62,17 +64,20 @@ const inbox = createInbox(admin);
 const push = createExpoPush(admin);
 const notifier = createNotifier({ accounts: accountStore, events: eventStore, inbox, mailer: smtp, appUrl: allowedOrigins[0], push });
 
+const asaas = createAsaasGateway({
+  apiUrl: process.env.ASAAS_API_URL || "https://api-sandbox.asaas.com/v3",
+  apiKey: process.env.ASAAS_API_KEY || undefined,
+});
+
 const payments = createPaymentService({
   events: eventStore,
   payments: createPaymentStore(admin),
   accounts: accountStore,
   notifier,
-  asaas: createAsaasGateway({
-    apiUrl: process.env.ASAAS_API_URL || "https://api-sandbox.asaas.com/v3",
-    apiKey: process.env.ASAAS_API_KEY || undefined,
-  }),
+  asaas,
 });
 
+const pro = createProService({ accounts: accountStore, store: createProStore(admin), asaas, notifier });
 const events = createEventService({ events: eventStore, accounts: accountStore, images, payments, notifier });
 
 const app = createApp({
@@ -91,6 +96,7 @@ const app = createApp({
   verifyToken: createTokenVerifier(admin),
   asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || undefined,
   adminToken: process.env.ADMIN_TOKEN || undefined,
+  pro,
   allowedOrigins,
   allowedRedirects: (process.env.ALLOWED_REDIRECTS || "muve://auth,exp://*").split(",").map((u) => u.trim()).filter(Boolean),
 });

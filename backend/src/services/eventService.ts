@@ -1,5 +1,5 @@
-import { CONCLUSAO_AUTOMATICA_MS, eventMatchesMusician, hasCancellationNotice, imageProblem } from "../../../shared/dominio.ts";
-import { formatCurrency } from "../../../shared/formato.ts";
+import { CONCLUSAO_AUTOMATICA_MS, emAcessoAntecipado, eventMatchesMusician, hasCancellationNotice, imageProblem, isPro, liberadoParaTodosEm, PRO_RAIO_MAXIMO_KM, RAIO_MAXIMO_KM } from "../../../shared/dominio.ts";
+import { formatCurrency, formatDateTime } from "../../../shared/formato.ts";
 import type { Account, Role } from "../domain/account.ts";
 import type { CandidateRecord, DecisaoContestacao, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
@@ -145,7 +145,7 @@ export function createEventService(deps: {
         const musician = await accounts.findAccount(candidate.musicianId);
         const distancia = await events.distanceKm(eventId, candidate.musicianId);
         const combina = musician?.uf && musician.cidade
-          && eventMatchesMusician(updated, { uf: musician.uf, cidade: musician.cidade, estilosMusicais: musician.estilosMusicais ?? [] }, distancia);
+          && eventMatchesMusician(updated, { uf: musician.uf, cidade: musician.cidade, estilosMusicais: musician.estilosMusicais ?? [] }, distancia, isPro(musician.proAte, now) ? PRO_RAIO_MAXIMO_KM : RAIO_MAXIMO_KM);
         if (combina) stillValid.push(candidate.musicianId);
         else if (await events.declineCandidate(candidate.id, "EVENTO_ALTERADO")) void notifier.candidateOutOfRange(updated, candidate.musicianId);
       }
@@ -169,8 +169,13 @@ export function createEventService(deps: {
       if (event.status !== "ABERTO" || event.inscricoesEncerradas || event.inicio <= now) {
         throw new AppError(409, "INSCRICOES_ENCERRADAS", "As inscrições para este evento estão encerradas.");
       }
+      const pro = isPro(musician.proAte, now);
+      if (!pro && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt }, now)) {
+        const libera = formatDateTime(liberadoParaTodosEm(event.createdAt), event.uf);
+        throw new AppError(409, "ACESSO_ANTECIPADO", `Este evento está em acesso antecipado para músicos Pro. Ele abre para todos em ${libera}.`);
+      }
       const distanciaKm = await events.distanceKm(eventId, user.id);
-      if (!eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm)) {
+      if (!eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm, pro ? PRO_RAIO_MAXIMO_KM : RAIO_MAXIMO_KM)) {
         throw new AppError(403, "EVENTO_INCOMPATIVEL", "Este evento não é compatível com a região e os estilos do seu perfil.");
       }
       if (await events.musicianHasConflict(user.id, eventId)) throw musicoOcupado();

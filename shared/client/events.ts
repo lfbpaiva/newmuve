@@ -27,6 +27,7 @@ export interface EventItem {
   confirmacaoMusico: boolean;
   confirmacaoContratante: boolean;
   inscricoesEncerradas: boolean;
+  createdAt: string;
   totalCandidatos?: number;
   cachePago?: number;
   distanciaKm?: number;
@@ -74,7 +75,7 @@ export interface Candidate {
   id: string;
   status: CandidateStatus;
   valorProposto: number | null;
-  musician: PublicProfile & { bio: string | null; estilosMusicais: string[]; portfolioUrl: string | null };
+  musician: PublicProfile & { bio: string | null; estilosMusicais: string[]; portfolioUrl: string | null; pro: boolean };
 }
 
 export interface Review {
@@ -145,6 +146,7 @@ interface EventRow {
   confirmacao_musico: boolean;
   confirmacao_contratante: boolean;
   inscricoes_encerradas: boolean;
+  created_at: string;
   event_candidates?: { count: number }[];
   payments?: { valor_cache: number | string; status: PaymentStatus }[];
 }
@@ -164,7 +166,7 @@ interface CandidateRow {
   id: string;
   status: CandidateStatus;
   valor_proposto: number | string | null;
-  musician: ProfileRow & { bio: string | null; estilos_musicais: string[] | null; portfolio_url: string | null };
+  musician: ProfileRow & { bio: string | null; estilos_musicais: string[] | null; portfolio_url: string | null; pro_ate: string | null };
 }
 
 export function unwrap<T>(result: { data: unknown; error: PostgrestError | null }): T {
@@ -194,12 +196,13 @@ const toEvent = (row: EventRow): EventItem => ({
   confirmacaoMusico: row.confirmacao_musico,
   confirmacaoContratante: row.confirmacao_contratante,
   inscricoesEncerradas: row.inscricoes_encerradas,
+  createdAt: row.created_at,
   totalCandidatos: row.event_candidates?.[0]?.count,
   cachePago: row.payments?.filter((p) => p.status === "PAGO").reduce((sum, p) => sum + Number(p.valor_cache), 0),
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
-const CANDIDATE_SELECT = `id, status, valor_proposto, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, ${PUBLIC_PROFILE})`;
+const CANDIDATE_SELECT = `id, status, valor_proposto, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, pro_ate, ${PUBLIC_PROFILE})`;
 
 const toPublicProfile = (row: ProfileRow, nameColumn: "nome_completo" | "nome_fantasia"): PublicProfile => ({
   id: row.user_id,
@@ -222,6 +225,7 @@ const toCandidate = (row: CandidateRow): Candidate => ({
     bio: row.musician.bio,
     estilosMusicais: row.musician.estilos_musicais ?? [],
     portfolioUrl: row.musician.portfolio_url,
+    pro: Boolean(row.musician.pro_ate && new Date(row.musician.pro_ate) > new Date()),
   },
 });
 
@@ -291,7 +295,7 @@ export async function fetchCandidates(eventId: string): Promise<Candidate[]> {
     .select(CANDIDATE_SELECT)
     .eq("event_id", eventId)
     .order("created_at");
-  return unwrap<CandidateRow[]>(result).map(toCandidate);
+  return unwrap<CandidateRow[]>(result).map(toCandidate).sort((a, b) => Number(b.musician.pro) - Number(a.musician.pro));
 }
 
 export async function fetchCandidateProfile(eventId: string, candidateId: string): Promise<Candidate | null> {
@@ -406,3 +410,16 @@ export async function fetchOpenFines(): Promise<number> {
   const result = await supabase().from("penalties").select("multa").is("quitada_em", null).gt("multa", 0);
   return unwrap<{ multa: number | string }[]>(result).reduce((total, row) => total + Number(row.multa), 0);
 }
+
+export interface ProStatus {
+  ativoAte: string | null;
+  assinatura: {
+    status: "AGUARDANDO_PAGAMENTO" | "ATIVA" | "CANCELADA";
+    valor: number;
+    cobranca: { pixCopiaCola: string; pixQrCode: string; vencimento: string } | null;
+  } | null;
+}
+
+export const fetchProStatus = () => apiRequest<ProStatus>("/me/pro");
+export const subscribePro = () => apiRequest<ProStatus>("/me/pro", { method: "POST" });
+export const cancelPro = () => apiRequest<ProStatus>("/me/pro", { method: "DELETE" });

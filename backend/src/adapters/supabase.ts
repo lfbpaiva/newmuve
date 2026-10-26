@@ -62,6 +62,7 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
         account.chavePix = data.chave_pix;
         account.portfolioUrl = data.portfolio_url;
         account.visibilidadeReduzidaAte = data.visibilidade_reduzida_ate ? new Date(data.visibilidade_reduzida_ate) : null;
+        account.proAte = data.pro_ate ? new Date(data.pro_ate) : null;
       }
       return account;
     },

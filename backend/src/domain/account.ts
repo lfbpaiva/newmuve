@@ -118,4 +118,5 @@ export interface Account {
   chavePix?: string | null;
   portfolioUrl?: string | null;
   visibilidadeReduzidaAte?: Date | null;
+  proAte?: Date | null;
 }

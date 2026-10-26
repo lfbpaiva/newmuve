@@ -26,6 +26,7 @@ interface EventRow {
   confirmacao_musico: boolean;
   confirmacao_contratante: boolean;
   inscricoes_encerradas: boolean;
+  created_at: string;
 }
 
 interface CandidateRow {
@@ -88,6 +89,7 @@ const toEvent = (row: EventRow): EventRecord => ({
   confirmacaoMusico: row.confirmacao_musico,
   confirmacaoContratante: row.confirmacao_contratante,
   inscricoesEncerradas: row.inscricoes_encerradas,
+  createdAt: new Date(row.created_at),
 });
 
 const toCandidate = (row: CandidateRow): CandidateRecord => ({

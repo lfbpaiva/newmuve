@@ -9,6 +9,7 @@ import { asaasWebhookSchema, cancelamentoSchema, candidaturaSchema, contestacaoS
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
+import type { ProService } from "../services/proService.ts";
 import { rateLimit } from "./rateLimit.ts";
 
 export interface AppDeps {
@@ -20,6 +21,7 @@ export interface AppDeps {
   allowedRedirects?: string[];
   asaasWebhookToken: string | undefined;
   adminToken?: string;
+  pro?: ProService;
 }
 
 type Env = { Variables: { user: AuthUser; signupInput: SignupInput } };
@@ -54,7 +56,11 @@ function sameToken(received: string | undefined, expected: string | undefined): 
   return diff === 0;
 }
 
-export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken, adminToken }: AppDeps) {
+export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken, adminToken, pro }: AppDeps) {
+  const requirePro = () => {
+    if (!pro) throw new AppError(503, "PRO_INDISPONIVEL", "O Muve Pro não está disponível agora.");
+    return pro;
+  };
   const redirectAllowed = (url: string | undefined) => Boolean(url && (
     allowedOrigins.some((origin) => url === origin || url === `${origin}/auth`)
     || allowedRedirects.some((allowed) => (allowed.endsWith("*") ? url.startsWith(allowed.slice(0, -1)) : url === allowed))
@@ -116,7 +122,10 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     if (!sameToken(c.req.header("asaas-access-token"), asaasWebhookToken)) {
       throw new AppError(401, "NAO_AUTENTICADO", "Token do webhook inválido.");
     }
-    await payments.handleWebhook(asaasWebhookSchema.parse(await readJson(c)));
+    const notification = asaasWebhookSchema.parse(await readJson(c));
+    const subscription = notification.payment?.subscription;
+    if (subscription && pro) await pro.handleWebhook(subscription);
+    else await payments.handleWebhook(notification);
     return c.json({ received: true });
   });
 
@@ -139,6 +148,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     await accounts.completeProfile(c.get("user"), completarPerfilSchema.parse(await readJson(c)));
     return c.body(null, 201);
   });
+
+  app.get("/me/pro", async (c) => c.json(await requirePro().status(c.get("user"))));
+
+  app.post("/me/pro", async (c) => c.json(await requirePro().subscribe(c.get("user")), 201));
+
+  app.delete("/me/pro", async (c) => c.json(await requirePro().cancel(c.get("user"))));
 
   app.post("/me/dispositivos", async (c) => {
     const { token } = dispositivoSchema.parse(await readJson(c));

@@ -13,7 +13,9 @@ Trechos prontos para substituir ou complementar as seções do documento "Projet
 ## 4.2 Fontes de receita
 
 - **Taxa de serviço:** 10% somados ao valor do cachê e pagos pelo contratante. O músico recebe o cachê integral combinado.
-- **Trabalho futuro:** plano Premium para artistas (destaque no feed) e taxas de quebra de contrato.
+- **Assinatura Muve Pro:** R$ 19,90 por mês, paga pelo músico que quer ver eventos antes e aparecer primeiro para o contratante.
+- **Multa por ausência:** 20% do cachê, descontada do próximo repasse do músico.
+- **Trabalho futuro:** plano Muve Casa para estabelecimentos.
 
 ## 4.4.1 Regras de negócio (como implementadas)
 
@@ -72,11 +74,12 @@ A tela "Contratos" do protótipo foi substituída pelo **comprovante da contrata
 - Contestação com decisão do suporte (mediação de disputas).
 - Consulta de CNPJ na Receita Federal.
 - Notificações em tempo real no app e com o app fechado (push).
+- Plano Muve Pro para músicos (R$ 19,90/mês): acesso antecipado de 24h a eventos novos, destaque nas inscrições e raio de 400 km.
 
 ## Trabalhos futuros
 
 - Split de pagamento com Conta Escrow da Asaas, o modelo regulado para produção (desenho em `docs/conta-escrow.md`).
-- Plano Premium e prioridade no feed.
+- Plano Muve Casa para bares e casas de show (taxa reduzida, eventos recorrentes, músicos favoritos).
 - Validação de CPF junto à Receita Federal.
 - Trilha de auditoria completa.
 - Publicação nas lojas, com login pela Apple.

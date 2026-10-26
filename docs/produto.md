@@ -117,6 +117,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Penalidades do músico | Ausência: multa de 20% do cachê, descontada do próximo repasse, e 15 dias sem ver novos eventos. Desistência com menos de 24h: 15 dias sem ver novos eventos |
 | Contestação | Depois do início do show e até o repasse, qualquer parte contesta; o repasse fica suspenso e o suporte decide (pagar o músico ou devolver ao contratante) |
 | CNPJ | Conferido na Receita Federal (BrasilAPI) ao ser cadastrado; CNPJ inexistente ou inativo é recusado. CPF é validado pelos dígitos |
+| Muve Pro (músico) | R$ 19,90/mês por Pix, assinatura recorrente na Asaas. Eventos novos com mais de 7 dias de antecedência aparecem 24h antes; destaque com selo no topo da lista de candidatos; raio de até 400 km. Cancelar encerra a renovação e mantém o Pro até o fim do período pago. Não muda garantia, cancelamentos, multas nem avaliações |
 | Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
 | Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
@@ -131,6 +132,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Evento mudou e não combina mais / evento excluído | Músico inscrito | não |
 | Voltou a concorrer (o contratado desistiu) | Inscritos que tinham perdido para ele | não |
 | Pix recebido fora de hora / devolução pendente | Contratante | sim |
+| Muve Pro ativado ou renovado | Músico | sim |
 | Devolução recusada pela Asaas | Contratante (e o músico, se foi ele quem desistiu) | sim |
 | Repasse falhou (conferir chave Pix) | Músico | sim |
 | Pagamento confirmado | Músico contratado e contratante | sim |
@@ -226,7 +228,7 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 | RN04: cancelamento tardio retém 20% (10% artista, 10% plataforma) | Adaptado | Hoje o músico recebe o cachê inteiro. Mais simples de explicar e mais justo com quem reservou a data. |
 | RN05: ausência gera estorno e multa de 20% no cartão do artista | Adaptado | Estorno integral e multa de 20%. A multa é descontada do próximo cachê em vez de cobrada no cartão, para não exigir cartão de quem quer receber. |
 | RN06: data, horário e duração obrigatórios | Implementado | |
-| RN07: busca prioriza Premium e nota alta | Não implementado | Sem plano Premium. O feed ordena por distância e depois por data. |
+| RN07: busca prioriza Premium e nota alta | Adaptado | Muve Pro: o músico assinante aparece no topo da lista de candidatos, com selo, e vê eventos novos 24h antes. O feed ordena por distância e depois por data. |
 | RN08: Shadowban de 15 dias | Implementado | Ausência ou desistência com menos de 24h: o músico fica 15 dias sem ver novos eventos no feed. |
 | RN09: informações estratégicas só para contratantes | Interpretado | Perfil completo do músico só para o dono do evento em que ele se inscreveu. |
 | RN10/RF01: KYC de CPF/CNPJ na Receita | Parcial | CNPJ consultado na Receita (BrasilAPI); CPF só pelos dígitos, porque não há consulta gratuita. Um documento por conta. |
@@ -251,6 +253,6 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 3. **Gerar o app pelo EAS** para as notificações com o app fechado funcionarem (o Expo Go no Android não recebe push).
 4. **Hospedagem da API e SMTP** (passo a passo no README).
 5. **Autorização de transferências na Asaas** no modelo atual (manual no sandbox).
-6. **Plano Premium**: falta o grupo definir o que ele oferece.
+6. **Muve Casa** (plano para bares e casas de show: taxa menor, eventos recorrentes, músicos favoritos): proposta registrada, sem implementação.
 7. **Público geral** (agenda de shows abertos ao público): ideia registrada, sem implementação.
 8. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.

@@ -120,6 +120,20 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
       return { id: requireId(created?.id, "POST /transfers"), status: created?.status ?? "PENDING" };
     },
 
+    async createSubscription(subscription) {
+      const created = await request<{ id: string }>("POST", "/subscriptions", { ...subscription, billingType: "PIX", cycle: "MONTHLY" });
+      return requireId(created?.id, "POST /subscriptions");
+    },
+
+    async listSubscriptionPayments(subscriptionId) {
+      const page = await request<{ data: { id: string; status: string; dueDate: string }[] }>("GET", `/subscriptions/${encodeURIComponent(subscriptionId)}/payments`, undefined, { allowNotFound: true });
+      return (page?.data ?? []).map((payment) => ({ id: payment.id, status: payment.status, dueDate: payment.dueDate }));
+    },
+
+    async cancelSubscription(subscriptionId) {
+      await request("DELETE", `/subscriptions/${encodeURIComponent(subscriptionId)}`, undefined, { allowNotFound: true });
+    },
+
     async getTransferStatus(transferId) {
       const transfer = await request<{ status: string }>("GET", `/transfers/${encodeURIComponent(transferId)}`, undefined, { allowNotFound: true });
       return transfer?.status ?? null;

@@ -96,4 +96,7 @@ export interface AsaasGateway {
     externalReference: string;
   }): Promise<{ id: string; status: string }>;
   getTransferStatus(transferId: string): Promise<string | null>;
+  createSubscription(subscription: { customer: string; value: number; nextDueDate: string; description: string; externalReference: string }): Promise<string>;
+  listSubscriptionPayments(subscriptionId: string): Promise<{ id: string; status: string; dueDate: string }[]>;
+  cancelSubscription(subscriptionId: string): Promise<void>;
 }

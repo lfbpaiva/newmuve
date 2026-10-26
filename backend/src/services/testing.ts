@@ -43,6 +43,7 @@ export function memoryWorld() {
   const notifications: (NotificationInput & { lida: boolean })[] = [];
   const payments = new Map<string, PaymentRecord & { createdAt: number }>();
   const asaasTransfers = new Map<string, string>();
+  const asaasSubscriptions = new Map<string, { customer: string; value: number; payments: { id: string; status: string; dueDate: string }[]; cancelled: boolean }>();
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
   const images = new Set<string>();
   const customers = new Map<string, string>();
@@ -74,7 +75,7 @@ export function memoryWorld() {
       if (account) account.visibilidadeReduzidaAte = until;
     },
   } as unknown as AccountStore;
-  const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430]]);
+  const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430], ["PR/londrina", 380]]);
   const sent: { to: string; subject: string; text: string }[] = [];
   const mailer: Mailer = { send: async (message) => void sent.push(message) };
 
@@ -111,6 +112,7 @@ export function memoryWorld() {
         confirmacaoMusico: false,
         confirmacaoContratante: false,
         inscricoesEncerradas: false,
+        createdAt: hoursFromNow(-48),
       };
       events.set(event.id, event);
       enderecos.set(event.id, endereco);
@@ -371,6 +373,16 @@ export function memoryWorld() {
       return { id, status: "PENDING" };
     },
     getTransferStatus: async (transferId) => asaasTransfers.get(transferId) ?? null,
+    createSubscription: async (subscription) => {
+      const id = nextId("sub_");
+      asaasSubscriptions.set(id, { ...subscription, payments: [{ id: nextId("pay_"), status: "PENDING", dueDate: subscription.nextDueDate }], cancelled: false });
+      return id;
+    },
+    listSubscriptionPayments: async (subscriptionId) => asaasSubscriptions.get(subscriptionId)?.payments ?? [],
+    cancelSubscription: async (subscriptionId) => {
+      const subscription = asaasSubscriptions.get(subscriptionId);
+      if (subscription) subscription.cancelled = true;
+    },
   };
 
   return {
@@ -388,6 +400,7 @@ export function memoryWorld() {
     webhookEvents,
     asaasCharges,
     asaasTransfers,
+    asaasSubscriptions,
     asaasCalls,
     failures,
     sent,
@@ -413,6 +426,7 @@ export function memoryWorld() {
         confirmacaoMusico: false,
         confirmacaoContratante: false,
         inscricoesEncerradas: false,
+        createdAt: hoursFromNow(-48),
         ...overrides,
       };
       events.set(event.id, event);

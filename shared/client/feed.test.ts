@@ -26,6 +26,7 @@ const evento = (overrides: Partial<EventItem>): EventItem => ({
   confirmacaoMusico: false,
   confirmacaoContratante: false,
   inscricoesEncerradas: false,
+  createdAt: daysFromNow(-5),
   ...overrides,
 });
 

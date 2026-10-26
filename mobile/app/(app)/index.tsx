@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { fetchFeed, fetchMyEvents, fetchOpenFines, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
-import { camposFaltantes, descreverFaltantes, RAIOS_FEED_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
+import { camposFaltantes, descreverFaltantes, emAcessoAntecipado, isPro, PRO_PRECO, RAIOS_FEED_KM, RAIOS_FEED_PRO_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import { EventCard, EventRow, EventStatusPill, withEncerrado } from "../../components/events";
 import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Field, Icon, Loading, Screen, Section } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
@@ -69,7 +69,7 @@ function FeedFiltersPanel({ filtros, onChange }: { filtros: FeedFilters; onChang
 }
 
 const RADIUS_KEY = "muve.feedRadiusKm";
-const radiusLabel = (km: string) => (km === "0" ? "Minha cidade" : `${km} km`);
+const radiusLabel = (km: string) => (km === "0" ? "Minha cidade" : km === "400" ? "400 km · Pro" : `${km} km`);
 
 function Feed() {
   const me = useMe();
@@ -77,6 +77,8 @@ function Feed() {
   const [radius, setRadius] = useState(50);
   const [filtros, setFiltros] = useState<FeedFilters>(FILTROS_VAZIOS);
   const reduzida = Boolean(me.visibilidadeReduzidaAte && new Date(me.visibilidadeReduzidaAte) > new Date());
+  const pro = isPro(me.proAte);
+  const raios: readonly number[] = pro ? RAIOS_FEED_PRO_KM : RAIOS_FEED_KM;
   const multas = useAsync(`multas:${me.id}`, fetchOpenFines);
   const setupPending = camposFaltantes(me, "feed").length > 0;
   const feed = useAsync(`feed:${radius}:${setupPending}`, () => (setupPending ? Promise.resolve([]) : fetchFeed(radius)));
@@ -85,7 +87,7 @@ function Feed() {
   useEffect(() => {
     AsyncStorage.getItem(RADIUS_KEY).then((saved) => {
       const value = Number(saved);
-      if ((RAIOS_FEED_KM as readonly number[]).includes(value)) setRadius(value);
+      if ((RAIOS_FEED_PRO_KM as readonly number[]).includes(value)) setRadius(value);
     });
   }, []);
 
@@ -104,7 +106,12 @@ function Feed() {
       </EmptyState>}
       {reduzida && <Alert tone="info">Por causa de uma desistência em cima da hora ou de uma ausência, novos eventos não aparecem para você até {new Date(me.visibilidadeReduzidaAte!).toLocaleDateString("pt-BR")}.</Alert>}
       {(multas.data ?? 0) > 0 && <Alert tone="info">Você tem {formatCurrency(multas.data!)} em multa por ausência, que será descontado do seu próximo cachê.</Alert>}
-      {!setupPending && <Chips scroll options={RAIOS_FEED_KM.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
+      {!setupPending && <Chips scroll options={raios.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>}
+      {!setupPending && !pro && <Pressable accessibilityRole="button" onPress={() => router.push("/pro")} style={({ pressed }) => [styles.card, styles.row, { gap: space.md, borderWidth: 1, borderColor: colors.accent, opacity: pressed ? 0.8 : 1 }]}>
+        <Icon name="flash-outline" size={20} color={colors.accentText}/>
+        <Text style={[type.bodySmall, { flex: 1 }]}>Veja eventos novos 24h antes de todo mundo e apareça primeiro para o contratante. Muve Pro por {formatCurrency(PRO_PRECO)}/mês.</Text>
+        <Icon name="chevron-forward" size={18} color={colors.ink3}/>
+      </Pressable>}
       {!setupPending && (feed.data?.length ?? 0) > 0 && <FeedFiltersPanel filtros={filtros} onChange={setFiltros}/>}
       {!setupPending && (feed.data?.length ?? 0) > 0 && visiveis.length === 0 && <EmptyState title="Nenhum evento com esses filtros" action={<Button title="Limpar filtros" variant="tonal" block={false} onPress={() => setFiltros(FILTROS_VAZIOS)}/>}/>}
       {!setupPending && feed.error && <ErrorState message={feed.error} onRetry={feed.reload}/>}
@@ -112,7 +119,7 @@ function Feed() {
       {!setupPending && feed.data?.length === 0 && <EmptyState title={radius === 0 ? "Nada na sua cidade por enquanto" : `Nada até ${radius} km por enquanto`} action={radius < 200 ? <Button title="Aumentar a distância" variant="tonal" block={false} onPress={() => changeRadius(String(RAIOS_FEED_KM[RAIOS_FEED_KM.indexOf(radius as 0) + 1] ?? 200))}/> : undefined}>
         <Text style={[type.bodySmall, { textAlign: "center" }]}>Os eventos são filtrados pelos seus estilos ({(me.estilosMusicais ?? []).join(", ")}). Novos shows compatíveis aparecem aqui assim que forem publicados.</Text>
       </EmptyState>}
-      {visiveis.map((event) => <EventCard key={event.id} event={event}/>)}
+      {visiveis.map((event) => <EventCard key={event.id} event={event} antecipado={pro && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt })}/>)}
     </Screen>
   </View>;
 }

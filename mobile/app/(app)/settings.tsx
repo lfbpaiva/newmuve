@@ -3,7 +3,7 @@ import { Linking } from "react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
-import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
+import { EMAIL_SUPORTE, isPro } from "../../../shared/dominio.ts";
 import { Heading, ListItem, Screen } from "../../components/ui";
 import { confirmAction } from "../../lib/confirm";
 import { forgetPushToken } from "../../lib/push";
@@ -23,6 +23,7 @@ export default function SettingsScreen() {
     <Heading title="Ajustes"/>
     <Group title="Perfil">
       <ListItem icon="person-outline" title="Editar perfil" subtitle="Nome, foto, CPF/CNPJ, telefone e cidade" onPress={() => router.push("/account/edit")}/>
+      {me.role === "MUSICIAN" && <ListItem icon="flash-outline" title="Muve Pro" subtitle={isPro(me.proAte) ? `Ativo até ${new Date(me.proAte!).toLocaleDateString("pt-BR")}` : "Eventos 24h antes e destaque nas inscrições"} onPress={() => router.push("/pro")}/>}
       {me.role === "MUSICIAN" && <ListItem icon="musical-notes-outline" title="Estilos e recebimento" subtitle={`${(me.estilosMusicais ?? []).join(", ")} · chave Pix`} onPress={() => router.push("/account/edit")}/>}
     </Group>
     <Group title="Conta">
