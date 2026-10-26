@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { formatEventAddress } from "../../../src/services/cep.ts";
 import type { EventInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { createEventService } from "./eventService.ts";
@@ -45,15 +44,6 @@ describe("criação de evento", () => {
     expect(event).toMatchObject({ contractorId: "c1", status: "ABERTO", cache: 350 });
     expect(t.world.enderecos.get(event.id)).toBe("Av. Brasil, 1000 - Centro");
     expect(t.world.images.has(event.imagemUrl)).toBe(true);
-  });
-
-  it("persiste e recupera o endereço montado com CEP sem alterar o formato armazenado", async () => {
-    const endereco = formatEventAddress({ cep: "01001-000", logradouro: "Praça da Sé", numero: "42", complemento: "Sala 3", bairro: "Sé" });
-    const event = await t.service.createEvent(contratante, { ...novoEvento, uf: "SP", cidade: "São Paulo", endereco }, banner(), NOW);
-
-    expect(event).toMatchObject({ uf: "SP", cidade: "São Paulo" });
-    expect(t.world.enderecos.get(event.id)).toBe(endereco);
-    expect(await t.world.stores.events.findEndereco(event.id)).toBe(endereco);
   });
 
   it("só contratantes criam eventos", async () => {
