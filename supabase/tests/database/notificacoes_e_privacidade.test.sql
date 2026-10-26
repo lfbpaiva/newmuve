@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(11);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000f1', 'aviso-musico@example.com'),
@@ -45,6 +45,16 @@ select throws_ok(
   $$ update public.notifications set lida = true $$,
   '42501', null, 'cliente nao altera notificacoes direto no banco');
 reset role;
+
+insert into public.reviews (event_id, author_id, reviewed_id, rating) values
+  ('00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000f1', 5);
+delete from public.events where id = '00000000-0000-0000-0000-0000000000e9';
+select is((select count(*)::int from public.reviews where reviewed_id = '00000000-0000-0000-0000-0000000000f1'), 1, 'avaliacao recebida sobrevive a exclusao do evento');
+delete from public.profiles where id = '00000000-0000-0000-0000-0000000000f2';
+select results_eq(
+  $$ select author_id, rating::int from public.reviews where reviewed_id = '00000000-0000-0000-0000-0000000000f1' $$,
+  $$ values (null::uuid, 5) $$,
+  'avaliacao fica anonima quando o autor exclui a conta');
 
 select * from finish();
 rollback;

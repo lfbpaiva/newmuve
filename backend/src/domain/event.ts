@@ -43,6 +43,10 @@ export const eventSchema = z.object({
 });
 export type EventInput = z.infer<typeof eventSchema>;
 
+export const inscricoesSchema = z.object({
+  encerradas: z.boolean({ error: "Informe se as inscrições estão encerradas." }),
+});
+
 export const candidaturaSchema = z.object({
   valorProposto: valorEmReais.nullable().default(null),
 });
@@ -96,6 +100,7 @@ export interface EventRecord {
   status: EventStatus;
   confirmacaoMusico: boolean;
   confirmacaoContratante: boolean;
+  inscricoesEncerradas: boolean;
 }
 
 export interface CandidateRecord {

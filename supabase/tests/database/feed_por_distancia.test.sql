@@ -1,7 +1,7 @@
 -- Testes de banco (pgTAP): feed do músico por raio de distância.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(9);
+select plan(10);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'm1@exemplo.com'),
@@ -57,6 +57,13 @@ select is((select count(*) from public.musician_feed(200)), 0::bigint, 'músico 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
 select is((select count(*) from public.musician_feed(0) where event_id = '00000000-0000-0000-0000-0000000000e6'), 0::bigint, 'evento só de Pagode não aparece para músico de Rock');
 select throws_ok($$ select public.event_distance_km('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000a1') $$, '42501', null, 'cálculo de distância por ID é exclusivo da API');
+
+reset role;
+update public.events set inscricoes_encerradas = true where id = '00000000-0000-0000-0000-0000000000e1';
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+select is((select count(*) from public.musician_feed(0) where event_id = '00000000-0000-0000-0000-0000000000e1'), 0::bigint, 'evento com inscrições encerradas sai do feed');
+reset role;
 
 select * from finish();
 rollback;

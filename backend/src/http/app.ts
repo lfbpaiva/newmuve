@@ -5,7 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
 import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import { asaasWebhookSchema, candidaturaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
+import { asaasWebhookSchema, candidaturaSchema, inscricoesSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
 import type { EventService } from "../services/eventService.ts";
 import type { PaymentService } from "../services/paymentService.ts";
@@ -54,7 +54,10 @@ function sameToken(received: string | undefined, expected: string | undefined): 
 }
 
 export function createApp({ accounts, events, payments, verifyToken, allowedOrigins, allowedRedirects = [], asaasWebhookToken }: AppDeps) {
-  const redirectAllowed = (url: string | undefined) => Boolean(url && (allowedOrigins.includes(url) || allowedRedirects.includes(url)));
+  const redirectAllowed = (url: string | undefined) => Boolean(url && (
+    allowedOrigins.some((origin) => url === origin || url === `${origin}/auth`)
+    || allowedRedirects.some((allowed) => (allowed.endsWith("*") ? url.startsWith(allowed.slice(0, -1)) : url === allowed))
+  ));
   const app = new Hono<Env>().basePath("/api");
 
   app.use(
@@ -171,6 +174,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.post("/events/:id/candidatura", async (c) => {
     const { valorProposto } = candidaturaSchema.parse(await readJson(c));
     await events.apply(c.get("user"), c.req.param("id"), valorProposto);
+    return c.body(null, 204);
+  });
+
+  app.patch("/events/:id/inscricoes", async (c) => {
+    const { encerradas } = inscricoesSchema.parse(await readJson(c));
+    await events.setApplicationsClosed(c.get("user"), c.req.param("id"), encerradas);
     return c.body(null, 204);
   });
 

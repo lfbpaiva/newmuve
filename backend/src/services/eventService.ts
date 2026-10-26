@@ -131,7 +131,7 @@ export function createEventService(deps: {
       assertProfileComplete(musician, "candidatar");
       const event = await events.findEvent(eventId);
       if (!event) throw naoEncontrado();
-      if (event.status !== "ABERTO" || event.inicio <= now) {
+      if (event.status !== "ABERTO" || event.inscricoesEncerradas || event.inicio <= now) {
         throw new AppError(409, "INSCRICOES_ENCERRADAS", "As inscrições para este evento estão encerradas.");
       }
       const distanciaKm = await events.distanceKm(eventId, user.id);
@@ -140,6 +140,13 @@ export function createEventService(deps: {
       }
       const candidate = await events.insertCandidate(eventId, user.id, valorProposto === event.cache ? null : valorProposto);
       void notifier.newApplication(event, candidate.valorProposto);
+    },
+
+    async setApplicationsClosed(user: AuthUser, eventId: string, closed: boolean): Promise<void> {
+      const event = await events.findEvent(eventId);
+      if (!event || event.contractorId !== user.id) throw naoEncontrado();
+      if (event.status !== "ABERTO") throw new AppError(409, "EVENTO_INDISPONIVEL", "As inscrições só podem ser abertas ou encerradas antes da contratação.");
+      await events.setApplicationsClosed(eventId, closed);
     },
 
     async declineCandidate(user: AuthUser, eventId: string, candidateId: string, now = new Date()): Promise<void> {

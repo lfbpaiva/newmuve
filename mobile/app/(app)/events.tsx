@@ -50,6 +50,6 @@ function MyEvents() {
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
     {!events.error && !events.data && <Loading cards={1}/>}
     {events.data?.length === 0 && <EmptyState title="Você ainda não criou eventos"/>}
-    {events.data?.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} trailing={<EventStatusPill status={event.status} encerrado={event.encerrado}/>}/>)}
+    {events.data?.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} trailing={<EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/>}/>)}
   </Screen>;
 }

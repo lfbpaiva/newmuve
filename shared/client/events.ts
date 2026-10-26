@@ -26,6 +26,7 @@ export interface EventItem {
   status: EventStatus;
   confirmacaoMusico: boolean;
   confirmacaoContratante: boolean;
+  inscricoesEncerradas: boolean;
   totalCandidatos?: number;
   distanciaKm?: number;
 }
@@ -138,6 +139,7 @@ interface EventRow {
   status: EventStatus;
   confirmacao_musico: boolean;
   confirmacao_contratante: boolean;
+  inscricoes_encerradas: boolean;
   event_candidates?: { count: number }[];
 }
 
@@ -185,6 +187,7 @@ const toEvent = (row: EventRow): EventItem => ({
   status: row.status,
   confirmacaoMusico: row.confirmacao_musico,
   confirmacaoContratante: row.confirmacao_contratante,
+  inscricoesEncerradas: row.inscricoes_encerradas,
   totalCandidatos: row.event_candidates?.[0]?.count,
 });
 
@@ -319,6 +322,8 @@ export function updateEvent(id: string, dados: EventData, imagem: UploadFile | n
 export const deleteEvent = (id: string) => apiRequest(`/events/${id}`, { method: "DELETE" });
 export const applyToEvent = (id: string, valorProposto: number | null) =>
   apiRequest(`/events/${id}/candidatura`, { method: "POST", body: { valorProposto } });
+export const setApplicationsClosed = (eventId: string, encerradas: boolean) =>
+  apiRequest(`/events/${eventId}/inscricoes`, { method: "PATCH", body: { encerradas } });
 export const declineCandidate = (eventId: string, candidateId: string) =>
   apiRequest(`/events/${eventId}/candidatos/${candidateId}/recusa`, { method: "POST" });
 export const updateProposal = (id: string, valorProposto: number | null) =>

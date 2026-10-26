@@ -703,3 +703,22 @@ describe("recusa de candidato", () => {
     await expect(t.service.declineCandidate(contratante, event.id, outro.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_EM_ANDAMENTO" });
   });
 });
+
+describe("encerrar inscrições", () => {
+  it("o dono encerra e reabre; com inscrições encerradas ninguém novo se inscreve", async () => {
+    const event = t.world.seedEvent();
+
+    await expect(t.service.setApplicationsClosed(outroContratante, event.id, true)).rejects.toMatchObject({ status: 404 });
+    await t.service.setApplicationsClosed(contratante, event.id, true);
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
+
+    await t.service.setApplicationsClosed(contratante, event.id, false);
+    await expect(t.service.apply(musico, event.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("não mexe nas inscrições de evento já contratado", async () => {
+    const event = t.world.seedEvent({ status: "CONTRATADO", musicoContratadoId: "m1" });
+
+    await expect(t.service.setApplicationsClosed(contratante, event.id, true)).rejects.toMatchObject({ code: "EVENTO_INDISPONIVEL" });
+  });
+});

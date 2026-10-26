@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { fetchReviewsOf, type EventItem, type EventStatus } from "../../shared/client/events.ts";
-import { formatCurrency } from "../../shared/client/format.ts";
+import { eventDateParts, formatCurrency } from "../../shared/client/format.ts";
 import { useAsync } from "../../shared/client/useAsync.ts";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { ErrorState, Icon, Pill, Section, Stars, Tag } from "./ui";
@@ -17,25 +17,18 @@ const statusLabels: Record<EventStatus, string> = {
 
 export const withEncerrado = (event: EventItem, now = Date.now()) => ({ ...event, encerrado: event.status === "ABERTO" && new Date(event.inicio).getTime() <= now });
 
-export function EventStatusPill({ status, encerrado }: { status: EventStatus; encerrado?: boolean }) {
+export function EventStatusPill({ status, encerrado, inscricoesEncerradas }: { status: EventStatus; encerrado?: boolean; inscricoesEncerradas?: boolean }) {
   if (status === "ABERTO" && encerrado) return <Pill text="Encerrado" tone="muted"/>;
+  if (status === "ABERTO" && inscricoesEncerradas) return <Pill text="Inscrições encerradas" tone="muted"/>;
   if (status === "CANCELADO") return <Pill text={statusLabels[status]} tone="muted"/>;
   if (status === "ABERTO") return <Pill text={statusLabels[status]} tone="accent"/>;
   return <Pill text={statusLabels[status]} tone="success"/>;
 }
 
-const dateParts = (iso: string) => {
-  const d = new Date(iso);
-  return {
-    day: String(d.getDate()).padStart(2, "0"),
-    month: d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "").toUpperCase(),
-    time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-  };
-};
 
 export function EventCard({ event }: { event: EventItem }) {
   const router = useRouter();
-  const { day, month, time } = dateParts(event.inicio);
+  const { day, month, time } = eventDateParts(event.inicio, event.uf);
   return <Pressable accessibilityRole="button" accessibilityLabel={`${event.titulo}, ${formatCurrency(event.cache)}`} onPress={() => router.push(`/event/${event.id}`)} style={({ pressed }) => ({ gap: space.md, opacity: pressed ? 0.85 : 1 })}>
     <View style={{ height: 240, borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surface }}>
       <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }}/>
@@ -65,7 +58,7 @@ export function EventCard({ event }: { event: EventItem }) {
 }
 
 export function EventRow({ event, trailing, detail, onPress }: { event: EventItem; trailing: ReactNode; detail?: string; onPress: () => void }) {
-  const { day, month, time } = dateParts(event.inicio);
+  const { day, month, time } = eventDateParts(event.inicio, event.uf);
   return <Pressable accessibilityRole="button" onPress={onPress} android_ripple={{ color: colors.surface2 }} style={({ pressed }) => [styles.row, { gap: 14, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line, opacity: pressed ? 0.7 : 1 }]}>
     <View style={{ width: 56, alignItems: "center" }}>
       <Text style={[type.stat, { fontSize: 32, lineHeight: 32 }]}>{day}</Text>

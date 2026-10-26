@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
 import { cancelHiring, confirmCompletion, fetchHiring, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
-import { formatCurrency, formatDateTime, formatDuration } from "../../../../shared/client/format.ts";
+import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { maskPhone } from "../../../../shared/client/validators.ts";
 import { EventStatusPill } from "../../../components/events";
@@ -111,7 +111,7 @@ export default function HiringScreen() {
       <View style={{ gap: space.sm }}>
         <EventStatusPill status={evento.status}/>
         <Text style={type.headline}>{evento.titulo}</Text>
-        <Text style={type.bodySmall}>{formatDateTime(evento.inicio)} · {formatDuration(evento.duracaoMinutos)} · {evento.tipoEvento} · {evento.estilosMusicais.join(", ")} · {evento.formacao} · {evento.somDisponivel ? "som no local" : "sem som no local"}</Text>
+        <Text style={type.bodySmall}>{formatEventDateTime(evento.inicio, evento.uf)} · {formatDuration(evento.duracaoMinutos)} · {evento.tipoEvento} · {evento.estilosMusicais.join(", ")} · {evento.formacao} · {evento.somDisponivel ? "som no local" : "sem som no local"}</Text>
       </View>
 
       <View style={[styles.cardRaised, { gap: space.md }]}>

@@ -83,7 +83,7 @@ const app = createApp({
   verifyToken: createTokenVerifier(admin),
   asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || undefined,
   allowedOrigins,
-  allowedRedirects: (process.env.ALLOWED_REDIRECTS || "muve://auth").split(",").map((u) => u.trim()).filter(Boolean),
+  allowedRedirects: (process.env.ALLOWED_REDIRECTS || "muve://auth,exp://*").split(",").map((u) => u.trim()).filter(Boolean),
 });
 
 const port = Number(process.env.PORT || 3333);

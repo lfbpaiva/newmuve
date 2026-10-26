@@ -114,7 +114,7 @@ function Dashboard() {
         {events.data && active.length === 0 && <EmptyState title={all.length ? "Nenhum evento em andamento" : "Publique seu primeiro evento"} action={<Button title="Criar evento" icon="add" block={false} onPress={create}/>}>
           <Text style={[type.bodySmall, { textAlign: "center" }]}>Descreva o show, o cachê e o estilo. Músicos da região se candidatam e você escolhe quem aprovar.</Text>
         </EmptyState>}
-        {active.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} detail={`${event.totalCandidatos ?? 0} ${event.totalCandidatos === 1 ? "candidato" : "candidatos"}`} trailing={<EventStatusPill status={event.status} encerrado={event.encerrado}/>}/>)}
+        {active.map((event) => <EventRow key={event.id} event={event} onPress={() => router.push(`/event/${event.id}`)} detail={`${event.totalCandidatos ?? 0} ${event.totalCandidatos === 1 ? "candidato" : "candidatos"}`} trailing={<EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/>}/>)}
       </Section>
     </Screen>
     {active.length > 0 && <Fab label="Novo evento" icon="add" onPress={create}/>}

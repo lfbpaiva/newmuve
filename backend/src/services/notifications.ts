@@ -39,7 +39,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
     }
   }
 
-  const when = (event: EventRecord) => `${formatDateTime(event.inicio)} em ${event.cidade}, ${event.uf}`;
+  const when = (event: EventRecord) => `${formatDateTime(event.inicio, event.uf)} em ${event.cidade}, ${event.uf}`;
   const eventLink = (event: EventRecord) => `/event/${event.id}`;
   const hiringLink = (event: EventRecord) => `/event/${event.id}/hiring`;
 

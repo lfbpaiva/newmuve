@@ -102,6 +102,8 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Validade do Pix | 15 minutos |
 | Alcance do evento | Mesmos estilos (ou "Qualquer estilo"); mesma cidade ou até 200 km |
 | Cancelar inscrição | Até 24h antes do evento |
+| Encerrar inscrições | O contratante pode encerrar e reabrir antes da contratação; encerrado, o evento sai do feed, mas os inscritos continuam podendo ser aprovados |
+| Horário do evento | Digitado e exibido no fuso do estado do evento (Acre, Amazonas, Rondônia, Roraima, Mato Grosso e Mato Grosso do Sul fora do horário de Brasília) |
 | Cancelamento pelo contratante | Mais de 24h antes: estorno integral. Menos de 24h: sem estorno, cachê vai ao músico. |
 | Desistência do músico contratado | Antes do início: estorno integral e o evento reabre |
 | Não comparecimento | Depois do horário, até 7 dias, se ninguém confirmou o show: estorno integral |
@@ -109,7 +111,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Avaliação | 1 a 5 estrelas, uma por pessoa por evento, só depois de concluído |
 | Conversa | Entre o músico e o dono do evento; fecha quando a inscrição é recusada ou o evento termina |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
-| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento |
+| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento; as avaliações que a pessoa deixou ficam, sem autoria |
 
 ## 5. Notificações
 
@@ -171,6 +173,7 @@ erDiagram
 | `PATCH /events/:id/candidatura` | Rever a proposta |
 | `DELETE /events/:id/candidatura` | Cancelar a inscrição |
 | `POST /events/:id/candidatos/:candidateId/recusa` | Contratante recusa uma inscrição |
+| `PATCH /events/:id/inscricoes` | Encerrar ou reabrir as inscrições |
 | `POST /candidaturas/:id/mensagens` | Enviar mensagem na conversa |
 | `POST /events/:id/checkout`, `GET`, `DELETE` | Gerar, consultar e cancelar o Pix |
 | `GET /events/:id/contratacao` | Comprovante da contratação |
@@ -229,11 +232,8 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 
 ## 10. O que ainda falta
 
-1. **Canal de suporte.** Algumas mensagens dizem "contate o suporte", mas não há e-mail nem WhatsApp oficial no app.
-2. **Push no celular.** As notificações aparecem com o app aberto; avisos com o app fechado exigem Expo Notifications.
-3. **Hospedagem da API e SMTP.** Sem a API publicada, a Asaas não consegue avisar pagamentos e transferências (o app compensa consultando a Asaas), e o e-mail não sai.
+1. **E-mail de suporte.** O app já mostra "Ajuda e suporte" em Ajustes e nos Termos, mas só depois que o grupo definir o endereço em `EXPO_PUBLIC_SUPPORT_EMAIL`.
+2. **Push no celular.** As notificações aparecem com o app aberto. Avisos com o app fechado exigem Expo Notifications num app gerado pelo EAS; o Expo Go no Android não recebe push.
+3. **Hospedagem da API e SMTP.** Passo a passo no README. Sem a API publicada, a Asaas não consegue avisar pagamentos e transferências (o app compensa consultando a Asaas); sem SMTP, a confirmação de cadastro e a recuperação de senha dependem do envio limitado do Supabase.
 4. **Autorização de transferências na Asaas.** No sandbox, cada repasse espera aprovação manual no painel.
-5. **Fuso horário.** A hora do evento é gravada no fuso do aparelho de quem cria. Funciona para quem está no mesmo fuso do evento.
-6. **Encerrar inscrições sem excluir o evento.** Hoje o contratante recusa inscrições uma a uma.
-7. **Exclusão de conta x histórico.** Ao excluir a conta, as avaliações daquele usuário somem junto; o ideal seria anonimizar.
-8. **Monografia.** Os itens "Adaptado" e "Não implementado" da seção 9 precisam ser reescritos ou listados como trabalhos futuros.
+5. **Monografia.** Os itens "Adaptado" e "Não implementado" da seção 9 precisam ser reescritos ou listados como trabalhos futuros.

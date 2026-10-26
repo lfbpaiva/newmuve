@@ -3,8 +3,8 @@ import { View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
-import { formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toDateInput, toTimeInput, toValorInput } from "../../shared/client/format.ts";
-import { calcularCobranca, ESTILOS_EVENTO, FORMACOES, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
+import { eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
+import { calcularCobranca, ESTILOS_EVENTO, FORMACOES, horarioLocalDoEvento, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
 import { space } from "../lib/theme";
 import { ImageField, LocationFields } from "./fields";
 import { Alert, Button, Checkbox, Chips, Field, Section, Select } from "./ui";
@@ -14,15 +14,14 @@ type EditableEvent = EventItem & { endereco: string };
 const maskDate = (v: string) => v.replace(/\D/g, "").slice(0, 8).replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})\/(\d{2})(\d)/, "$1/$2/$3");
 const maskTime = (v: string) => v.replace(/\D/g, "").slice(0, 4).replace(/(\d{2})(\d)/, "$1:$2");
 const toIsoDate = (br: string) => br.split("/").reverse().join("-");
-const fromIsoDate = (iso: string) => iso.split("-").reverse().join("/");
 
 function initialForm(event: EditableEvent | null, local?: { uf: string | null; cidade: string | null }) {
-  const inicio = event ? new Date(event.inicio) : null;
+  const inicio = event ? eventDateParts(event.inicio, event.uf) : null;
   return {
     titulo: event?.titulo ?? "",
     tipoEvento: event?.tipoEvento ?? "",
-    data: inicio ? fromIsoDate(toDateInput(inicio)) : "",
-    horario: inicio ? toTimeInput(inicio) : "",
+    data: inicio ? inicio.data : "",
+    horario: inicio ? inicio.time : "",
     duracao: event ? minutesToTimeInput(event.duracaoMinutos) : "",
     cache: event ? toValorInput(event.cache) : "",
     uf: event?.uf ?? local?.uf ?? "",
@@ -45,7 +44,7 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
   const cacheNumber = parseValor(form.cache);
 
   async function submit() {
-    const inicio = new Date(`${toIsoDate(form.data)}T${form.horario}`);
+    const inicio = horarioLocalDoEvento(toIsoDate(form.data), form.horario, form.uf);
     if (!form.titulo.trim()) return setError("Informe o título do evento.");
     if (!form.tipoEvento || form.data.length !== 10 || form.horario.length !== 5 || form.duracao.length !== 5) return setError("Informe tipo, data, horário de início e duração do evento.");
     if (Number.isNaN(inicio.getTime())) return setError("Data ou horário inválido.");

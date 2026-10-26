@@ -66,13 +66,24 @@ npx supabase db push
 
 ## Configuração externa
 
-**Supabase:** em *Authentication → URL Configuration*, inclua `muve://auth` e `http://localhost:8081` nos redirecionamentos. Para cadastros reais, configure um SMTP próprio em *Authentication → Emails*: o envio padrão tem limite de poucas mensagens por hora.
+**Supabase:** veja abaixo os redirecionamentos e o SMTP.
 
 **Asaas (sandbox):** a conta precisa de uma chave Pix cadastrada para gerar QR Code. Preencha `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` em `backend/.env`. O webhook (`/api/webhooks/asaas`) só funciona com a API publicada na internet, mas não é obrigatório: a tela de pagamento consulta a Asaas a cada poucos segundos. Para confirmar um pagamento de teste, abra a cobrança no painel do sandbox e use *Confirmar pagamento*.
 
 No repasse ao músico, o sandbox só aceita as [chaves Pix fictícias do Banco Central](https://docs.asaas.com/docs/testando-transferências), como `cliente-a00001@pix.bcb.gov.br`, que a conta de demonstração já usa. Transferências feitas pela API ficam aguardando autorização no painel da Asaas (*Transferências*), a menos que essa exigência seja desativada nas configurações de segurança da conta. Sem webhook, o app consulta a situação da transferência sempre que o comprovante é aberto.
 
-**Publicação da API (opcional):** qualquer serviço Node (Render, Railway) com `pnpm start:api` e as variáveis de `backend/.env`. Atrás de proxy, preencha `TRUSTED_PROXY_IPS`.
+**Publicação da API (opcional, mas libera o webhook da Asaas e o uso fora do Wi-Fi de casa):**
+
+1. No [Render](https://render.com), crie um *Web Service* ligado a este repositório, com build `npm i -g pnpm && pnpm install` e start `pnpm start:api`.
+2. Copie as variáveis de `backend/.env` para o painel do serviço e defina `ALLOWED_ORIGINS` com o endereço onde o app web vai rodar.
+3. No app, aponte `EXPO_PUBLIC_API_URL` para `https://SEU-SERVICO.onrender.com/api`.
+4. Na Asaas, em *Integrações → Webhooks*, cadastre `https://SEU-SERVICO.onrender.com/api/webhooks/asaas` com o mesmo `ASAAS_WEBHOOK_TOKEN`.
+
+Atrás de proxy, preencha `TRUSTED_PROXY_IPS`. Railway ou qualquer serviço Node funciona do mesmo jeito.
+
+**E-mail:** o envio padrão do Supabase serve só para testes (poucos e-mails por hora). Para a confirmação de cadastro e a recuperação de senha chegarem a qualquer pessoa, configure um SMTP (por exemplo, Resend ou Brevo) em *Authentication → Emails*, e use os mesmos dados em `SMTP_*` no `backend/.env` para os avisos da API.
+
+**Links de confirmação e senha:** em *Authentication → URL Configuration*, inclua `http://localhost:8081/**`, `exp://**` e `muve://**` (e o endereço do app publicado, se houver).
 
 ## Estrutura
 

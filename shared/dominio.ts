@@ -38,6 +38,20 @@ export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
 export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export const COMISSAO_PERCENTUAL = 10;
+
+const FUSOS_FORA_DE_BRASILIA: Record<string, { fuso: string; offset: string }> = {
+  AC: { fuso: "America/Rio_Branco", offset: "-05:00" },
+  AM: { fuso: "America/Manaus", offset: "-04:00" },
+  MS: { fuso: "America/Campo_Grande", offset: "-04:00" },
+  MT: { fuso: "America/Cuiaba", offset: "-04:00" },
+  RO: { fuso: "America/Porto_Velho", offset: "-04:00" },
+  RR: { fuso: "America/Boa_Vista", offset: "-04:00" },
+};
+
+export const fusoDaUf = (uf: string) => FUSOS_FORA_DE_BRASILIA[uf]?.fuso ?? "America/Sao_Paulo";
+
+export const horarioLocalDoEvento = (data: string, horario: string, uf: string) =>
+  new Date(`${data}T${horario}:00${FUSOS_FORA_DE_BRASILIA[uf]?.offset ?? "-03:00"}`);
 export const TERMOS_VERSAO = "2026-10-27";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;

@@ -13,11 +13,12 @@ import {
   fetchEvent,
   fetchMyApplication,
   declineCandidate,
+  setApplicationsClosed,
   updateProposal,
   type Candidate,
   type EventItem,
 } from "../../../../shared/client/events.ts";
-import { formatCurrency, formatDateTime, formatDuration } from "../../../../shared/client/format.ts";
+import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, camposFaltantes, descreverFaltantes, hasCancellationNotice } from "../../../../shared/dominio.ts";
 import { EventStatusPill, withEncerrado } from "../../../components/events";
@@ -59,7 +60,7 @@ function Hero({ event, children }: { event: EventItem; children?: ReactNode }) {
     <View style={{ position: "absolute", left: 16, right: 16, bottom: 16, gap: 8 }}>
       {children}
       <Text style={type.headline}>{event.titulo}</Text>
-      <Text style={[type.bodySmall, { color: "#d9d6e4" }]}>{formatDateTime(event.inicio)} · {formatDuration(event.duracaoMinutos)} · {event.cidade}, {event.uf}</Text>
+      <Text style={[type.bodySmall, { color: "#d9d6e4" }]}>{formatEventDateTime(event.inicio, event.uf)} · {formatDuration(event.duracaoMinutos)} · {event.cidade}, {event.uf}</Text>
     </View>
   </View>;
 }
@@ -116,7 +117,7 @@ function Opportunity({ eventId }: { eventId: string }) {
         <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>
         {conversar && <Button title="Conversar com o contratante" variant="outlined" icon="chatbubbles-outline" onPress={conversar}/>}
       </>}
-      {!hired && !application && (event.status === "ABERTO"
+      {!hired && !application && (event.status === "ABERTO" && !event.inscricoesEncerradas
         ? faltando.length > 0
           ? <>
             <Alert tone="info">Para se inscrever, complete seu perfil: {descreverFaltantes(faltando)}.</Alert>
@@ -168,7 +169,7 @@ function Manage({ eventId }: { eventId: string }) {
   }
 
   return <Screen>
-    <Hero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado}/></Hero>
+    <Hero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></Hero>
     <View style={[styles.cardRaised, { gap: 4 }]}>
       <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(event.cache)}</Text></View>
       <View style={styles.between}><Text style={type.bodySmall}>Total com a taxa de 10%</Text><Text style={type.price}>{formatCurrency(calcularCobranca(event.cache).total)}</Text></View>
@@ -181,7 +182,15 @@ function Manage({ eventId }: { eventId: string }) {
       {!locked && <View style={{ flex: 1 }}><Button variant="tonal" icon="create-outline" title="Editar" disabled={paymentInProgress || busy} onPress={() => router.push(`/event/${event.id}/edit`)}/></View>}
       <View style={{ flex: 1 }}><Button variant="danger" icon="trash-outline" title="Excluir" disabled={paymentInProgress} loading={busy} onPress={remove}/></View>
     </View>}
-    {!locked && pendentes > 0 && <Text style={type.bodySmall}>Se você mudar data, local, estilos ou cachê, os {pendentes} inscritos serão avisados.</Text>}
+    {!locked && <Button
+      variant="outlined"
+      icon={event.inscricoesEncerradas ? "lock-open-outline" : "lock-closed-outline"}
+      title={event.inscricoesEncerradas ? "Reabrir inscrições" : "Encerrar inscrições"}
+      loading={decline.busy}
+      onPress={() => void runDecline(() => setApplicationsClosed(event.id, !event.inscricoesEncerradas))}
+    />}
+    {!locked && event.inscricoesEncerradas && <Text style={type.bodySmall}>O evento não aparece mais para novos músicos. Você ainda pode aprovar quem já se inscreveu.</Text>}
+    {!locked && pendentes > 0 && <Text style={type.bodySmall}>Se você mudar data, local, estilos ou cachê, {pendentes === 1 ? "o inscrito será avisado" : `os ${pendentes} inscritos serão avisados`}.</Text>}
     {event.status !== "ABERTO" && checkout?.status === "PAGO" && <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     {decline.error ? <Alert tone="error">{decline.error}</Alert> : null}

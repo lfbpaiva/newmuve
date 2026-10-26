@@ -12,6 +12,7 @@ type AuthState =
 interface AuthContextValue {
   state: AuthState;
   recoveringPassword: boolean;
+  beginPasswordRecovery(): void;
   finishPasswordRecovery(): void;
   refreshMe(): Promise<void>;
   retrySession(): Promise<void>;
@@ -95,11 +96,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await endSession();
   }, []);
 
+  const beginPasswordRecovery = useCallback(() => setRecoveringPassword(true), []);
   const finishPasswordRecovery = useCallback(() => setRecoveringPassword(false), []);
 
   const value = useMemo(
-    () => ({ state, recoveringPassword, finishPasswordRecovery, refreshMe, retrySession, signOut }),
-    [state, recoveringPassword, finishPasswordRecovery, refreshMe, retrySession, signOut],
+    () => ({ state, recoveringPassword, beginPasswordRecovery, finishPasswordRecovery, refreshMe, retrySession, signOut }),
+    [state, recoveringPassword, beginPasswordRecovery, finishPasswordRecovery, refreshMe, retrySession, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

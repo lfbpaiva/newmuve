@@ -104,6 +104,7 @@ export function memoryWorld() {
         status: "ABERTO",
         confirmacaoMusico: false,
         confirmacaoContratante: false,
+        inscricoesEncerradas: false,
       };
       events.set(event.id, event);
       enderecos.set(event.id, endereco);
@@ -147,6 +148,10 @@ export function memoryWorld() {
       });
     },
     listCandidates: async (eventId) => [...candidates.values()].filter((c) => c.eventId === eventId),
+    setApplicationsClosed: async (eventId, closed) => {
+      const event = events.get(eventId);
+      if (event?.status === "ABERTO") event.inscricoesEncerradas = closed;
+    },
     declineCandidate: async (id) => {
       const candidate = candidates.get(id);
       if (candidate?.status !== "PENDENTE") return false;
@@ -349,6 +354,7 @@ export function memoryWorld() {
         status: "ABERTO",
         confirmacaoMusico: false,
         confirmacaoContratante: false,
+        inscricoesEncerradas: false,
         ...overrides,
       };
       events.set(event.id, event);

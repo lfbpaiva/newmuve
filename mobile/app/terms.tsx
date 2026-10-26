@@ -5,6 +5,7 @@ import { Heading, Screen } from "../components/ui";
 import { colors, space, styles, type } from "../lib/theme";
 
 const versao = TERMOS_VERSAO.split("-").reverse().join("/");
+const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL?.trim();
 
 const secoes: { titulo: string; paragrafos: string[] }[] = [
   {
@@ -78,6 +79,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
       "Quando estes termos mudarem, a nova versão aparece nesta tela com a data atualizada.",
     ],
   },
+  ...(SUPPORT_EMAIL ? [{ titulo: "11. Contato", paragrafos: [`Dúvidas, problemas com pagamentos ou pedidos sobre seus dados: ${SUPPORT_EMAIL}.`] }] : []),
 ];
 
 export default function TermsScreen() {

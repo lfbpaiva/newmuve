@@ -2,6 +2,7 @@ import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
+import * as Linking from "expo-linking";
 import { Platform } from "react-native";
 import { configureClient } from "../../shared/client/config.ts";
 
@@ -10,7 +11,7 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
-export const AUTH_REDIRECT_URL = "muve://auth";
+export const AUTH_REDIRECT_URL = Linking.createURL("auth");
 
 function apiUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim();

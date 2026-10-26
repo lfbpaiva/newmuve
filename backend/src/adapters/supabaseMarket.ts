@@ -25,6 +25,7 @@ interface EventRow {
   status: EventStatus;
   confirmacao_musico: boolean;
   confirmacao_contratante: boolean;
+  inscricoes_encerradas: boolean;
 }
 
 interface CandidateRow {
@@ -81,6 +82,7 @@ const toEvent = (row: EventRow): EventRecord => ({
   status: row.status,
   confirmacaoMusico: row.confirmacao_musico,
   confirmacaoContratante: row.confirmacao_contratante,
+  inscricoesEncerradas: row.inscricoes_encerradas,
 });
 
 const toCandidate = (row: CandidateRow): CandidateRecord => ({
@@ -179,6 +181,11 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       updateReturning(eventId, { [party === "musico" ? "confirmacao_musico" : "confirmacao_contratante"]: true }),
 
     concludeEvent: (eventId) => updateReturning(eventId, { confirmacao_musico: true, confirmacao_contratante: true }),
+
+    async setApplicationsClosed(eventId, closed) {
+      const { error } = await admin.from("events").update({ inscricoes_encerradas: closed }).eq("id", eventId).eq("status", "ABERTO");
+      if (error) throw error;
+    },
 
     async cancelEvent(eventId) {
       const { error } = await admin.from("events").update({ status: "CANCELADO" }).eq("id", eventId);

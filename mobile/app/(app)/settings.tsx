@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { Linking } from "react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
@@ -6,6 +7,8 @@ import { Heading, ListItem, Screen } from "../../components/ui";
 import { confirmAction } from "../../lib/confirm";
 import { colors, space, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
+
+const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL?.trim();
 
 export default function SettingsScreen() {
   const me = useMe();
@@ -24,6 +27,7 @@ export default function SettingsScreen() {
     </Group>
     <Group title="Conta">
       <ListItem icon="shield-checkmark-outline" title="Conta e privacidade" subtitle="Seus dados, e-mail de acesso e encerramento da conta" onPress={() => router.push("/account/privacy")}/>
+      {SUPPORT_EMAIL ? <ListItem icon="help-circle-outline" title="Ajuda e suporte" subtitle={SUPPORT_EMAIL} onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Muve: ajuda (${me.email})`)}`)}/> : null}
       <ListItem icon="document-text-outline" title="Termos de Uso" subtitle="Taxa, pagamento, cancelamentos e seus dados" onPress={() => router.push("/terms")}/>
       <ListItem icon="log-out-outline" title="Sair da conta" subtitle={me.email} onPress={confirmSignOut} trailing={null}/>
     </Group>

@@ -32,18 +32,22 @@ function WebFrame({ children }: { children: ReactNode }) {
 }
 
 function useAuthLinks() {
+  const { beginPasswordRecovery } = useAuth();
   useEffect(() => {
     async function handle(url: string | null) {
-      if (!url?.startsWith("muve://auth")) return;
+      if (!url?.includes("access_token=")) return;
       const params = new URLSearchParams(url.split("#")[1] ?? url.split("?")[1] ?? "");
       const access_token = params.get("access_token");
       const refresh_token = params.get("refresh_token");
-      if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
+      if (!access_token || !refresh_token) return;
+      if (params.get("type") === "recovery") beginPasswordRecovery();
+      await supabase.auth.setSession({ access_token, refresh_token });
+      if (Platform.OS === "web") window.history.replaceState(null, "", window.location.pathname);
     }
     Linking.getInitialURL().then(handle);
     const subscription = Linking.addEventListener("url", (event) => handle(event.url));
     return () => subscription.remove();
-  }, []);
+  }, [beginPasswordRecovery]);
 }
 
 function AuthGate() {
@@ -87,5 +91,6 @@ function AuthGate() {
       <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>
     </Stack.Protected>
     <Stack.Screen name="terms" options={{ title: "TERMOS DE USO" }}/>
+    <Stack.Screen name="auth" options={{ headerShown: false }}/>
   </Stack>;
 }

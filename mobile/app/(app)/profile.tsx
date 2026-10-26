@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { Linking, Text, View } from "react-native";
 import { fetchMyEvents } from "../../../shared/client/events.ts";
-import { formatDateTime } from "../../../shared/client/format.ts";
+import { formatEventDateTime } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts";
@@ -60,7 +60,7 @@ function EventHistory({ contractorId }: { contractorId: string }) {
     {events.data?.length === 0 && <Text style={type.bodySmall}>Nenhum evento criado até o momento.</Text>}
     {events.data?.map((event) => <View key={event.id} style={styles.card}>
       <View style={styles.between}><Text style={[type.titleSmall, { flex: 1 }]} numberOfLines={1}>{event.titulo}</Text><EventStatusPill status={event.status}/></View>
-      <Text style={type.bodySmall}>{formatDateTime(event.inicio)} · {event.cidade}, {event.uf}</Text>
+      <Text style={type.bodySmall}>{formatEventDateTime(event.inicio, event.uf)} · {event.cidade}, {event.uf}</Text>
     </View>)}
   </Section>;
 }

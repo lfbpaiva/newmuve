@@ -17,6 +17,7 @@ export interface EventStore {
   findCandidate(eventId: string, musicianId: string): Promise<CandidateRecord | null>;
   findCandidateById(id: string): Promise<CandidateRecord | null>;
   listCandidates(eventId: string): Promise<CandidateRecord[]>;
+  setApplicationsClosed(eventId: string, closed: boolean): Promise<void>;
   declineCandidate(id: string): Promise<boolean>;
   insertCandidate(eventId: string, musicianId: string, valorProposto: number | null): Promise<CandidateRecord>;
   updateCandidateProposal(id: string, valorProposto: number | null): Promise<void>;

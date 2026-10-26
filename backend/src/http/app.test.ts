@@ -47,7 +47,7 @@ function setup() {
     asaasWebhookToken: WEBHOOK_TOKEN,
     verifyToken: async (token) => (token === "token-valido" ? { id: "u1", email: "bar@exemplo.com" } : null),
     allowedOrigins: [ORIGIN],
-    allowedRedirects: ["muve://auth"],
+    allowedRedirects: ["muve://auth", "exp://*"],
   });
   return { app, accounts, events, payments };
 }
@@ -99,9 +99,15 @@ describe("POST /api/auth/signup", () => {
 
     await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "muve://auth" }));
     await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "https://malicioso.example" }));
+    await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: `${ORIGIN}/auth` }));
+    await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "exp://192.168.0.10:8081/--/auth" }));
+    await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: `${ORIGIN}/outra-pagina` }));
 
     expect(accounts.signup).toHaveBeenNthCalledWith(1, expect.anything(), "muve://auth");
     expect(accounts.signup).toHaveBeenNthCalledWith(2, expect.anything(), undefined);
+    expect(accounts.signup).toHaveBeenNthCalledWith(3, expect.anything(), `${ORIGIN}/auth`);
+    expect(accounts.signup).toHaveBeenNthCalledWith(4, expect.anything(), "exp://192.168.0.10:8081/--/auth");
+    expect(accounts.signup).toHaveBeenNthCalledWith(5, expect.anything(), undefined);
   });
 
   it("não consome o limite com formulários inválidos", async () => {
