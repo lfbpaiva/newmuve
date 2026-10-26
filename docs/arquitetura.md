@@ -81,9 +81,13 @@
 
 Garantias: repetir o checkout devolve a mesma cobrança; uma cobrança expirada ou substituída é cancelada também na Asaas; um pagamento tardio, cujo evento já foi contratado por outra cobrança, é estornado automaticamente; notificações repetidas não têm efeito; o webhook responde 200 mesmo a notificações que ignora, porque a Asaas pausa a fila após 15 respostas de erro seguidas; o app nunca informa valor nem declara que pagou.
 
+### Notificações
+
+A API grava avisos na tabela `notifications` sempre que algo muda para alguém: nova inscrição, mensagem, inscrição recusada, contratação, outro músico escolhido, evento alterado, confirmação do show pela outra parte, cancelamento, não comparecimento e repasse concluído. O app lê os avisos do próprio usuário (RLS) e recebe os novos pelo Supabase Realtime; o sino da tela inicial mostra quantos não foram lidos, e abrir a lista os marca como lidos (`POST /api/me/notificacoes/lidas`). Os avisos mais importantes também vão por e-mail quando há SMTP configurado.
+
 ### Pós-evento e repasse
 
-Após o início do evento, contratante e músico confirmam cada um pelo próprio acesso. Com as duas confirmações, uma trigger conclui o evento e o backend transfere o cachê (sem a comissão) para a chave Pix do músico. Com apenas uma confirmação, o show é dado como concluído 7 dias após a data, na próxima consulta ao comprovante (não há agendador de tarefas). A reserva do repasse é um `UPDATE` condicional (`claimPayout`), o que impede transferência em dobro mesmo com chamadas simultâneas; uma falha fica registrada como `FALHOU` e é tentada de novo. A avaliação mútua é liberada após a conclusão, e as médias de músico e contratante são recalculadas por trigger.
+Após o início do evento, contratante e músico confirmam cada um pelo próprio acesso. Com as duas confirmações, uma trigger conclui o evento e o backend transfere o cachê (sem a comissão) para a chave Pix do músico. Sem as duas confirmações e sem registro de não comparecimento, o show é dado como concluído 7 dias após a data, na próxima consulta ao comprovante (não há agendador de tarefas). A reserva do repasse é um `UPDATE` condicional (`claimPayout`), o que impede transferência em dobro mesmo com chamadas simultâneas; uma falha fica registrada como `FALHOU` e é tentada de novo. A avaliação mútua é liberada após a conclusão, e as médias de músico e contratante são recalculadas por trigger.
 
 ### Cancelamento
 
@@ -93,9 +97,9 @@ Após o início do evento, contratante e músico confirmam cada um pelo próprio
 | Músico contratado | antes do início | estorno integral ao contratante; evento volta a ABERTO, demais candidatos voltam a concorrer |
 | Contratante | mais de 24h antes | estorno integral; evento CANCELADO |
 | Contratante | menos de 24h antes | sem estorno; cachê repassado ao músico; evento CANCELADO |
-| Contratante (não comparecimento) | após o horário, enquanto o músico não confirmar o show | estorno integral; evento CANCELADO |
+| Contratante (não comparecimento) | após o horário e até 7 dias depois, se ninguém confirmou o show | estorno integral; evento CANCELADO |
 
-Depois do início do evento ninguém cancela: o encerramento é pela confirmação do show. Um estorno feito no painel da Asaas também cancela a contratação (webhook `PAYMENT_REFUNDED`). O estorno só conta como feito quando a Asaas confirma a devolução: enquanto está em processamento, a confirmação do show e o repasse ficam suspensos; se a Asaas recusa, a contratação volta a funcionar normalmente e o estorno pode ser pedido de novo; se o pedido nem chega à Asaas, a reserva é desfeita. Contas com show contratado em andamento não podem ser excluídas.
+Depois do início do evento ninguém cancela: o encerramento é pela confirmação do show. Um estorno feito no painel da Asaas também cancela a contratação (webhook `PAYMENT_REFUNDED`). O estorno só conta como feito quando a Asaas confirma a devolução: enquanto está em processamento, a confirmação do show e o repasse ficam suspensos; se a Asaas recusa, a contratação volta a funcionar normalmente e o estorno pode ser pedido de novo; se o pedido nem chega à Asaas, a reserva é desfeita. Contas com show contratado, cachê ainda não repassado ou estorno em processamento não podem ser excluídas (`has_open_obligations`).
 
 ## Segurança
 
@@ -129,7 +133,7 @@ Mocks existem apenas nos testes; a aplicação não tem dados simulados.
 - **Estorno exige saldo:** a Asaas não devolve as tarifas da cobrança, então a conta precisa de saldo além do valor recebido para estornar integralmente.
 - **Conclusão por prazo é avaliada sob demanda,** quando uma das partes consulta o comprovante; não há agendador.
 - **Limite de tentativas em memória:** vale para uma única instância do servidor.
-- **Avisos só por e-mail e só em três momentos;** não há aviso de nova candidatura nem notificações no app.
+- **Notificações só dentro do app:** não há push no celular; o aviso aparece quando o app está aberto. E-mail depende de SMTP configurado.
 - **Conversa sem moderação nem aviso de mensagem nova:** as mensagens aparecem em tempo real só com a conversa aberta.
 - **Sem mediação de disputas:** se o músico confirmou o show e o contratante diz que ele não compareceu, a plataforma não arbitra.
 - **Distância entre sedes de municípios,** não entre endereços; cidades homônimas são distinguidas pela UF.

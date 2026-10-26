@@ -1,6 +1,6 @@
 # Muve
 
-Aplicativo que conecta músicos a contratantes de eventos (projeto de TCC). Leia [README.md](README.md) para rodar e [docs/arquitetura.md](docs/arquitetura.md) para as decisões técnicas. As regras de negócio de origem estão em `docs/especificacao/`: não adicione funcionalidades fora delas.
+Aplicativo que conecta músicos a contratantes de eventos (projeto de TCC). Leia [README.md](README.md) para rodar, [docs/produto.md](docs/produto.md) para as regras do produto e [docs/arquitetura.md](docs/arquitetura.md) para as decisões técnicas. As especificações de origem estão em `docs/especificacao/`. Funcionalidade nova só com decisão do grupo, registrada em `docs/produto.md`.
 
 ## Estrutura
 
