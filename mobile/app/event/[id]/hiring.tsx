@@ -148,7 +148,7 @@ export default function HiringScreen() {
       </Section>
 
       {active && <Section title="Confirmação do show">
-        <Text style={type.bodySmall}>Após o evento, cada parte confirma pelo próprio acesso. Com as duas confirmações, o cachê é repassado ao músico; com apenas uma, o repasse acontece automaticamente após 7 dias.</Text>
+        <Text style={type.bodySmall}>Após o evento, cada parte confirma pelo próprio acesso. Com as duas confirmações, o cachê é repassado ao músico. Sem elas, e sem registro de não comparecimento, o show é dado como realizado 7 dias após a data.</Text>
         {refundUnresolved && <Text style={type.bodySmall}>A confirmação fica suspensa até a resolução do estorno.</Text>}
         {parties.map((party) => <View key={party.title} style={[styles.card, styles.between]}>
           <View style={[styles.row, { gap: 10 }]}><Icon name={party.done ? "checkmark-circle" : "ellipse-outline"} size={22} color={party.done ? colors.success : colors.line}/><Text style={type.titleSmall}>{party.title}</Text></View>

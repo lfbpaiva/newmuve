@@ -319,6 +319,8 @@ export function updateEvent(id: string, dados: EventData, imagem: UploadFile | n
 export const deleteEvent = (id: string) => apiRequest(`/events/${id}`, { method: "DELETE" });
 export const applyToEvent = (id: string, valorProposto: number | null) =>
   apiRequest(`/events/${id}/candidatura`, { method: "POST", body: { valorProposto } });
+export const declineCandidate = (eventId: string, candidateId: string) =>
+  apiRequest(`/events/${eventId}/candidatos/${candidateId}/recusa`, { method: "POST" });
 export const updateProposal = (id: string, valorProposto: number | null) =>
   apiRequest(`/events/${id}/candidatura`, { method: "PATCH", body: { valorProposto } });
 export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candidatura`, { method: "DELETE" });

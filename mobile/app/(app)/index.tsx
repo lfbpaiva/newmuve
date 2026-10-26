@@ -8,10 +8,11 @@ import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { camposFaltantes, descreverFaltantes, RAIOS_FEED_KM } from "../../../shared/dominio.ts";
 import { EventCard, EventRow, EventStatusPill, withEncerrado } from "../../components/events";
-import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Loading, Screen, Section } from "../../components/ui";
+import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Icon, Loading, Screen, Section } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
+import { useUnreadNotifications } from "../../lib/useUnreadNotifications";
 
 export default function HomeScreen() {
   const me = useMe();
@@ -24,9 +25,24 @@ function TopBar({ title, subtitle }: { title: string; subtitle: string }) {
   return <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.surface }}>
     <View style={[styles.between, { paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm, alignItems: "flex-end" }]}>
       <View style={{ flex: 1, gap: 6 }}><Text style={[type.display, { fontSize: 30, lineHeight: 30 }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityRole="header">{title}</Text><Text style={type.labelSmall} numberOfLines={1}>{subtitle}</Text></View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Abrir meu perfil" onPress={() => router.push("/(app)/profile")} hitSlop={6}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={44}/></Pressable>
+      <View style={[styles.row, { gap: space.md }]}>
+        <NotificationBell/>
+        <Pressable accessibilityRole="button" accessibilityLabel="Abrir meu perfil" onPress={() => router.push("/(app)/profile")} hitSlop={6}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={44}/></Pressable>
+      </View>
     </View>
   </SafeAreaView>;
+}
+
+function NotificationBell() {
+  const me = useMe();
+  const router = useRouter();
+  const unread = useUnreadNotifications(me.id);
+  return <Pressable accessibilityRole="button" accessibilityLabel={unread > 0 ? `Notificações, ${unread} não lidas` : "Notificações"} onPress={() => router.push("/notificacoes")} hitSlop={8} style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}>
+    <Icon name={unread > 0 ? "notifications" : "notifications-outline"} size={24}/>
+    {unread > 0 && <View style={{ position: "absolute", top: 2, right: 0, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" }}>
+      <Text style={[type.labelSmall, { color: colors.onAccent, letterSpacing: 0 }]}>{unread > 9 ? "9+" : unread}</Text>
+    </View>}
+  </Pressable>;
 }
 
 const RADIUS_KEY = "muve.feedRadiusKm";

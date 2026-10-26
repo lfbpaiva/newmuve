@@ -12,6 +12,7 @@ import {
   fetchContractor,
   fetchEvent,
   fetchMyApplication,
+  declineCandidate,
   updateProposal,
   type Candidate,
   type EventItem,
@@ -124,7 +125,7 @@ function Opportunity({ eventId }: { eventId: string }) {
           : <ProposalForm cacheOferecido={event.cache} valorAtual={null} submitLabel="Inscrever-se" icon="paper-plane-outline" busy={busy} onSubmit={(valor) => run(() => applyToEvent(event.id, valor))}/>
         : <Alert tone="info">As inscrições para este evento estão encerradas.</Alert>)}
       {!hired && application && <>
-        <Alert tone={application.status === "RECUSADO" ? "info" : "success"}>{application.status === "RECUSADO" ? "Outro músico foi contratado para este evento." : "Inscrição enviada. Acompanhe a resposta do contratante em Inscrições."}</Alert>
+        <Alert tone={application.status === "RECUSADO" ? "info" : "success"}>{application.status === "RECUSADO" ? "Sua inscrição não foi selecionada para este evento." : "Inscrição enviada. Você recebe uma notificação quando o contratante responder."}</Alert>
         {application.status === "PENDENTE" && <>
           <View style={[styles.card, styles.between]}>
             <Text style={type.bodySmall}>{application.valorProposto === null ? "Você aceitou o cachê oferecido" : "Sua proposta"}</Text>
@@ -150,11 +151,15 @@ function Manage({ eventId }: { eventId: string }) {
   });
   useRefreshOnFocus(details.reload);
   const { busy, error, run } = useAction(() => router.back());
+  const decline = useAction(details.reload);
+  const runDecline = decline.run;
 
   if (details.error) return <Screen><ErrorState message={details.error} onRetry={details.reload}/></Screen>;
   if (!details.data) return <Screen><Loading cards={1}/></Screen>;
   const { event, candidates, checkout } = details.data;
   const locked = event.status !== "ABERTO" || event.encerrado;
+  const deletable = event.status === "ABERTO" && !event.musicoContratadoId;
+  const pendentes = candidates.filter((c) => c.status === "PENDENTE").length;
   const paymentInProgress = checkout?.status === "PENDENTE" && new Date(checkout.expiraEm) > new Date();
   const hired = candidates.find((c) => c.status === "APROVADO");
 
@@ -171,22 +176,25 @@ function Manage({ eventId }: { eventId: string }) {
     <Facts event={event}/>
     {event.status === "CONTRATADO" && <Alert tone="success">Músico contratado: os dados do evento não podem mais ser alterados.</Alert>}
     {paymentInProgress && <Alert tone="info">Há um pagamento em andamento; conclua-o ou aguarde a cobrança expirar para editar.</Alert>}
-    {!locked && <View style={{ flexDirection: "row", gap: space.md }}>
-      <View style={{ flex: 1 }}><Button variant="tonal" icon="create-outline" title="Editar" disabled={paymentInProgress || busy} onPress={() => router.push(`/event/${event.id}/edit`)}/></View>
+    {event.status === "ABERTO" && event.encerrado && <Alert tone="info">A data do evento passou sem contratação. Você pode excluí-lo para limpar a lista.</Alert>}
+    {deletable && <View style={{ flexDirection: "row", gap: space.md }}>
+      {!locked && <View style={{ flex: 1 }}><Button variant="tonal" icon="create-outline" title="Editar" disabled={paymentInProgress || busy} onPress={() => router.push(`/event/${event.id}/edit`)}/></View>}
       <View style={{ flex: 1 }}><Button variant="danger" icon="trash-outline" title="Excluir" disabled={paymentInProgress} loading={busy} onPress={remove}/></View>
     </View>}
+    {!locked && pendentes > 0 && <Text style={type.bodySmall}>Se você mudar data, local, estilos ou cachê, os {pendentes} inscritos serão avisados.</Text>}
     {event.status !== "ABERTO" && checkout?.status === "PAGO" && <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
+    {decline.error ? <Alert tone="error">{decline.error}</Alert> : null}
 
     <Section title={candidates.length === 0 ? "Candidatos" : `${candidates.length} ${candidates.length === 1 ? "candidato" : "candidatos"}`}>
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
       {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. As inscrições aparecem aqui.</Text></EmptyState>}
-      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked} approveLabel={paymentInProgress ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
+      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked} approveLabel={paymentInProgress ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
     </Section>
   </Screen>;
 }
 
-function CandidateCard({ candidate, canApprove, approveLabel, cacheOferecido, onProfile, onChat, onApprove }: { candidate: Candidate; canApprove: boolean; approveLabel: string; cacheOferecido: number; onProfile: () => void; onChat: () => void; onApprove: () => void }) {
+function CandidateCard({ candidate, canApprove, approveLabel, cacheOferecido, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; approveLabel: string; cacheOferecido: number; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
   const { musician } = candidate;
   return <View style={[styles.card, { gap: space.md }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
@@ -205,6 +213,7 @@ function CandidateCard({ candidate, canApprove, approveLabel, cacheOferecido, on
       {candidate.status === "PENDENTE" && canApprove && <View style={{ flex: 1 }}><Button icon="checkmark" title={approveLabel} onPress={onApprove}/></View>}
     </View>
     {candidate.status === "APROVADO" && <Alert tone="success">Contratado</Alert>}
+    {candidate.status === "PENDENTE" && canApprove && <Button variant="text" title="Recusar inscrição" onPress={onDecline}/>}
     {candidate.status === "RECUSADO" && <Alert tone="info">Não selecionado</Alert>}
   </View>;
 }

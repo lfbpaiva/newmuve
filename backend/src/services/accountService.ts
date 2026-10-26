@@ -1,6 +1,7 @@
 import { camposFaltantes, descreverFaltantes, imageProblem, TERMOS_VERSAO, type AcaoPerfil } from "../../../shared/dominio.ts";
 import type { Account, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
+import type { Inbox } from "./notifications.ts";
 
 export interface AccountStore {
   documentExists(documento: string, exceptUserId?: string): Promise<boolean>;
@@ -43,6 +44,7 @@ export function createAccountService(deps: {
   auth: AuthGateway;
   images: ImageStore;
   hasOngoingHiring(userId: string): Promise<boolean>;
+  inbox: Pick<Inbox, "markAllRead">;
 }) {
   const { store, auth, images } = deps;
 
@@ -61,6 +63,10 @@ export function createAccountService(deps: {
         });
         throw error;
       }
+    },
+
+    async markNotificationsRead(user: AuthUser): Promise<void> {
+      await deps.inbox.markAllRead(user.id);
     },
 
     async getMe(user: AuthUser): Promise<Account & { email: string }> {
@@ -101,7 +107,7 @@ export function createAccountService(deps: {
         throw new AppError(
           409,
           "CONTRATACAO_EM_ANDAMENTO",
-          "Você tem um show contratado em andamento. Conclua ou cancele a contratação antes de excluir a conta.",
+          "Você tem uma contratação em andamento ou valores ainda não repassados ou devolvidos. Aguarde a conclusão antes de excluir a conta.",
         );
       }
 

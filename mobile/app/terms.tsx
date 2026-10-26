@@ -40,7 +40,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
     titulo: "5. Pagamento retido e repasse",
     paragrafos: [
       "O valor pago fica retido pela Muve até o show acontecer. Depois do início do evento, músico e contratante confirmam a realização, cada um na própria conta.",
-      "Com as duas confirmações, o cachê é transferido por Pix para a chave cadastrada pelo músico. Se só uma parte confirmar, o show é dado como realizado 7 dias após a data.",
+      "Com as duas confirmações, o cachê é transferido por Pix para a chave cadastrada pelo músico. Se ninguém registrar o não comparecimento em até 7 dias após a data, o show é dado como realizado e o cachê é repassado, mesmo sem as confirmações.",
     ],
   },
   {
@@ -48,7 +48,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
     paragrafos: [
       "Se o músico contratado desistir antes do início, o contratante recebe o valor integral de volta e o evento volta a receber candidaturas.",
       "Se o contratante cancelar com mais de 24 horas de antecedência, recebe o valor integral de volta. Com menos de 24 horas, não há devolução e o cachê é repassado ao músico.",
-      "Se o músico não comparecer, o contratante pode registrar a ausência depois do horário do evento, enquanto o músico não tiver confirmado o show, e recebe o valor integral de volta.",
+      "Se o músico não comparecer, o contratante pode registrar a ausência em até 7 dias após o horário do evento, desde que nenhuma das partes tenha confirmado o show, e recebe o valor integral de volta.",
       "Depois do início do evento não há cancelamento. A devolução só conta como feita quando a Asaas a confirma.",
     ],
   },
@@ -69,7 +69,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
     titulo: "9. Seus dados",
     paragrafos: [
       "Usamos seus dados apenas para operar a contratação, conforme a Lei Geral de Proteção de Dados (LGPD). CPF ou CNPJ e chave Pix nunca aparecem para outros usuários; o telefone só é compartilhado com a outra parte depois de uma contratação.",
-      "Pagamentos são processados pela Asaas. Você pode excluir sua conta a qualquer momento em Ajustes, exceto enquanto houver um show contratado em andamento.",
+      "Pagamentos são processados pela Asaas. Você pode excluir sua conta em Ajustes, exceto enquanto houver show contratado ou valores ainda não repassados ou devolvidos.",
     ],
   },
   {

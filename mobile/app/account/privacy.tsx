@@ -25,7 +25,7 @@ export default function PrivacyScreen() {
     </View>
     <View style={{ gap: space.sm, marginTop: space.xl }}>
       <Text style={type.title}>Encerrar a conta</Text>
-      <Text style={type.bodySmall}>Remove seu perfil, eventos, candidaturas e avaliações de forma permanente. Não é possível enquanto houver um show contratado em andamento.</Text>
+      <Text style={type.bodySmall}>Remove seu perfil, eventos, candidaturas e avaliações de forma permanente. Não é possível enquanto houver show contratado ou valores ainda não repassados ou devolvidos.</Text>
       <Button title="Quero excluir minha conta" variant="text" block={false} onPress={() => router.push("/account/delete")}/>
     </View>
   </Screen>;

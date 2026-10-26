@@ -18,13 +18,17 @@ export function createPaymentService(deps: {
   payments: PaymentStore;
   accounts: AccountStore;
   asaas: AsaasGateway;
-  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported">;
+  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported" | "payoutDone">;
 }) {
   const { events, payments, accounts, asaas, notifier } = deps;
 
-  async function settlePayout(paymentId: string, transferStatus: string): Promise<void> {
-    if (transferStatus === "DONE") await payments.setPayout(paymentId, { status: "REPASSADO" });
-    if (transferStatus === "FAILED" || transferStatus === "CANCELLED") await payments.setPayout(paymentId, { status: "FALHOU" });
+  async function settlePayout(payment: PaymentRecord, transferStatus: string): Promise<void> {
+    if (transferStatus === "DONE") {
+      await payments.setPayout(payment.id, { status: "REPASSADO" });
+      const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+      if (event) void notifier.payoutDone(event);
+    }
+    if (transferStatus === "FAILED" || transferStatus === "CANCELLED") await payments.setPayout(payment.id, { status: "FALHOU" });
   }
 
   async function completeRefund(payment: PaymentRecord): Promise<void> {
@@ -95,7 +99,7 @@ export function createPaymentService(deps: {
       return;
     }
     if (result !== "CONTRATADO" || !payment.eventId) return;
-    void notifier.hiringConfirmed(payment.eventId);
+    void notifier.hiringConfirmed(payment.eventId, payment.valorCache);
 
     const leftover = await payments.findPendingPayment(payment.eventId);
     if (leftover) {
@@ -207,7 +211,7 @@ export function createPaymentService(deps: {
       const payment = await payments.findLatestPayment(eventId);
       if (payment?.status === "PAGO" && payment.repasseStatus === "PROCESSANDO" && payment.asaasTransferId) {
         const transferStatus = await asaas.getTransferStatus(payment.asaasTransferId).catch(() => null);
-        if (transferStatus) await settlePayout(payment.id, transferStatus);
+        if (transferStatus) await settlePayout(payment, transferStatus);
         return;
       }
       if (payment?.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return;
@@ -301,7 +305,7 @@ export function createPaymentService(deps: {
 
       if (notification.transfer) {
         const payment = await payments.findPaymentByTransferId(notification.transfer.id);
-        if (payment?.repasseStatus === "PROCESSANDO") await settlePayout(payment.id, notification.event.replace("TRANSFER_", ""));
+        if (payment?.repasseStatus === "PROCESSANDO") await settlePayout(payment, notification.event.replace("TRANSFER_", ""));
       }
 
       const asaasPaymentId = notification.payment?.id;

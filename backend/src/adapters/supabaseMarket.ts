@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
 import type { CandidateRecord, CandidateStatus, EventInput, EventRecord, EventStatus, MessageRecord, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { Inbox } from "../services/notifications.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
 
 const UNIQUE_VIOLATION = "23505";
@@ -185,14 +186,9 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     },
 
     async hasOngoingHiring(userId) {
-      const { data, error } = await admin
-        .from("events")
-        .select("id")
-        .eq("status", "CONTRATADO")
-        .or(`contractor_id.eq.${userId},musico_contratado_id.eq.${userId}`)
-        .limit(1);
+      const { data, error } = await admin.rpc("has_open_obligations", { p_user_id: userId });
       if (error) throw error;
-      return data.length > 0;
+      return data === true;
     },
 
     async distanceKm(eventId, musicianId) {
@@ -211,6 +207,18 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       const { data, error } = await admin.from("event_candidates").select("*").eq("id", id).maybeSingle();
       if (error) throw error;
       return data && toCandidate(data);
+    },
+
+    async listCandidates(eventId) {
+      const { data, error } = await admin.from("event_candidates").select("*").eq("event_id", eventId);
+      if (error) throw error;
+      return data.map(toCandidate);
+    },
+
+    async declineCandidate(id) {
+      const { data, error } = await admin.from("event_candidates").update({ status: "RECUSADO" }).eq("id", id).eq("status", "PENDENTE").select("id");
+      if (error) throw error;
+      return data.length > 0;
     },
 
     async insertCandidate(eventId, musicianId, valorProposto) {
@@ -397,6 +405,25 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       const { error } = await admin
         .from("asaas_webhook_events")
         .upsert({ id: event.id, tipo: event.tipo, asaas_payment_id: event.asaasPaymentId ?? null, payload: event.payload });
+      if (error) throw error;
+    },
+  };
+}
+
+export function createInbox(admin: SupabaseClient): Inbox {
+  return {
+    async add(notification) {
+      const { error } = await admin.from("notifications").insert({
+        user_id: notification.userId,
+        titulo: notification.titulo,
+        texto: notification.texto,
+        link: notification.link,
+      });
+      if (error) throw error;
+    },
+
+    async markAllRead(userId) {
+      const { error } = await admin.from("notifications").update({ lida: true }).eq("user_id", userId).eq("lida", false);
       if (error) throw error;
     },
   };

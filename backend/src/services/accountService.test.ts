@@ -58,7 +58,7 @@ function fakes() {
     users,
     images,
     state,
-    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring }),
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} } }),
   };
 }
 

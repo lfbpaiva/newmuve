@@ -10,7 +10,7 @@ import {
   createImageStore,
   createTokenVerifier,
 } from "./adapters/supabase.ts";
-import { createEventStore, createPaymentStore } from "./adapters/supabaseMarket.ts";
+import { createEventStore, createInbox, createPaymentStore } from "./adapters/supabaseMarket.ts";
 import { createApp } from "./http/app.ts";
 import { createAccountService } from "./services/accountService.ts";
 import { createEventService } from "./services/eventService.ts";
@@ -33,7 +33,7 @@ const accountStore = createAccountStore(admin);
 const eventStore = createEventStore(admin);
 const images = createImageStore(admin);
 
-const configuredOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:8443")
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:8081")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -56,7 +56,8 @@ const smtp = process.env.SMTP_HOST
       from: requiredEnv("SMTP_FROM"),
     })
   : createLogMailer();
-const notifier = createNotifier({ accounts: accountStore, events: eventStore, mailer: smtp, appUrl: allowedOrigins[0] });
+const inbox = createInbox(admin);
+const notifier = createNotifier({ accounts: accountStore, events: eventStore, inbox, mailer: smtp, appUrl: allowedOrigins[0] });
 
 const payments = createPaymentService({
   events: eventStore,
@@ -75,6 +76,7 @@ const app = createApp({
     auth: createAuthGateway(admin, supabaseUrl, requiredEnv("SUPABASE_ANON_KEY")),
     images,
     hasOngoingHiring: eventStore.hasOngoingHiring,
+    inbox,
   }),
   events: createEventService({ events: eventStore, accounts: accountStore, images, payments, notifier }),
   payments,

@@ -124,11 +124,17 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     await next();
   }
   app.use("/me", requireUser);
+  app.use("/me/*", requireUser);
   app.use("/events", requireUser);
   app.use("/events/*", requireUser);
   app.use("/candidaturas/*", requireUser);
 
   app.get("/me", async (c) => c.json(await accounts.getMe(c.get("user"))));
+
+  app.post("/me/notificacoes/lidas", async (c) => {
+    await accounts.markNotificationsRead(c.get("user"));
+    return c.body(null, 204);
+  });
 
   app.patch("/me", async (c) => {
     const user = c.get("user");
@@ -165,6 +171,11 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.post("/events/:id/candidatura", async (c) => {
     const { valorProposto } = candidaturaSchema.parse(await readJson(c));
     await events.apply(c.get("user"), c.req.param("id"), valorProposto);
+    return c.body(null, 204);
+  });
+
+  app.post("/events/:id/candidatos/:candidateId/recusa", async (c) => {
+    await events.declineCandidate(c.get("user"), c.req.param("id"), c.req.param("candidateId"));
     return c.body(null, 204);
   });
 

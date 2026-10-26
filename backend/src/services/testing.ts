@@ -2,7 +2,7 @@ import type { Account } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import type { CandidateRecord, EventRecord, MessageRecord, PaymentRecord } from "../domain/event.ts";
 import type { AccountStore, ImageStore } from "./accountService.ts";
-import type { Mailer } from "./notifications.ts";
+import type { Inbox, Mailer, NotificationInput } from "./notifications.ts";
 import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
 
 export const NOW = new Date("2030-06-10T12:00:00Z");
@@ -38,6 +38,7 @@ export function memoryWorld() {
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
   const messages: MessageRecord[] = [];
+  const notifications: (NotificationInput & { lida: boolean })[] = [];
   const payments = new Map<string, PaymentRecord & { createdAt: number }>();
   const asaasTransfers = new Map<string, string>();
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
@@ -55,6 +56,13 @@ export function memoryWorld() {
   const failures = { refund: false, transfer: false };
   let sequence = 1;
   const nextId = (prefix: string) => `${prefix}${sequence++}`;
+
+  const inbox: Inbox = {
+    add: async (notification) => void notifications.push({ ...notification, lida: false }),
+    markAllRead: async (userId) => {
+      for (const notification of notifications) if (notification.userId === userId) notification.lida = true;
+    },
+  };
 
   const accountStore = {
     findAccount: async (id: string) => accounts.get(id) ?? null,
@@ -129,8 +137,22 @@ export function memoryWorld() {
       const same = event.uf === musician.uf && event.cidade.toLowerCase() === (musician.cidade ?? "").toLowerCase();
       return same ? 0 : (distances.get(`${event.uf}/${event.cidade.toLowerCase()}`) ?? null);
     },
-    hasOngoingHiring: async (userId) =>
-      [...events.values()].some((e) => e.status === "CONTRATADO" && (e.contractorId === userId || e.musicoContratadoId === userId)),
+    hasOngoingHiring: async (userId) => {
+      const involved = (e: EventRecord) => e.contractorId === userId || e.musicoContratadoId === userId;
+      if ([...events.values()].some((e) => e.status === "CONTRATADO" && involved(e))) return true;
+      return [...payments.values()].some((p) => {
+        const event = p.eventId ? events.get(p.eventId) : undefined;
+        const unsettled = (p.status === "PAGO" && p.repasseStatus !== null && p.repasseStatus !== "REPASSADO") || p.refundStatus === "PROCESSANDO";
+        return Boolean(event && involved(event) && unsettled);
+      });
+    },
+    listCandidates: async (eventId) => [...candidates.values()].filter((c) => c.eventId === eventId),
+    declineCandidate: async (id) => {
+      const candidate = candidates.get(id);
+      if (candidate?.status !== "PENDENTE") return false;
+      candidate.status = "RECUSADO";
+      return true;
+    },
     findCandidate: async (eventId, musicianId) =>
       [...candidates.values()].find((c) => c.eventId === eventId && c.musicianId === musicianId) ?? null,
     findCandidateById: async (id) => candidates.get(id) ?? null,
@@ -296,6 +318,7 @@ export function memoryWorld() {
     enderecos,
     candidates,
     messages,
+    notifications,
     payments,
     reviews,
     images,
@@ -305,7 +328,7 @@ export function memoryWorld() {
     asaasCalls,
     failures,
     sent,
-    stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer },
+    stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer, inbox },
     seedEvent(overrides: Partial<EventRecord> = {}): EventRecord {
       const event: EventRecord = {
         id: nextId("e"),

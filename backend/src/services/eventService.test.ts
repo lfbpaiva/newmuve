@@ -339,11 +339,11 @@ describe("cancelamento da contratação", () => {
 
     await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(2))).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
     await expect(t.service.confirmCompletion(musico, event.id, hoursFromNow(3))).rejects.toMatchObject({ code: "ESTORNO_PENDENTE" });
-    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8))).evento.status).toBe("CONTRATADO");
+    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 9))).evento.status).toBe("CONTRATADO");
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
     t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
-    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(24 * 8))).resolves.toEqual({ situacao: "ESTORNADO" });
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(24 * 3))).resolves.toEqual({ situacao: "ESTORNADO" });
     expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
     expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
   });
@@ -531,13 +531,20 @@ describe("liberação do valor retido", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
-  it("sem nenhuma confirmação, nada é concluído por prazo", async () => {
+  it("sem nenhuma confirmação nem ausência registrada, o show é dado como realizado após 7 dias", async () => {
     const { event } = await hired(hoursFromNow(1));
 
-    const view = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 30));
+    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 6))).evento.status).toBe("CONTRATADO");
+    const view = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8 + 1));
 
-    expect(view.evento.status).toBe("CONTRATADO");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(view.evento.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("o não comparecimento só pode ser registrado até 7 dias após o show", async () => {
+    const { event } = await hired(hoursFromNow(1));
+
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(24 * 8 + 1))).rejects.toMatchObject({ code: "PRAZO_ENCERRADO" });
   });
 });
 
@@ -617,5 +624,82 @@ describe("estilos do evento", () => {
     await expect(t.service.apply(musico, varios.id, null, NOW)).resolves.toBeUndefined();
     await expect(t.service.apply(musico, qualquer.id, null, NOW)).resolves.toBeUndefined();
     await expect(t.service.apply(musico, nenhum.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
+  });
+});
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const avisosDe = (userId: string) => t.world.notifications.filter((n) => n.userId === userId);
+
+describe("notificações no app", () => {
+  it("avisam o contratante de nova inscrição e cada parte de mensagem nova", async () => {
+    const event = t.world.seedEvent();
+
+    await t.service.apply(musico, event.id, 800, NOW);
+    const candidate = [...t.world.candidates.values()][0];
+    await t.service.sendMessage(musico, candidate.id, "Topa R$ 800?");
+    await t.service.sendMessage(contratante, candidate.id, "Topo.");
+    await flush();
+
+    expect(avisosDe("c1").map((n) => n.link)).toEqual([`/event/${event.id}`, `/conversa/${candidate.id}`]);
+    expect(avisosDe("c1")[0].texto).toMatch(/R\$\s800,00/);
+    expect(avisosDe("m1").map((n) => n.link)).toEqual([`/conversa/${candidate.id}`]);
+  });
+
+  it("avisam o contratado com o cachê pago e os demais candidatos de que outro foi escolhido", async () => {
+    await hired();
+    await flush();
+
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("Você foi contratado")]);
+    expect(avisosDe("m1")[0].texto).toMatch(/R\$\s500,00/);
+    expect(avisosDe("m2").map((n) => n.titulo)).toEqual([expect.stringContaining("Outro músico foi escolhido")]);
+    expect(avisosDe("c1").map((n) => n.titulo)).toEqual([expect.stringContaining("Pagamento confirmado")]);
+  });
+
+  it("avisam os inscritos só quando o evento muda em algo que importa para eles", async () => {
+    const event = t.world.seedEvent();
+    t.world.seedCandidate(event.id, "m1");
+
+    await t.service.updateEvent(contratante, event.id, novoEvento, null, NOW);
+    await t.service.updateEvent(contratante, event.id, { ...novoEvento, titulo: "Outro título" }, null, NOW);
+    await t.service.updateEvent(contratante, event.id, { ...novoEvento, cache: novoEvento.cache + 100 }, null, NOW);
+    await flush();
+
+    expect(avisosDe("m1")).toHaveLength(2);
+  });
+
+  it("avisam a outra parte quando um lado confirma o show", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await flush();
+    const antes = avisosDe("m1").length;
+
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(2));
+    await flush();
+
+    expect(avisosDe("m1").slice(antes).map((n) => n.titulo)).toEqual([expect.stringContaining("Show confirmado pela outra parte")]);
+  });
+});
+
+describe("recusa de candidato", () => {
+  it("o dono do evento recusa, o músico é avisado e a conversa é encerrada", async () => {
+    const event = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(event.id, "m1");
+
+    await expect(t.service.declineCandidate(outroContratante, event.id, candidate.id, NOW)).rejects.toMatchObject({ status: 404 });
+    await t.service.declineCandidate(contratante, event.id, candidate.id, NOW);
+    await flush();
+
+    expect(candidate.status).toBe("RECUSADO");
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("não selecionada")]);
+    await expect(t.service.sendMessage(musico, candidate.id, "oi")).rejects.toMatchObject({ code: "CONVERSA_ENCERRADA" });
+    await expect(t.service.declineCandidate(contratante, event.id, candidate.id, NOW)).rejects.toMatchObject({ code: "CANDIDATURA_INDISPONIVEL" });
+  });
+
+  it("não recusa com cobrança em andamento", async () => {
+    const event = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(event.id, "m1");
+    const outro = t.world.seedCandidate(event.id, "m2");
+    await t.payments.startCheckout(contratante, event.id, candidate.id, NOW);
+
+    await expect(t.service.declineCandidate(contratante, event.id, outro.id, NOW)).rejects.toMatchObject({ code: "PAGAMENTO_EM_ANDAMENTO" });
   });
 });
