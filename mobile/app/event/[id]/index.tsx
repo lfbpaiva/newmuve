@@ -23,6 +23,7 @@ import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, RatingSum
 import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
 import { useMe } from "../../../lib/useMe";
+import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
 
 export default function EventScreen() {
   const me = useMe();
@@ -77,6 +78,7 @@ function Opportunity({ eventId }: { eventId: string }) {
     const [application, contractor] = await Promise.all([fetchMyApplication(eventId, me.id), fetchContractor(event.contractorId)]);
     return { event, application, contractor };
   });
+  useRefreshOnFocus(details.reload);
   const { busy, error, run } = useAction(details.reload);
 
   if (details.error) return <Screen><ErrorState message={details.error} onRetry={details.reload}/></Screen>;
@@ -129,6 +131,7 @@ function Manage({ eventId }: { eventId: string }) {
     const [raw, candidates, checkout] = await Promise.all([fetchEvent(eventId), fetchCandidates(eventId), fetchCheckoutStatus(eventId).catch(() => null)]);
     return { event: withEncerrado(raw), candidates, checkout };
   });
+  useRefreshOnFocus(details.reload);
   const { busy, error, run } = useAction(() => router.back());
 
   if (details.error) return <Screen><ErrorState message={details.error} onRetry={details.reload}/></Screen>;

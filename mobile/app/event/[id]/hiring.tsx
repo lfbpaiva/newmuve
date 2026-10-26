@@ -10,6 +10,7 @@ import { EventStatusPill } from "../../../components/events";
 import { Alert, Avatar, Button, ErrorState, Field, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, space, styles, type } from "../../../lib/theme";
+import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
 
 const payoutLabels: Record<string, string> = {
   RETIDO: "Retido na plataforma até a conclusão do show",
@@ -29,6 +30,7 @@ export default function HiringScreen() {
   const { id: eventId } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const hiring = useAsync(`hiring:${eventId}`, () => fetchHiring(eventId));
+  useRefreshOnFocus(hiring.reload);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");

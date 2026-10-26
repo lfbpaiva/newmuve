@@ -6,6 +6,7 @@ import { EventRow, EventStatusPill, withEncerrado } from "../../components/event
 import { EmptyState, ErrorState, Heading, Loading, Pill, Screen } from "../../components/ui";
 import { type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
+import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
 
 export default function EventsScreen() {
   const me = useMe();
@@ -22,6 +23,7 @@ function MyApplications() {
   const me = useMe();
   const router = useRouter();
   const applications = useAsync(`applications:${me.id}`, () => fetchMyApplications(me.id));
+  useRefreshOnFocus(applications.reload);
 
   return <Screen>
     <Heading title="Minhas inscrições" subtitle="Os eventos em que você se candidatou e a resposta de cada um."/>
@@ -39,6 +41,7 @@ function MyEvents() {
   const me = useMe();
   const router = useRouter();
   const events = useAsync(`all-events:${me.id}`, async () => (await fetchMyEvents(me.id)).map((event) => withEncerrado(event)));
+  useRefreshOnFocus(events.reload);
 
   return <Screen>
     <Heading title="Meus eventos" subtitle="Todos os eventos que você publicou, dos abertos aos concluídos."/>

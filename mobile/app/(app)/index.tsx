@@ -11,6 +11,7 @@ import { EventCard, EventRow, EventStatusPill, withEncerrado } from "../../compo
 import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Fab, Loading, Screen, Section } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
+import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
 
 export default function HomeScreen() {
   const me = useMe();
@@ -37,6 +38,7 @@ function Feed() {
   const [radius, setRadius] = useState(50);
   const setupPending = camposFaltantes(me, "feed").length > 0;
   const feed = useAsync(`feed:${radius}:${setupPending}`, () => (setupPending ? Promise.resolve([]) : fetchFeed(radius)));
+  useRefreshOnFocus(feed.reload);
 
   useEffect(() => {
     AsyncStorage.getItem(RADIUS_KEY).then((saved) => {
@@ -71,6 +73,7 @@ function Dashboard() {
   const me = useMe();
   const router = useRouter();
   const events = useAsync(`my-events:${me.id}`, async () => (await fetchMyEvents(me.id)).map((event) => withEncerrado(event)));
+  useRefreshOnFocus(events.reload);
   const all = events.data ?? [];
   const active = all.filter((event) => (event.status === "ABERTO" && !event.encerrado) || event.status === "CONTRATADO");
   const candidaturas = active.filter((e) => e.status === "ABERTO").reduce((sum, e) => sum + (e.totalCandidatos ?? 0), 0);

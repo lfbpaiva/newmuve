@@ -9,6 +9,7 @@ import { EventStatusPill, ReviewsSection } from "../../components/events";
 import { Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
+import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
 
 export default function ProfileScreen() {
   const me = useMe();
@@ -53,6 +54,7 @@ export default function ProfileScreen() {
 
 function EventHistory({ contractorId }: { contractorId: string }) {
   const events = useAsync(`history:${contractorId}`, () => fetchMyEvents(contractorId));
+  useRefreshOnFocus(events.reload);
   return <Section title="Histórico de eventos">
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
     {events.data?.length === 0 && <Text style={type.bodySmall}>Nenhum evento criado até o momento.</Text>}
