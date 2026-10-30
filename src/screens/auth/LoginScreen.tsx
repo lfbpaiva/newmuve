@@ -39,6 +39,7 @@ export default function LoginScreen({ onSignup, onRecover }: { onSignup: () => v
       // A troca de tela acontece pelo AuthContext, ao detectar a sessão.
     } catch (error) {
       setFormError(errorMessage(error));
+    } finally {
       setSubmitting(false);
     }
   }

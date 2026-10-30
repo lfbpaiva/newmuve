@@ -6,7 +6,7 @@ import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, type ReactNode } from "react";
-import { Platform, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { supabase } from "../lib/client";
 import { colors } from "../lib/theme";
@@ -55,7 +55,7 @@ function useAuthLinks() {
 // Decide entre as telas públicas e as autenticadas; a sessão vem do AuthContext compartilhado com a web.
 // Stack.Protected garante que nenhuma tela interna seja montada sem sessão (nem por link direto).
 function AuthGate() {
-  const { state, recoveringPassword } = useAuth();
+  const { state, recoveringPassword, retrySession } = useAuth();
   const router = useRouter();
   useAuthLinks();
   const loading = state.status === "loading";
@@ -69,6 +69,13 @@ function AuthGate() {
 
   // Enquanto a sessão é lida do armazenamento, a splash continua visível.
   if (loading) return null;
+
+  if (state.status === "error") return <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, backgroundColor: colors.bg }}>
+    <Text style={{ color: colors.ink, textAlign: "center", marginBottom: 20 }}>{state.notice}</Text>
+    <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={{ padding: 14, backgroundColor: colors.accent, borderRadius: 8 }}>
+      <Text style={{ color: colors.bg, fontWeight: "700" }}>Tentar novamente</Text>
+    </Pressable>
+  </View>;
 
   return <Stack screenOptions={{
     headerStyle: { backgroundColor: colors.bg },

@@ -102,14 +102,25 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
 
   return {
     async signUp(email, password, redirectTo) {
-      const { data, error } = await publicClient().auth.signUp({
+      let retryAfter: string | undefined;
+      const signupClient = createClient(url, anonKey, {
+        ...serverOnly,
+        global: {
+          fetch: async (input, init) => {
+            const response = await fetch(input, init);
+            if (response.status === 429) retryAfter = response.headers.get("Retry-After") ?? undefined;
+            return response;
+          },
+        },
+      });
+      const { data, error } = await signupClient.auth.signUp({
         email,
         password,
         options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
       });
       if (error?.code === "user_already_exists" || error?.code === "email_exists") return { emailTaken: true };
-      if (error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {
-        throw new AppError(429, "LIMITE_DE_ENVIO", "Muitas tentativas de cadastro. Aguarde alguns minutos e tente novamente.");
+      if (error?.status === 429 || error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {
+        throw new AppError(429, "LIMITE_DE_ENVIO", "O serviço de autenticação limitou temporariamente novos cadastros.", retryAfter);
       }
       if (error?.code === "weak_password") throw new AppError(400, "SENHA_FRACA", "Escolha uma senha mais forte.");
       if (error?.code === "email_address_invalid") throw new AppError(400, "EMAIL_INVALIDO", "Informe um e-mail válido.");

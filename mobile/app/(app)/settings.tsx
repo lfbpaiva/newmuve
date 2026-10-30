@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Alert as NativeAlert, Text, View } from "react-native";
+import { Alert as NativeAlert, Platform, Text, View } from "react-native";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { Heading, ListItem, Screen } from "../../components/ui";
 import { colors, space, type } from "../../lib/theme";
@@ -13,6 +13,10 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   function confirmSignOut() {
+    if (Platform.OS === "web") {
+      if (window.confirm("Sair da conta? Você precisará entrar de novo para usar o app.")) void signOut();
+      return;
+    }
     NativeAlert.alert("Sair da conta", "Você precisará entrar de novo para usar o app.", [
       { text: "Ficar", style: "cancel" },
       { text: "Sair", onPress: () => void signOut() },

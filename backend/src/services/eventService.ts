@@ -23,7 +23,7 @@ export function createEventService(deps: {
   events: EventStore;
   accounts: AccountStore;
   images: ImageStore;
-  payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment">;
+  payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
   notifier: Pick<Notifier, "hiringCancelled" | "noShowReported">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
@@ -137,6 +137,11 @@ export function createEventService(deps: {
      * endereço, contato de cada lado, valores e situação do pagamento e do repasse.
      */
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
+      await findEventAsParty(user, eventId);
+      // Reconcilia estornos em andamento mesmo quando o webhook atrasar.
+      await payments.refreshRefund(eventId).catch((error: unknown) => {
+        console.error("Falha ao consultar estorno da contratação", error instanceof AppError ? error.code : "falha inesperada");
+      });
       const found = await findEventAsParty(user, eventId);
       const { party } = found;
       let { event } = found;
@@ -144,10 +149,11 @@ export function createEventService(deps: {
 
       // Sem agendador de tarefas, a conclusão por prazo é avaliada quando uma das partes consulta.
       const umaConfirmacao = event.confirmacaoMusico || event.confirmacaoContratante;
-      if (event.status === "CONTRATADO" && umaConfirmacao && now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS) {
+      const estornoPendente = Boolean((await payments.findPayment(eventId))?.refundStatus);
+      if (event.status === "CONTRATADO" && !estornoPendente && umaConfirmacao && now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS) {
         event = await events.concludeEvent(eventId);
       }
-      if (event.status === "CONCLUIDO") await payments.payout(eventId);
+      if (event.status === "CONCLUIDO" && !estornoPendente) await payments.payout(eventId);
 
       const [contratante, musico, endereco, payment, avaliou] = await Promise.all([
         accounts.findAccount(event.contractorId),
@@ -184,12 +190,13 @@ export function createEventService(deps: {
           total: payment.valor,
           status: payment.status,
           repasseStatus: payment.repasseStatus,
+          refundStatus: payment.refundStatus,
         },
         avaliou,
         // Garantia: após o horário do evento, enquanto o músico não confirmar, o contratante pode registrar o não comparecimento.
-        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico },
+        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
-          permitido: event.status === "CONTRATADO" && antesDoInicio,
+          permitido: event.status === "CONTRATADO" && antesDoInicio && payment?.refundStatus !== "PROCESSANDO",
           // O músico sempre devolve o valor ao desistir; o contratante só é reembolsado com 24h de antecedência.
           reembolso: party === "musico" || hasCancellationNotice(event.inicio, now),
         },
@@ -202,7 +209,7 @@ export function createEventService(deps: {
      *   - Contratante, com menos de 24h: sem estorno; o cachê é repassado ao músico.
      *   - Músico contratado: estorno integral ao contratante; o evento volta a ficar aberto.
      */
-    async cancelHiring(user: AuthUser, eventId: string, now = new Date()): Promise<{ reembolsado: boolean }> {
+    async cancelHiring(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" }> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
       if (event.inicio <= now) {
@@ -210,17 +217,19 @@ export function createEventService(deps: {
       }
 
       if (party === "musico") {
-        await payments.refundHiring(eventId);
-        await events.reopenEvent(eventId);
-        void notifier.hiringCancelled(event, "musico", true);
-        return { reembolsado: true };
+        const status = await payments.refundHiring(eventId, "REABRIR");
+        return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
       }
       const reembolsado = hasCancellationNotice(event.inicio, now);
-      if (reembolsado) await payments.refundHiring(eventId);
+      if (reembolsado) {
+        const status = await payments.refundHiring(eventId, "CANCELAR");
+        return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
+      }
+      await payments.ensurePaidForNoRefund(eventId);
       await events.cancelEvent(eventId);
-      if (!reembolsado) await payments.payout(eventId);
-      void notifier.hiringCancelled(event, "contratante", reembolsado);
-      return { reembolsado };
+      await payments.payout(eventId);
+      void notifier.hiringCancelled(event, "contratante", false);
+      return { situacao: "SEM_ESTORNO" };
     },
 
     /**
@@ -228,7 +237,7 @@ export function createEventService(deps: {
      * o valor é devolvido integralmente. Se o músico já confirmou, há conflito de
      * versões, que o MVP não arbitra.
      */
-    async reportNoShow(user: AuthUser, eventId: string, now = new Date()): Promise<void> {
+    async reportNoShow(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" }> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (party !== "contratante") throw naoEncontrado();
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
@@ -236,9 +245,8 @@ export function createEventService(deps: {
       if (event.confirmacaoMusico) {
         throw new AppError(409, "MUSICO_CONFIRMOU", "O músico confirmou a realização do show. Para contestar, entre em contato com o suporte.");
       }
-      await payments.refundHiring(eventId);
-      await events.cancelEvent(eventId);
-      void notifier.noShowReported(event);
+      const status = await payments.refundHiring(eventId, "NAO_COMPARECIMENTO");
+      return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
     },
 
     /** Cada parte confirma, pelo próprio acesso, que o show aconteceu. A conclusão libera o repasse. */
@@ -247,6 +255,9 @@ export function createEventService(deps: {
       if (event.status === "CONCLUIDO") return event;
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem um músico contratado.");
       if (event.inicio > now) throw new AppError(409, "EVENTO_NAO_INICIADO", "A confirmação fica disponível após o início do evento.");
+      if ((await payments.findPayment(eventId))?.refundStatus) {
+        throw new AppError(409, "ESTORNO_PENDENTE", "A confirmação do show fica suspensa até a resolução do estorno.");
+      }
 
       const updated = await events.setConfirmation(eventId, party);
       if (updated.status === "CONCLUIDO") await payments.payout(eventId);

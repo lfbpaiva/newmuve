@@ -1,9 +1,10 @@
+import { COBRANCA_VALIDADE_MS } from "../../../shared/dominio.ts";
 import type { Account } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import type { CandidateRecord, EventRecord, PaymentRecord } from "../domain/event.ts";
 import type { AccountStore, ImageStore } from "./accountService.ts";
 import type { Mailer } from "./notifications.ts";
-import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
+import type { AsaasGateway, AsaasTransferRecord, EventStore, PaymentStore, PayoutIntentRecord } from "./ports.ts";
 
 // Implementações em memória das portas, usadas apenas pelos testes dos serviços.
 
@@ -40,6 +41,8 @@ export function memoryWorld() {
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
   const payments = new Map<string, PaymentRecord & { asaasTransferId?: string; createdAt: number }>();
+  const payoutIntents = new Map<string, PayoutIntentRecord>();
+  const asaasTransfers = new Map<string, AsaasTransferRecord>();
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
   const images = new Set<string>();
   const customers = new Map<string, string>();
@@ -51,10 +54,11 @@ export function memoryWorld() {
     createPixCharge: [] as { value: number; customer: string }[],
     cancelCharge: [] as string[],
     refundPayment: [] as string[],
-    transferPix: [] as { value: number; pixAddressKey: string; pixAddressKeyType: string }[],
+    transferPix: [] as { value: number; pixAddressKey: string; pixAddressKeyType: string; externalReference: string }[],
   };
-  const failures = { refund: false, transfer: false };
+  const failures = { refund: false, transfer: false, transferAfterCreate: false, transferLookup: false, transferQuery: false, cancel: false };
   let sequence = 1;
+  let databaseTime = NOW;
   const nextId = (prefix: string) => `${prefix}${sequence++}`;
 
   const accountStore = {
@@ -161,6 +165,7 @@ export function memoryWorld() {
     findLatestPayment: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null,
     findPaymentByAsaasId: async (asaasPaymentId) => [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId) ?? null,
+    findPaymentById: async (id) => payments.get(id) ?? null,
     findPaymentByTransferId: async (transferId) => [...payments.values()].find((p) => p.asaasTransferId === transferId) ?? null,
     insertPayment: async (data) => {
       if ([...payments.values()].some((p) => p.eventId === data.eventId && p.status === "PENDENTE")) {
@@ -168,21 +173,68 @@ export function memoryWorld() {
       }
       const payment = {
         ...data,
+        expiraEm: new Date(databaseTime.getTime() + COBRANCA_VALIDADE_MS),
         id: nextId("p"),
         status: "PENDENTE" as const,
         valorCache: Math.round((data.valor - data.valorComissao) * 100) / 100,
         repasseStatus: null,
+        refundStatus: null,
+        refundAction: null,
+        latePaymentDetectedAt: null,
         createdAt: sequence,
       };
       payments.set(payment.id, payment);
       return payment;
     },
-    setPaymentStatus: async (id, status) => void (payments.get(id)!.status = status),
+    expirePayment: async (id) => {
+      const payment = payments.get(id)!;
+      if (payment.status !== "PENDENTE" || payment.expiraEm > databaseTime) return false;
+      payment.status = "EXPIRADO";
+      return true;
+    },
+    setPaymentStatus: async (id, status) => {
+      const payment = payments.get(id)!;
+      if ((status === "EXPIRADO" || status === "CANCELADO") && payment.status !== "PENDENTE") return;
+      payment.status = status;
+    },
+    claimRefund: async (id, action) => {
+      const payment = payments.get(id)!;
+      if (!((payment.status === "PAGO" && (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")) || (action === "NENHUMA" && (payment.status === "PENDENTE" || payment.status === "EXPIRADO" || payment.status === "CANCELADO"))) || (payment.refundStatus !== null && payment.refundStatus !== "NEGADO")) return false;
+      payment.refundStatus = "PROCESSANDO";
+      payment.refundAction = action;
+      return true;
+    },
+    setRefundStatus: async (id, status) => {
+      const payment = payments.get(id)!;
+      if (payment.refundStatus === "PROCESSANDO") payment.refundStatus = status;
+    },
+    finalizeRefund: async (id) => {
+      const payment = payments.get(id)!;
+      if (payment.status === "ESTORNADO") return "JA_PROCESSADO";
+      if (payment.status !== "PAGO" && payment.refundAction !== "NENHUMA") throw new Error("pagamento nao esta elegivel para estorno");
+      const payoutConflict = payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO";
+      const event = payment.eventId ? events.get(payment.eventId) : null;
+      if (event?.status === "CONTRATADO" && payment.refundAction !== "NENHUMA") {
+        if (payment.refundAction === "REABRIR" && !payoutConflict) await eventStore.reopenEvent(event.id);
+        else await eventStore.cancelEvent(event.id);
+      }
+      payment.status = "ESTORNADO";
+      payment.refundStatus = "CONFIRMADO";
+      if (!payoutConflict) payment.repasseStatus = null;
+      return payoutConflict ? "REPASSE_CONFLITANTE" : "CONFIRMADO";
+    },
     // Mesmo comportamento da função confirm_asaas_payment.
     confirmPayment: async (asaasPaymentId) => {
       const payment = [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId);
       if (!payment) return "PAGAMENTO_NAO_ENCONTRADO";
       if (payment.status === "PAGO") return "JA_PROCESSADO";
+      if (payment.status === "EXPIRADO" || (payment.status === "PENDENTE" && payment.expiraEm <= databaseTime)) {
+        payment.status = "EXPIRADO";
+        payment.latePaymentDetectedAt ??= databaseTime;
+        const expiredEvent = payment.eventId ? events.get(payment.eventId) : null;
+        return expiredEvent?.status === "ABERTO" ? "PAGAMENTO_EXPIRADO" : "EVENTO_INDISPONIVEL";
+      }
+      if (payment.status !== "PENDENTE") return "EVENTO_INDISPONIVEL";
       const event = payment.eventId ? events.get(payment.eventId) : undefined;
       const chosen = payment.candidateId ? candidates.get(payment.candidateId) : undefined;
       if (!event || event.status !== "ABERTO" || !chosen) return "EVENTO_INDISPONIVEL";
@@ -195,16 +247,108 @@ export function memoryWorld() {
       }
       return "CONTRATADO";
     },
-    claimPayout: async (id) => {
-      const payment = payments.get(id)!;
-      if (payment.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
+    markLatePaymentDetected: async (id) => {
+      const payment = payments.get(id);
+      if (payment && payment.status !== "PAGO") payment.latePaymentDetectedAt ??= databaseTime;
+    },    findPayoutIntentByPaymentId: async (paymentId) =>
+      [...payoutIntents.values()].find((intent) => intent.paymentId === paymentId) ?? null,
+    findPayoutIntentById: async (id) => payoutIntents.get(id) ?? null,
+    findPayoutIntentByTransferId: async (transferId) =>
+      [...payoutIntents.values()].find((intent) => intent.asaasTransferId === transferId) ?? null,
+    reservePayoutIntent: async (data) => {
+      const payment = payments.get(data.paymentId);
+      const event = events.get(data.eventId);
+      if (!payment || payment.status !== "PAGO" || payment.refundStatus !== null ||
+          (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU") ||
+          payment.eventId !== data.eventId || payment.valorCache !== data.amount ||
+          event?.musicoContratadoId !== data.musicianId ||
+          [...payoutIntents.values()].some((intent) => intent.paymentId === data.paymentId)) return null;
+      const id = "00000000-0000-4000-8000-" + String(sequence++).padStart(12, "0");
+      const intent: PayoutIntentRecord = {
+        id,
+        paymentId: data.paymentId,
+        eventId: data.eventId,
+        musicianId: data.musicianId,
+        amount: data.amount,
+        pixKey: data.pixKey,
+        pixKeyType: data.pixKeyType,
+        state: "RESERVADO",
+        asaasTransferId: null,
+        createdAt: NOW,
+      };
+      payoutIntents.set(id, intent);
       payment.repasseStatus = "PROCESSANDO";
+      return intent;
+    },
+    markPayoutSent: async (id) => {
+      const intent = payoutIntents.get(id)!;
+      if (intent.state !== "RESERVADO") return false;
+      intent.state = "ENVIADO";
       return true;
     },
-    setPayout: async (id, payout) => {
+    markPayoutUnknown: async (id) => {
+      const intent = payoutIntents.get(id)!;
+      if (intent && (intent.state === "RESERVADO" || intent.state === "ENVIADO" || intent.state === "PENDENTE")) {
+        intent.state = "CONCILIACAO";
+      }
+    },
+    linkPayoutTransfer: async (id, transferId) => {
+      const intent = payoutIntents.get(id)!;
+      if (intent.asaasTransferId === transferId) return true;
+      if (intent.asaasTransferId || [...payoutIntents.values()].some((other) => other.id !== id && other.asaasTransferId === transferId)) {
+        if (intent.state !== "CONCLUIDO" && intent.state !== "FALHOU") intent.state = "CONCILIACAO";
+        return false;
+      }
+      intent.asaasTransferId = transferId;
+      payments.get(intent.paymentId)!.asaasTransferId = transferId;
+      return true;
+    },
+    applyPayoutTransfer: async (id, remote) => {
+      const intent = payoutIntents.get(id);
+      if (!intent) return "DESCONHECIDO";
+      const payment = payments.get(intent.paymentId)!;
+      if (!intent.asaasTransferId && [...payoutIntents.values()].some((other) => other.id !== id && other.asaasTransferId === remote.id)) {
+        if (intent.state !== "CONCLUIDO" && intent.state !== "FALHOU") intent.state = "CONCILIACAO";
+        return "CONCILIACAO";
+      }
+      if (!intent.asaasTransferId) {
+        intent.asaasTransferId = remote.id;
+        payment.asaasTransferId = remote.id;
+      }
+      const valid = intent.asaasTransferId === remote.id &&
+        remote.externalReference === intent.id &&
+        remote.value === intent.amount &&
+        remote.operationType === "PIX" &&
+        remote.pixAddressKey === intent.pixKey &&
+        intent.pixKey !== null &&
+        payment.status === "PAGO" &&
+        payment.refundStatus === null &&
+        ["PENDING", "IN_BANK_PROCESSING", "BLOCKED", "DONE", "FAILED", "CANCELLED"].includes(remote.status);
+      if (!valid || (intent.state === "CONCLUIDO" && remote.status !== "DONE") ||
+          (intent.state === "FALHOU" && remote.status !== "FAILED" && remote.status !== "CANCELLED")) {
+        if (intent.state !== "CONCLUIDO" && intent.state !== "FALHOU") intent.state = "CONCILIACAO";
+        if (payment.repasseStatus === "FALHOU") payment.repasseStatus = "PROCESSANDO";
+        return "CONCILIACAO";
+      }
+      if (intent.state === "CONCLUIDO" || intent.state === "FALHOU") return intent.state;
+      if (remote.status === "DONE") {
+        intent.state = "CONCLUIDO";
+        payment.repasseStatus = "REPASSADO";
+      } else if (remote.status === "FAILED" || remote.status === "CANCELLED") {
+        intent.state = "FALHOU";
+        payment.repasseStatus = "FALHOU";
+      } else {
+        intent.state = "PENDENTE";
+        payment.repasseStatus = "PROCESSANDO";
+      }
+      return intent.state;
+    },
+    markPayoutPreflightFailure: async (id) => {
       const payment = payments.get(id)!;
-      payment.repasseStatus = payout.status;
-      if (payout.asaasTransferId) payment.asaasTransferId = payout.asaasTransferId;
+      if (payment.status === "PAGO" && payment.refundStatus === null &&
+          (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")) {
+        payment.repasseStatus = "FALHOU";
+      }
     },
     getAsaasCustomerId: async (contractorId) => customers.get(contractorId) ?? null,
     setAsaasCustomerId: async (contractorId, customerId) => void customers.set(contractorId, customerId),
@@ -226,6 +370,7 @@ export function memoryWorld() {
     getPixQrCode: async (paymentId) => ({ payload: `pix-${paymentId}`, encodedImage: "base64" }),
     getPayment: async (paymentId) => asaasCharges.get(paymentId) ?? null,
     cancelCharge: async (paymentId) => {
+      if (failures.cancel) throw new AppError(502, "ASAAS_INDISPONIVEL", "falha simulada no cancelamento");
       asaasCalls.cancelCharge.push(paymentId);
       asaasCharges.delete(paymentId);
     },
@@ -234,10 +379,37 @@ export function memoryWorld() {
       asaasCalls.refundPayment.push(paymentId);
       asaasCharges.set(paymentId, { ...asaasCharges.get(paymentId)!, status: "REFUNDED" });
     },
+    getTransfer: async (id) => {
+      if (failures.transferLookup) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada na consulta da transferência");
+      return asaasTransfers.get(id) ?? null;
+    },
+    findTransfersByReference: async (reference) => {
+      if (failures.transferQuery) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada na listagem");
+      return {
+        matches: [...asaasTransfers.values()].filter((transfer) => transfer.externalReference === reference).map((transfer) => transfer.id),
+        complete: true,
+      };
+    },
     transferPix: async (transfer) => {
-      if (failures.transfer) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada na transferência");
-      asaasCalls.transferPix.push({ value: transfer.value, pixAddressKey: transfer.pixAddressKey, pixAddressKeyType: transfer.pixAddressKeyType });
-      return { id: nextId("tra_"), status: "PENDING" };
+      if (failures.transfer) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada antes do envio");
+      const id = nextId("tra_");
+      const remote: AsaasTransferRecord = {
+        id,
+        status: "PENDING",
+        externalReference: transfer.externalReference,
+        value: transfer.value,
+        operationType: "PIX",
+        pixAddressKey: transfer.pixAddressKey,
+      };
+      asaasTransfers.set(id, remote);
+      asaasCalls.transferPix.push({
+        value: transfer.value,
+        pixAddressKey: transfer.pixAddressKey,
+        pixAddressKeyType: transfer.pixAddressKeyType,
+        externalReference: transfer.externalReference,
+      });
+      if (failures.transferAfterCreate) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "resposta perdida após aceite");
+      return { id, status: remote.status };
     },
   };
 
@@ -247,6 +419,8 @@ export function memoryWorld() {
     enderecos,
     candidates,
     payments,
+    payoutIntents,
+    asaasTransfers,
     reviews,
     images,
     webhookEvents,
@@ -254,6 +428,7 @@ export function memoryWorld() {
     asaasCalls,
     failures,
     sent,
+    setDatabaseTime: (time: Date) => { databaseTime = time; },
     stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer },
     /** Atalho: evento aberto de c1, compatível com os músicos m1 e m2. */
     seedEvent(overrides: Partial<EventRecord> = {}): EventRecord {

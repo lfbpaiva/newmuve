@@ -268,6 +268,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .candidates { display: grid; }
 .candidate { display: grid; grid-template-columns: 80px 1fr auto; gap: 20px; align-items: start; padding: 22px 0; border-bottom: 1px solid var(--line); }
 .candidate > img { width: 80px; height: 80px; border-radius: var(--radius); object-fit: cover; background: var(--surface-2); }
+.candidate > .avatar-placeholder { width: 80px; height: 80px; }
 .candidate > div:nth-child(2) { min-width: 0; }
 .candidate-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .candidate h3 { font-family: var(--display); font-weight: 900; text-transform: uppercase; font-size: 20px; letter-spacing: -0.01em; margin-bottom: 4px; }
@@ -309,6 +310,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .profile-grid h3:not(:first-child) { margin-top: 24px; }
 .profile-grid p { color: var(--ink-2); line-height: 1.6; }
 .profile-grid p b { color: var(--ink); font-weight: 800; }
+.profile-grid a { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 800; overflow-wrap: anywhere; }
 .empty-inline { display: flex; align-items: center; gap: 10px; color: var(--ink-3); }
 
 /* Oportunidade (músico) */
@@ -457,6 +459,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   .summary-meta { margin-top: 20px; }
   .candidate { grid-template-columns: 60px 1fr; }
   .candidate > img { width: 60px; height: 60px; }
+  .candidate > .avatar-placeholder { width: 60px; height: 60px; }
   .candidate-main { display: block; }
   .candidate-main .rating { margin-top: 8px; }
   .candidate-actions { grid-column: 1 / -1; }

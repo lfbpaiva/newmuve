@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isValidEmail, SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { Back, Field, Icon, Logo, PasswordField } from "../../components/ui";
 import { signUp, type Role } from "../../services/account";
-import { errorMessage } from "../../services/api";
+import { ApiError, errorMessage } from "../../services/api";
 import { sanitizeEmail } from "../../utils/validators";
 
 // Cadastro mínimo: o resto do perfil é pedido quando fizer falta (feed, candidatura, evento).
@@ -11,8 +11,20 @@ export default function SignupScreen({ onBack }: { onBack: () => void }) {
   const [form, setForm] = useState({ nome: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
+  const [retryUntil, setRetryUntil] = useState<number | null>(null);
   const [sentTo, setSentTo] = useState("");
   const isMusician = role === "MUSICIAN";
+  const waiting = retryUntil !== null;
+
+  useEffect(() => {
+    if (retryUntil === null) return;
+    const timer = setTimeout(() => {
+      setRetryUntil(null);
+      setError("");
+    }, Math.max(0, retryUntil - Date.now()));
+    return () => clearTimeout(timer);
+  }, [retryUntil]);
 
   function set(changes: Partial<typeof form>) {
     setForm((current) => ({ ...current, ...changes }));
@@ -20,17 +32,23 @@ export default function SignupScreen({ onBack }: { onBack: () => void }) {
   }
 
   async function submit() {
+    if (inFlight.current || (retryUntil !== null && Date.now() < retryUntil)) return;
     if (!form.nome.trim()) return setError("Informe seu nome.");
     if (!isValidEmail(form.email)) return setError("Informe um e-mail válido.");
     if (form.password.length < SENHA_TAMANHO_MINIMO) return setError(`A senha deve ter pelo menos ${SENHA_TAMANHO_MINIMO} caracteres.`);
 
+    inFlight.current = true;
     setSubmitting(true);
     try {
       await signUp({ role, ...form });
       setSentTo(form.email);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 429 && e.retryAfterSeconds) {
+        setRetryUntil(Date.now() + e.retryAfterSeconds * 1000);
+      }
       setError(errorMessage(e));
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -56,7 +74,7 @@ export default function SignupScreen({ onBack }: { onBack: () => void }) {
       <Field label="E-mail" type="email" placeholder="voce@exemplo.com" value={form.email} onChange={(value) => set({ email: sanitizeEmail(value) })} error={form.email && !isValidEmail(form.email) ? "Informe um e-mail válido." : ""}/>
       <PasswordField value={form.password} onChange={(password) => set({ password })}/>
       {error && <p className="form-error" role="alert">{error}</p>}
-      <button className="primary wide" disabled={submitting} onClick={submit}>{submitting ? "Criando conta..." : "Criar minha conta"}</button>
+      <button className="primary wide" disabled={submitting || waiting} onClick={submit}>{submitting ? "Criando conta..." : waiting ? "Aguarde para tentar novamente" : "Criar minha conta"}</button>
     </div>
   </div>;
 }

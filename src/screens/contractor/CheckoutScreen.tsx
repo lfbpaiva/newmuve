@@ -3,7 +3,7 @@ import { ErrorState, Loading } from "../../components/states";
 import { Icon, Secondary } from "../../components/ui";
 import { useAsync } from "../../hooks/useAsync";
 import { errorMessage } from "../../services/api";
-import { fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../services/events";
+import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../services/events";
 import { calcularCobranca } from "../../../shared/dominio.ts";
 import { formatCountdown, formatCurrency, formatDateTime } from "../../utils/format";
 
@@ -25,6 +25,10 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
   const [generating, setGenerating] = useState(true);
   const [seconds, setSeconds] = useState(0);
   const [toast, setToast] = useState("");
+  const [statusError, setStatusError] = useState("");
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [cancelled, setCancelled] = useState(false);
 
   // Gera a cobrança na API (ou recupera a que ainda está válida para este candidato).
   const load = useCallback(
@@ -61,10 +65,20 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
   const waiting = checkout?.status === "PENDENTE";
   useEffect(() => {
     if (!waiting) return;
+    let inFlight = false;
     const poll = window.setInterval(async () => {
-      const latest = await fetchCheckoutStatus(eventId).catch(() => null);
-      if (latest?.status === "PAGO") onPaid(eventId);
-      else if (latest && latest.status !== "PENDENTE") setCheckout(latest);
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const latest = await fetchCheckoutStatus(eventId);
+        setStatusError("");
+        if (latest?.status === "PAGO") onPaid(eventId);
+        else if (latest && latest.status !== "PENDENTE") setCheckout(latest);
+      } catch (e) {
+        setStatusError(errorMessage(e));
+      } finally {
+        inFlight = false;
+      }
     }, POLLING_INTERVAL_MS);
     return () => window.clearInterval(poll);
   }, [waiting, eventId, onPaid]);
@@ -80,13 +94,31 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
     window.setTimeout(() => setToast(""), 2500);
   }
 
+  async function cancelCharge() {
+    if (canceling || !window.confirm("Cancelar esta cobrança Pix pendente? Nenhum valor foi recebido, portanto não haverá reembolso.")) return;
+    setCanceling(true);
+    setCancelError("");
+    try {
+      await cancelPendingCheckout(eventId);
+      setCheckout(null);
+      setCancelled(true);
+    } catch (e) {
+      setCancelError(errorMessage(e));
+    } finally {
+      setCanceling(false);
+    }
+  }
+
   const expired = Boolean(checkout) && (seconds === 0 || checkout?.status !== "PENDENTE");
+
+  if (cancelled) return <Secondary title="Pagamento via Pix" subtitle="" onBack={onBack}><div className="confirm-card"><p className="notice success" role="status">Cobrança pendente cancelada. Não houve reembolso porque o pagamento não foi recebido.</p><button className="secondary" onClick={onBack}>Voltar ao evento</button></div></Secondary>;
 
   return <Secondary title="Pagamento via Pix" subtitle="Garanta a contratação do músico selecionado." onBack={onBack}>
     {toast && <div className="toast" role="status"><Icon name="check"/>{toast}</div>}
     <div className="checkout-grid">
       <section className={`payment-card ${expired ? "expired" : ""}`}>
-        <span className="secure"><Icon name="check" size={16}/> Pagamento processado pela Asaas</span>
+        {!generating && !error && !expired && checkout?.status === "PENDENTE" && checkout.pixQrCode && checkout.pixCopiaCola &&
+          <span className="secure"><Icon name="check" size={16}/> Cobrança Pix gerada pela Asaas</span>}
         {generating && <Loading label="Gerando cobrança Pix..."/>}
         {!generating && error && <ErrorState message={error} onRetry={generate}/>}
         {!generating && !error && checkout && <>
@@ -99,6 +131,8 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
             : <>
               <label className="field pix-code"><span>Pix copia e cola</span><textarea readOnly rows={3} value={checkout.pixCopiaCola ?? ""} onFocus={(e) => e.target.select()}/></label>
               <button className="secondary wide" onClick={copy}>Copiar código Pix</button>
+              <button className="danger-btn" disabled={canceling} onClick={cancelCharge}>{canceling ? "Cancelando cobrança..." : "Cancelar cobrança pendente"}</button>
+              {cancelError && <p className="form-error" role="alert">{cancelError}</p>}
             </>}
         </>}
       </section>
@@ -115,6 +149,7 @@ export default function CheckoutScreen({ eventId, candidateId, onBack, onPaid }:
           <small className="muted">O cachê fica retido na plataforma e só é repassado ao músico depois que as duas partes confirmarem o show. A taxa de serviço cobre essa garantia: se o músico não comparecer, você recebe o valor integral de volta; se cancelar com mais de 24h de antecedência, também.</small>
         </> : <p className="muted">{event.error ?? "Carregando..."}</p>}
         {waiting && !expired && <span className="payment-wait" role="status"><Icon name="clock"/>Aguardando a confirmação do pagamento</span>}
+        {statusError && <p className="muted" role="alert">Não foi possível atualizar o pagamento: {statusError}</p>}
       </aside>
     </div>
   </Secondary>;

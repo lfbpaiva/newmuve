@@ -3,12 +3,25 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
-import siteConfiguration from './.figma/make/site.json'
+//import siteConfiguration from './.figma/make/site.json'
+
+const siteConfiguration = {
+  title: 'MUVE',
+  description: 'Plataforma que conecta músicos e contratantes para eventos.',
+  language: 'pt-BR',
+}
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
+  const apiProxy = {
+    '/api': {
+      target: process.env.MUVE_API_TARGET || 'http://127.0.0.1:3333',
+      changeOrigin: true,
+      xfwd: true,
+    },
+  }
 
   return {
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
@@ -33,6 +46,7 @@ export default defineConfig(({ mode }) => {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      proxy: apiProxy,
       watch: {
         ignored: [
           '**/.figma/**',
@@ -42,6 +56,7 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
+      proxy: apiProxy,
     },
   }
 })

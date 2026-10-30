@@ -3,11 +3,16 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.34.3",
   "scripts": {
     "dev": "vite",
     "dev:api": "node --watch backend/src/server.ts",
+    "dev:app": "npm --prefix mobile run web",
     "start:api": "node backend/src/server.ts",
     "build": "vite build",
+    "build:api": "tsc --noEmit && node --check backend/src/server.ts && node --check backend/src/jobs/finance.ts",
+    "finance:expire": "node backend/src/jobs/finance.ts expire",
+    "finance:reconcile": "node backend/src/jobs/finance.ts reconcile",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -45,6 +50,7 @@
     "zod": "^4.6.5"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22.18 <23"
   }
 }
+

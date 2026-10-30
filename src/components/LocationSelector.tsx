@@ -8,9 +8,10 @@ interface Props {
   onUfChange: (uf: string) => void;
   onCityChange: (city: string) => void;
   onError?: (msg: string) => void;
+  manualCityFallback?: boolean;
 }
 
-export default function LocationSelector({ uf, city, onUfChange, onCityChange, onError }: Props) {
+export default function LocationSelector({ uf, city, onUfChange, onCityChange, onError, manualCityFallback = false }: Props) {
   const [loaded, setLoaded] = useState<{ uf: string; cities: string[] }>({ uf: "", cities: [] });
   const loading = Boolean(uf) && loaded.uf !== uf;
   const cities = loaded.uf === uf ? loaded.cities : [];
@@ -44,10 +45,13 @@ export default function LocationSelector({ uf, city, onUfChange, onCityChange, o
     </label>
     <label className="field">
       <span>Cidade</span>
-      <select value={city} disabled={!uf || loading || !cities.length} onChange={(e) => onCityChange(e.target.value)}>
-        <option value="">{loading ? "Carregando..." : uf ? "Selecione a cidade" : "Selecione o estado primeiro"}</option>
-        {cities.map((c) => <option key={c}>{c}</option>)}
-      </select>
+      {manualCityFallback && uf && !loading && !cities.length ?
+        <input value={city} placeholder="Informe a cidade" onChange={(e) => onCityChange(e.target.value)}/> :
+        <select value={city} disabled={!uf || loading || !cities.length} onChange={(e) => onCityChange(e.target.value)}>
+          <option value="">{loading ? "Carregando..." : uf ? "Selecione a cidade" : "Selecione o estado primeiro"}</option>
+          {city && !cities.includes(city) && <option value={city}>{city}</option>}
+          {cities.map((c) => <option key={c}>{c}</option>)}
+        </select>}
     </label>
   </>;
 }

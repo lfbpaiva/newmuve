@@ -39,6 +39,7 @@ export default function LoginScreen() {
       // A troca de tela acontece pelo AuthGate, ao detectar a sessão.
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
       setSubmitting(false);
     }
   }

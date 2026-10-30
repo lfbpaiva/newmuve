@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: muve-api
+    runtime: node
+    plan: free
+    autoDeployTrigger: off
+    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm run build:api
+    startCommand: node backend/src/server.ts
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: NODE_ENV
+        value: production
+      - key: ASAAS_ENV
+        value: sandbox
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ASAAS_API_KEY
+        sync: false
+      - key: ASAAS_WEBHOOK_TOKEN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ALLOWED_REDIRECTS
+        value: muve://auth

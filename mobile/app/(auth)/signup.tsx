@@ -1,8 +1,8 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { signUp, type Role } from "../../../shared/client/account.ts";
-import { errorMessage } from "../../../shared/client/api.ts";
+import { ApiError, errorMessage } from "../../../shared/client/api.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
 import { isValidEmail, SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { Alert, Button, Field, Heading, Icon, PasswordField, Screen, type IconName } from "../../components/ui";
@@ -20,20 +20,37 @@ export default function SignupScreen() {
   const [form, setForm] = useState({ nome: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
+  const [retryUntil, setRetryUntil] = useState<number | null>(null);
   const [sentTo, setSentTo] = useState("");
+  const waiting = retryUntil !== null;
+  useEffect(() => {
+    if (retryUntil === null) return;
+    const timer = setTimeout(() => {
+      setRetryUntil(null);
+      setError("");
+    }, Math.max(0, retryUntil - Date.now()));
+    return () => clearTimeout(timer);
+  }, [retryUntil]);
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
 
   async function submit() {
+    if (inFlight.current || (retryUntil !== null && Date.now() < retryUntil)) return;
     if (!form.nome.trim()) return setError("Informe seu nome.");
     if (!isValidEmail(form.email)) return setError("Informe um e-mail válido.");
     if (form.password.length < SENHA_TAMANHO_MINIMO) return setError(`A senha deve ter pelo menos ${SENHA_TAMANHO_MINIMO} caracteres.`);
+    inFlight.current = true;
     setSubmitting(true);
     try {
       await signUp({ role, ...form });
       setSentTo(form.email);
     } catch (e) {
+      if (e instanceof ApiError && e.status === 429 && e.retryAfterSeconds) {
+        setRetryUntil(Date.now() + e.retryAfterSeconds * 1000);
+      }
       setError(errorMessage(e));
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -63,6 +80,6 @@ export default function SignupScreen() {
     <Field label="E-mail" value={form.email} onChangeText={(v) => set({ email: sanitizeEmail(v) })} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="voce@exemplo.com"/>
     <PasswordField value={form.password} onChangeText={(password) => set({ password })}/>
     {error ? <Alert tone="error">{error}</Alert> : null}
-    <Button title="Criar minha conta" icon="arrow-forward" onPress={submit} loading={submitting}/>
+    <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting}/>
   </Screen>;
 }
