@@ -3,18 +3,21 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
-import { formatCountdown, formatCurrency, formatDateTime } from "../../../../shared/client/format.ts";
-import { calcularCobranca } from "../../../../shared/dominio.ts";
+import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
+import { formatCountdown, formatCurrency, formatEventDateTime } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
+import { calcularCobranca, comissaoPercentual } from "../../../../shared/dominio.ts";
 import { Alert, Button, ErrorState, Icon, Loading, Screen, Snackbar } from "../../../components/ui";
+import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
+import { useMe } from "../../../lib/useMe";
 
 const POLLING_INTERVAL_MS = 5000;
 const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
 
 export default function CheckoutScreen() {
   const { id: eventId, candidateId } = useLocalSearchParams<{ id: string; candidateId: string }>();
+  const me = useMe();
   const router = useRouter();
   const event = useAsync(`checkout-event:${eventId}`, () => fetchEvent(eventId));
   const [checkout, setCheckout] = useState<Checkout | null>(null);
@@ -23,8 +26,11 @@ export default function CheckoutScreen() {
   const [seconds, setSeconds] = useState(0);
   const [snack, setSnack] = useState("");
   const hideSnack = useCallback(() => setSnack(""), []);
+  const [statusError, setStatusError] = useState("");
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [cancelled, setCancelled] = useState(false);
 
-  // Gera a cobrança na API (ou recupera a que ainda está válida para este candidato).
   const load = useCallback(
     () =>
       startCheckout(eventId, candidateId)
@@ -35,6 +41,12 @@ export default function CheckoutScreen() {
   );
   useEffect(() => { void load(); }, [load]);
 
+  function generate() {
+    setGenerating(true);
+    setError("");
+    void load();
+  }
+
   const expiraEm = checkout?.expiraEm;
   useEffect(() => {
     if (!expiraEm) return;
@@ -42,14 +54,23 @@ export default function CheckoutScreen() {
     return () => clearInterval(timer);
   }, [expiraEm]);
 
-  // A API confere a cobrança na Asaas a cada consulta: funciona mesmo sem o webhook.
   const waiting = checkout?.status === "PENDENTE";
   useEffect(() => {
     if (!waiting) return;
+    let inFlight = false;
     const poll = setInterval(async () => {
-      const latest = await fetchCheckoutStatus(eventId).catch(() => null);
-      if (latest?.status === "PAGO") router.replace(`/event/${eventId}/hiring`);
-      else if (latest && latest.status !== "PENDENTE") setCheckout(latest);
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const latest = await fetchCheckoutStatus(eventId);
+        setStatusError("");
+        if (latest?.status === "PAGO") router.replace(`/event/${eventId}/hiring`);
+        else if (latest && latest.status !== "PENDENTE") setCheckout(latest);
+      } catch (e) {
+        setStatusError(errorMessage(e));
+      } finally {
+        inFlight = false;
+      }
     }, POLLING_INTERVAL_MS);
     return () => clearInterval(poll);
   }, [waiting, eventId, router]);
@@ -60,29 +81,62 @@ export default function CheckoutScreen() {
     setSnack("Código Pix copiado. Cole no app do seu banco.");
   }
 
+  function cancelCharge() {
+    if (canceling) return;
+    confirmAction({
+      title: "Cancelar cobrança",
+      message: "Cancelar esta cobrança Pix pendente? Nenhum valor foi recebido, portanto não haverá reembolso.",
+      confirmLabel: "Cancelar cobrança",
+      onConfirm: async () => {
+        setCanceling(true);
+        setCancelError("");
+        try {
+          await cancelPendingCheckout(eventId);
+          setCheckout(null);
+          setCancelled(true);
+        } catch (e) {
+          setCancelError(errorMessage(e));
+        } finally {
+          setCanceling(false);
+        }
+      },
+    });
+  }
+
   const expired = Boolean(checkout) && (seconds === 0 || checkout?.status !== "PENDENTE");
+
+  if (cancelled) return <Screen>
+    <Alert tone="success">Cobrança pendente cancelada. Não houve reembolso porque o pagamento não foi recebido.</Alert>
+    <Button title="Voltar ao evento" variant="outlined" onPress={() => router.back()}/>
+  </Screen>;
 
   return <View style={styles.screen}>
     <Screen>
       {generating && <Loading label="Gerando cobrança Pix..." cards={1}/>}
-      {!generating && error && <ErrorState message={error} onRetry={() => { setGenerating(true); setError(""); void load(); }}/>}
+      {!generating && error ? <ErrorState message={error} onRetry={generate}/> : null}
       {!generating && !error && checkout && <View style={[styles.cardRaised, { alignItems: "center", gap: space.md }]}>
         <Text style={type.title}>{expired ? "Cobrança expirada" : "Pague com Pix"}</Text>
-        {checkout.pixQrCode && <View style={{ padding: 10, backgroundColor: "#fff", borderRadius: radius.md, opacity: expired ? 0.25 : 1 }}><Image source={{ uri: `data:image/png;base64,${checkout.pixQrCode}` }} style={{ width: 196, height: 196 }} accessibilityLabel="QR Code Pix"/></View>}
+        {checkout.pixQrCode ? <View style={{ padding: 10, backgroundColor: "#fff", borderRadius: radius.md, opacity: expired ? 0.25 : 1 }}><Image source={{ uri: `data:image/png;base64,${checkout.pixQrCode}` }} style={{ width: 196, height: 196 }} accessibilityLabel="QR Code Pix"/></View> : null}
         <View style={styles.row}><Icon name="time-outline" size={16} color={colors.ink2}/><Text style={type.bodySmall}>Expira em <Text style={[type.label, { color: colors.ink }]}>{formatCountdown(seconds)}</Text></Text></View>
         {expired
-          ? <Button title="Gerar nova cobrança" icon="refresh" onPress={() => { setGenerating(true); void load(); }}/>
-          : <Button title="Copiar código Pix" icon="copy-outline" onPress={copy}/>}
-        {!expired && <Text style={[type.bodySmall, { textAlign: "center" }]}>No celular, copie o código e cole em "Pix copia e cola" no app do seu banco. Assim que o pagamento cair, esta tela avança sozinha.</Text>}
+          ? <Button title="Gerar nova cobrança" icon="refresh" onPress={generate}/>
+          : <>
+            <Button title="Copiar código Pix" icon="copy-outline" onPress={copy}/>
+            <Text style={[type.bodySmall, { textAlign: "center" }]}>No celular, copie o código e cole em "Pix copia e cola" no app do seu banco. Assim que o pagamento cair, esta tela avança sozinha.</Text>
+            <Button title="Cancelar cobrança pendente" variant="text" loading={canceling} onPress={cancelCharge}/>
+          </>}
+        {cancelError ? <Alert tone="error">{cancelError}</Alert> : null}
+        {statusError ? <Alert tone="info">Não foi possível atualizar o pagamento: {statusError}</Alert> : null}
+        {checkout.refundStatus ? <Alert tone="info">Este Pix foi pago depois que a cobrança deixou de valer, então não contratou o músico. O valor será devolvido integralmente; você recebe uma notificação sobre a devolução.</Alert> : null}
       </View>}
       <View style={[styles.card, { gap: 6 }]}>
         {event.data ? <>
           <Text style={type.titleSmall}>{event.data.titulo}</Text>
-          <Text style={type.bodySmall}>{formatDateTime(event.data.inicio)}</Text>
+          <Text style={type.bodySmall}>{formatEventDateTime(event.data.inicio, event.data.uf)}</Text>
           <View style={[styles.divider, { marginVertical: 6 }]}/>
           <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(checkout?.cache ?? event.data.cache)}</Text></View>
-          <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço (10%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache).comissao)}</Text></View>
-          <View style={styles.between}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache).total)}</Text></View>
+          <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço ({checkout ? Math.round((checkout.comissao / checkout.cache) * 100) : comissaoPercentual(me.casaAte)}%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).comissao)}</Text></View>
+          <View style={styles.between}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).total)}</Text></View>
         </> : <Text style={type.bodySmall}>{event.error ?? "Carregando..."}</Text>}
       </View>
       <Alert tone="info">O cachê fica retido e só é repassado ao músico depois que vocês dois confirmarem o show. A taxa cobre essa garantia: se o músico não comparecer, ou se você cancelar com mais de 24h, recebe o valor integral de volta.</Alert>

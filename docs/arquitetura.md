@@ -4,7 +4,7 @@
 
 ```text
 ┌────────────────────────────────────────────┐
-│ WEB (React + Vite)   APP (React Native)    │
+│ APP (React Native + Expo): celular e web   │
 │ telas → shared/client → supabase-js/fetch  │
 └──────┬───────────────────────────┬─────────┘
        │ login e leituras          │ toda escrita
@@ -18,8 +18,8 @@
 └──────────────────┘        (chave service_role e chave da Asaas)
 ```
 
-- **Leituras** (feed, eventos, candidatos, avaliações) vão direto do navegador ao banco, com a chave pública. O que cada usuário enxerga é decidido pelas policies de RLS.
-- **Escritas** (cadastro, perfil, eventos, candidaturas, checkout, cancelamentos, confirmações, avaliações, exclusão de conta) passam sempre pelo backend, que valida as regras e grava com a chave `service_role`. O navegador não tem nenhuma permissão de escrita no banco.
+- **Leituras** (feed, eventos, candidatos, avaliações) vão direto do app ao banco, com a chave pública. O que cada usuário enxerga é decidido pelas policies de RLS.
+- **Escritas** (cadastro, perfil, eventos, candidaturas, checkout, cancelamentos, confirmações, avaliações, exclusão de conta) passam sempre pelo backend, que valida as regras e grava com a chave `service_role`. O app não tem nenhuma permissão de escrita no banco.
 - **Pagamentos:** só o backend fala com a Asaas. O dinheiro entra na conta Asaas da plataforma, fica retido e é repassado ao músico por Pix após a conclusão do show.
 
 ## Decisões
@@ -38,7 +38,7 @@
 
 **Portas e adaptadores nos serviços.** `services/` depende das interfaces em `services/ports.ts` e `accountService.ts`; `adapters/` as implementa com Supabase e Asaas. O ganho concreto é a testabilidade: os testes usam implementações em memória, sem rede.
 
-**`shared/dominio.ts`.** Validações (CPF, CNPJ, chave Pix, imagem), listas (estilos, tipos de evento, UFs), a comissão e as regras de match, de cancelamento e de prazo existem em um único arquivo, usado pelo frontend para dar retorno imediato e pelo backend para decidir.
+**`shared/dominio.ts`.** Validações (CPF, CNPJ, chave Pix, imagem), listas (estilos, tipos de evento, UFs), a comissão e as regras de match, de cancelamento e de prazo existem em um único arquivo, usado pelo app para dar retorno imediato e pelo backend para decidir.
 
 **Plataforma recebe e repassa, em vez de split com subcontas.** O split da Asaas exige que cada músico tenha uma subconta (cadastro completo, documentos, mensalidade da Conta Escrow) e que a conta principal seja pessoa jurídica. Para o MVP, o músico cadastra apenas uma chave Pix e a plataforma transfere o cachê após o show. O split com subcontas é o caminho para produção.
 
@@ -48,9 +48,9 @@
 
 **Avisos por e-mail apenas nos momentos decisivos:** contratação confirmada (para os dois lados), desistência da outra parte e não comparecimento. Enviados por SMTP via nodemailer; sem SMTP configurado, ficam no log. Nunca bloqueiam a operação que os disparou.
 
-**App mobile em React Native (Expo) reaproveitando o cliente da web.** Serviços de API, leituras do banco, sessão (AuthContext), validações e formatação vivem em `shared/client/` e recebem por injeção (`configureClient`) o que muda entre plataformas: cliente Supabase, URL da API, destino dos links de e-mail e armazenamento local. Web e app só diferem na camada de telas. Links de confirmação e redefinição de senha abrem o app pelo esquema `muve://auth`.
+**Uma interface só: o app em React Native (Expo), que também roda no navegador.** O projeto chegou a ter um site React separado; manter as duas interfaces significava fazer cada tela duas vezes. O Expo gera o app de celular e a versão web a partir do mesmo código, e no computador o app aparece numa coluna com largura de celular. Serviços de API, leituras do banco, sessão, validações e formatação ficam em `shared/client/`, separados das telas. Links de confirmação e redefinição de senha abrem o app pelo esquema `muve://auth`.
 
-**Cadastro progressivo.** O cadastro pede só tipo de conta, nome, e-mail e senha. Cada dado do perfil é exigido no momento em que faz falta: cidade e estilos para montar o feed; foto, CPF/CNPJ, telefone e chave Pix para se candidatar; foto, documento, telefone e cidade para publicar um evento. A regra (`camposFaltantes` em `shared/dominio.ts`) é a mesma no frontend, que abre a tela "Complete seu perfil" só com o que falta, e na API, que recusa a ação com `PERFIL_INCOMPLETO` listando os campos.
+**Cadastro progressivo.** O cadastro pede só tipo de conta, nome, e-mail, senha e o aceite dos Termos de Uso. Cada dado do perfil é exigido no momento em que faz falta: cidade e estilos para montar o feed; foto, CPF/CNPJ, telefone e chave Pix para se candidatar; foto, documento, telefone e cidade para publicar um evento. A regra (`camposFaltantes` em `shared/dominio.ts`) é a mesma no app, que abre a tela "Complete seu perfil" só com o que falta, e na API, que recusa a ação com `PERFIL_INCOMPLETO` listando os campos.
 
 **Lista de estilos no código, com vários estilos por evento.** Os 25 gêneros vivem em `shared/dominio.ts` (sem restrição no banco), um evento pode pedir vários ou "Qualquer estilo", e o match é a interseção com os estilos do músico. "Outros" cobre quem não se encaixa e casa com eventos abertos a qualquer estilo.
 
@@ -60,23 +60,34 @@
 
 ### Cadastro
 
-1. O frontend envia tipo de conta, nome, e-mail e senha para `POST /api/auth/signup`.
-2. O backend cria o usuário no Supabase Auth, que envia o e-mail de confirmação, e grava o perfil só com o nome. Se a gravação falhar, desfaz o usuário.
+1. O app envia tipo de conta, nome, e-mail, senha e o aceite dos Termos de Uso para `POST /api/auth/signup`. Sem o aceite, a API recusa o cadastro.
+2. O backend cria o usuário no Supabase Auth, com a versão dos termos e a data do aceite nos metadados do usuário, e grava o perfil só com o nome. O Supabase envia o e-mail de confirmação. Se a gravação falhar, desfaz o usuário.
 3. Foto, CPF/CNPJ, telefone, cidade, estilos e chave Pix são preenchidos por `PATCH /api/me`, quando a ação do usuário passar a exigi-los. O documento é checado contra duplicidade nesse momento.
+
+### Proposta de cachê e conversa
+
+1. Ao se inscrever, o músico aceita o cachê oferecido ou propõe outro valor (`POST /api/events/:id/candidatura` com `valorProposto`). A proposta fica em `event_candidates.valor_proposto`, com o mesmo mínimo do cachê; um valor igual ao oferecido é gravado como "sem proposta".
+2. Enquanto a inscrição aguarda resposta e não há cobrança em andamento, o músico pode rever o valor (`PATCH /api/events/:id/candidatura`).
+3. Cada inscrição tem uma conversa entre o músico e o dono do evento (`candidate_messages`). O envio passa pela API (`POST /api/candidaturas/:id/mensagens`), que confere se quem escreve é uma das partes e se a conversa está aberta: inscrição não recusada e evento aberto ou contratado. A leitura é direta do banco, com RLS restrita às duas partes, e as mensagens novas chegam pelo Supabase Realtime.
+4. Na aprovação, a cobrança usa o valor proposto pelo músico, se houver, ou o cachê do evento, sempre lidos do banco.
 
 ### Contratação e pagamento
 
-1. O contratante escolhe um candidato; o frontend chama `POST /api/events/:id/checkout` enviando apenas o ID da candidatura.
-2. O backend confere que o evento é dele e está aberto, lê o cachê **do banco**, soma a taxa de serviço de 10%, cria o cliente e a cobrança Pix na Asaas e grava o pagamento como `PENDENTE`, com validade de 15 minutos.
-3. O frontend mostra o QR Code e consulta `GET /api/events/:id/checkout` a cada 5 segundos. A cada consulta, o backend confere o status na Asaas: se pago, efetiva a contratação; se expirado, cancela a cobrança na Asaas (o QR Code da Asaas valeria por meses).
+1. O contratante escolhe um candidato; o app chama `POST /api/events/:id/checkout` enviando apenas o ID da candidatura.
+2. O backend confere que o evento é dele e está aberto, lê o cachê **do banco** (a proposta do músico ou o valor do evento), soma a taxa de serviço de 10%, cria o cliente e a cobrança Pix na Asaas e grava o pagamento como `PENDENTE`, com validade de 15 minutos.
+3. O app mostra o QR Code e consulta `GET /api/events/:id/checkout` a cada 5 segundos. A cada consulta, o backend confere o status na Asaas: se pago, efetiva a contratação; se expirado, cancela a cobrança na Asaas (o QR Code da Asaas valeria por meses).
 4. A Asaas também notifica `POST /api/webhooks/asaas`. O backend confere o token, reconsulta o status e o valor na Asaas e chama a função `confirm_asaas_payment`, que em uma única transação marca o pagamento como `PAGO` e `RETIDO`, o evento como `CONTRATADO`, aprova o candidato e recusa os demais.
 5. A partir daí, as duas partes acessam o **comprovante** (`GET /api/events/:id/contratacao`): endereço do evento, telefone da outra parte, valores e situação do pagamento e do repasse.
 
-Garantias: repetir o checkout devolve a mesma cobrança; uma cobrança expirada ou substituída é cancelada também na Asaas; um pagamento tardio, cujo evento já foi contratado por outra cobrança, é estornado automaticamente; notificações repetidas não têm efeito; o webhook responde 200 mesmo a notificações que ignora, porque a Asaas pausa a fila após 15 respostas de erro seguidas; o navegador nunca informa valor nem declara que pagou.
+Garantias: repetir o checkout devolve a mesma cobrança; uma cobrança expirada ou substituída é cancelada também na Asaas; um pagamento tardio, cujo evento já foi contratado por outra cobrança, é estornado automaticamente; notificações repetidas não têm efeito; o webhook responde 200 mesmo a notificações que ignora, porque a Asaas pausa a fila após 15 respostas de erro seguidas; o app nunca informa valor nem declara que pagou.
+
+### Notificações
+
+A API grava avisos na tabela `notifications` sempre que algo muda para alguém: nova inscrição, mensagem, inscrição recusada, contratação, outro músico escolhido, evento alterado, confirmação do show pela outra parte, cancelamento, não comparecimento e repasse concluído. O app lê os avisos do próprio usuário (RLS) e recebe os novos pelo Supabase Realtime; o sino da tela inicial mostra quantos não foram lidos, e abrir a lista os marca como lidos (`POST /api/me/notificacoes/lidas`). Os avisos mais importantes também vão por e-mail quando há SMTP configurado.
 
 ### Pós-evento e repasse
 
-Após o início do evento, contratante e músico confirmam cada um pelo próprio acesso. Com as duas confirmações, uma trigger conclui o evento e o backend transfere o cachê (sem a comissão) para a chave Pix do músico. Com apenas uma confirmação, o show é dado como concluído 7 dias após a data, na próxima consulta ao comprovante (não há agendador de tarefas). A reserva do repasse é um `UPDATE` condicional (`claimPayout`), o que impede transferência em dobro mesmo com chamadas simultâneas; uma falha fica registrada como `FALHOU` e é tentada de novo. A avaliação mútua é liberada após a conclusão, e as médias de músico e contratante são recalculadas por trigger.
+Após o início do evento, contratante e músico confirmam cada um pelo próprio acesso. Com as duas confirmações, uma trigger conclui o evento e o backend transfere o cachê (sem a comissão) para a chave Pix do músico. Sem as duas confirmações e sem registro de não comparecimento, o show é dado como concluído 7 dias após a data, na próxima consulta ao comprovante (não há agendador de tarefas). A reserva do repasse é um `UPDATE` condicional (`claimPayout`), o que impede transferência em dobro mesmo com chamadas simultâneas; uma falha fica registrada como `FALHOU` e é tentada de novo. A avaliação mútua é liberada após a conclusão, e as médias de músico e contratante são recalculadas por trigger.
 
 ### Cancelamento
 
@@ -86,19 +97,19 @@ Após o início do evento, contratante e músico confirmam cada um pelo próprio
 | Músico contratado | antes do início | estorno integral ao contratante; evento volta a ABERTO, demais candidatos voltam a concorrer |
 | Contratante | mais de 24h antes | estorno integral; evento CANCELADO |
 | Contratante | menos de 24h antes | sem estorno; cachê repassado ao músico; evento CANCELADO |
-| Contratante (não comparecimento) | após o horário, enquanto o músico não confirmar o show | estorno integral; evento CANCELADO |
+| Contratante (não comparecimento) | após o horário e até 7 dias depois, se ninguém confirmou o show | estorno integral; evento CANCELADO |
 
-Depois do início do evento ninguém cancela: o encerramento é pela confirmação do show. Um estorno feito no painel da Asaas também cancela a contratação (webhook `PAYMENT_REFUNDED`). Contas com show contratado em andamento não podem ser excluídas.
+Depois do início do evento ninguém cancela: o encerramento é pela confirmação do show. Um estorno feito no painel da Asaas também cancela a contratação (webhook `PAYMENT_REFUNDED`). O estorno só conta como feito quando a Asaas confirma a devolução: enquanto está em processamento, a confirmação do show e o repasse ficam suspensos; se a Asaas recusa, a contratação volta a funcionar normalmente e o estorno pode ser pedido de novo; se o pedido nem chega à Asaas, a reserva é desfeita. Contas com show contratado, cachê ainda não repassado ou estorno em processamento não podem ser excluídas (`has_open_obligations`).
 
 ## Segurança
 
 | Risco | Tratamento |
 |---|---|
-| Chaves privadas no frontend | Só a chave pública do Supabase vai ao navegador; `service_role` e Asaas ficam em variáveis de ambiente do backend |
+| Chaves privadas no app | Só a chave pública do Supabase vai ao app; `service_role` e Asaas ficam em variáveis de ambiente do backend |
 | Acesso indevido a dados | RLS em todas as tabelas, sem permissão de escrita para o cliente; isolamento músico–músico; colunas sensíveis sem `grant`; endereço em tabela à parte, legível só pelo dono |
 | Manipulação de valores | O valor da cobrança vem do evento no banco; o corpo da requisição só carrega IDs; o repasse usa o valor gravado no pagamento |
 | Webhook forjado | Token comparado em tempo constante, reconfirmação do status e do valor na Asaas, deduplicação por ID do evento |
-| Validação só no frontend | Todas as entradas são validadas no backend com Zod; o banco repete as restrições críticas |
+| Validação só no app | Todas as entradas são validadas no backend com Zod; o banco repete as restrições críticas |
 | Força bruta e abuso | Limite de tentativas por IP em cadastro e exclusão de conta; o login usa os limites do Supabase Auth |
 | Vazamento em mensagens de erro | Erros inesperados viram uma mensagem genérica; o detalhe fica no log do servidor |
 | CORS | Apenas as origens listadas em `ALLOWED_ORIGINS` |
@@ -122,8 +133,8 @@ Mocks existem apenas nos testes; a aplicação não tem dados simulados.
 - **Estorno exige saldo:** a Asaas não devolve as tarifas da cobrança, então a conta precisa de saldo além do valor recebido para estornar integralmente.
 - **Conclusão por prazo é avaliada sob demanda,** quando uma das partes consulta o comprovante; não há agendador.
 - **Limite de tentativas em memória:** vale para uma única instância do servidor.
-- **Avisos só por e-mail e só em três momentos;** não há aviso de nova candidatura nem notificações no app.
+- **Notificações só dentro do app:** não há push no celular; o aviso aparece quando o app está aberto. E-mail depende de SMTP configurado.
+- **Conversa sem moderação nem aviso de mensagem nova:** as mensagens aparecem em tempo real só com a conversa aberta.
 - **Sem mediação de disputas:** se o músico confirmou o show e o contratante diz que ele não compareceu, a plataforma não arbitra.
 - **Distância entre sedes de municípios,** não entre endereços; cidades homônimas são distinguidas pela UF.
 - **CNPJ alfanumérico** (formato novo da Receita Federal) não é aceito; apenas o numérico.
-- **Navegação sem URLs:** as telas são trocadas por estado, então o botão "voltar" do navegador não navega entre telas.

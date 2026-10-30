@@ -1,31 +1,49 @@
 # Muve
 
-Plataforma que conecta **músicos** a **contratantes** de eventos: o contratante publica um evento, músicos da mesma cidade e estilo se candidatam, o contratante aprova um candidato pagando via Pix o cachê mais a taxa de serviço de 10%, o valor fica retido e, depois que as duas partes confirmam o show, o cachê é repassado por Pix ao músico e os dois se avaliam.
+Aplicativo que conecta **músicos** a **contratantes** de eventos. O contratante publica um evento, músicos da região e do estilo se inscrevem (aceitando o cachê ou propondo outro valor) e as partes conversam pelo app. O contratante aprova um deles pagando via Pix o cachê mais a taxa de serviço de 10%. O valor fica retido até o show acontecer; então o cachê é repassado ao músico e os dois se avaliam.
 
-Projeto de TCC. A arquitetura e as decisões técnicas estão em [docs/arquitetura.md](docs/arquitetura.md); as regras de negócio originais, em [docs/especificacao/](docs/especificacao/).
+Projeto de TCC. O produto, as regras completas e o que mudou em relação à monografia estão em [docs/produto.md](docs/produto.md); as decisões técnicas, em [docs/arquitetura.md](docs/arquitetura.md); as especificações de origem, em [docs/especificacao/](docs/especificacao/). Para a apresentação, veja [docs/apresentacao.md](docs/apresentacao.md); para atualizar a monografia, [docs/monografia.md](docs/monografia.md).
 
 ## Visão geral
 
 | Parte | Tecnologia | Pasta |
 |---|---|---|
-| Frontend web | React 19, Vite, TypeScript | `src/` |
-| App mobile | React Native (Expo) | `mobile/` |
-| Backend (API REST) | Node.js, Hono, Zod | `backend/` |
-| Código compartilhado (regras, serviços, sessão) | TypeScript puro + React | `shared/` |
-| Banco, autenticação e arquivos | Supabase (Postgres + RLS, Auth, Storage) | `supabase/` |
-| Pagamentos | Asaas (Pix) | integrado pelo backend |
+| App (celular e navegador) | React Native com Expo | `mobile/` |
+| API REST | Node.js, Hono, Zod | `backend/` |
+| Código compartilhado | TypeScript | `shared/` |
+| Banco, login e arquivos | Supabase (Postgres com RLS, Auth, Storage) | `supabase/` |
+| Pagamentos | Asaas (Pix, ambiente sandbox) | integrado pela API |
 
 ## Como rodar
 
-Requisitos: Node.js 22.18 ou superior e pnpm (`npm i -g pnpm`).
+Requisitos: Node.js 22.18 ou superior, pnpm (`npm i -g pnpm`) e, para o celular, o app **Expo Go**.
 
 ```bash
 pnpm install
+cd mobile && npm install
 ```
 
-1. **Frontend:** copie `.env.example` para `.env.local` e preencha a URL e a chave pública do Supabase.
-2. **Backend:** copie `backend/.env.example` para `backend/.env` e preencha as chaves do Supabase e da Asaas.
-3. **Banco:** aplique as migrations no projeto Supabase (uma vez, e a cada nova migration):
+1. Copie `backend/.env.example` para `backend/.env` e preencha as chaves do Supabase e da Asaas. A chave `SUPABASE_SERVICE_ROLE_KEY` só existe neste arquivo.
+2. Copie `mobile/.env.example` para `mobile/.env` e preencha a URL e a chave pública do Supabase. Para usar no celular, `EXPO_PUBLIC_API_URL` deve apontar para o IP do computador que roda a API, na mesma rede Wi-Fi.
+3. Suba a API e o app, cada um em um terminal:
+
+```bash
+pnpm dev:api
+```
+
+```bash
+pnpm dev:app
+```
+
+Leia o QR Code com o Expo Go. No terminal do Expo, a tecla `w` abre o app no navegador em `http://localhost:8081`. A API fica em `http://localhost:3333/api`.
+
+Os Termos de Uso ficam em `mobile/app/terms.tsx`; ao mudar as regras, atualize o texto e `TERMOS_VERSAO` em `shared/dominio.ts`.
+
+Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). O script `node scripts/contas-demo.mjs` recria as duas do zero, com fotos do Unsplash (uso livre).
+
+### Banco
+
+As migrations já estão aplicadas no projeto do grupo. Em um projeto novo, ou quando houver migration nova:
 
 ```bash
 npx supabase login
@@ -33,94 +51,84 @@ npx supabase link --project-ref SEU_PROJECT_REF
 npx supabase db push
 ```
 
-4. Suba os dois servidores, cada um em um terminal:
-
-```bash
-pnpm dev:api
-```
-
-```bash
-pnpm dev
-```
-
-O frontend abre em `http://localhost:8443` e a API em `http://localhost:3333/api`.
-
-### App mobile (Expo)
-
-O app usa o mesmo backend e o mesmo código de serviços da web. Para rodar no celular:
-
-1. Instale o **Expo Go** no celular (Play Store / App Store).
-2. Copie `mobile/.env.example` para `mobile/.env`. Em `EXPO_PUBLIC_API_URL`, use o IP da máquina que roda a API (no celular, `localhost` é o próprio celular), com o celular na mesma rede Wi-Fi.
-3. Instale e inicie:
-
-```bash
-cd mobile && npm install && npx expo start
-```
-
-4. Leia o QR Code com o Expo Go. Para testar no navegador, `npx expo start --web` abre o app em `http://localhost:8081` (origem já autorizada no CORS da API).
-
-Os links de confirmação de e-mail e de redefinição de senha abrem o app pelo esquema `muve://auth`, que precisa constar na lista de redirecionamento do Supabase e em `ALLOWED_REDIRECTS` do backend.
-
-## Scripts
+## Comandos
 
 | Comando | O que faz |
 |---|---|
-| `pnpm dev` | Frontend em modo desenvolvimento |
 | `pnpm dev:api` | API com recarga automática |
+| `pnpm dev:app` | App Expo (celular e navegador) |
 | `pnpm start:api` | API em modo produção |
-| `pnpm build` | Build do frontend em `dist/` |
-| `pnpm typecheck` | Verificação de tipos (frontend, backend e shared) |
+| `pnpm typecheck` | Tipos da API, do código compartilhado e do app |
 | `pnpm lint` | ESLint |
-| `pnpm test` | Testes unitários e de API (Vitest) |
-| `pnpm test:db` | Testes de banco (pgTAP) no projeto Supabase vinculado; não deixam dados |
-| `pnpm test:e2e` | Fluxo completo contra a API local e o Supabase real, com contas temporárias |
-
-Os avisos por e-mail (contratação confirmada, desistência, não comparecimento) usam as variáveis `SMTP_*` de `backend/.env.example`; sem elas, aparecem apenas no log do servidor.
+| `pnpm test` | Testes de regras e da API (Vitest) |
+| `pnpm test:db` | Testes do banco (pgTAP) no projeto vinculado, sem deixar dados |
+| `pnpm test:e2e` | Fluxo completo contra a API local e o Supabase real |
 
 ## Configuração externa
 
-Estes itens não ficam no repositório e precisam ser feitos uma vez por ambiente.
+**Supabase:** veja abaixo os redirecionamentos e o SMTP.
 
-**Supabase**
+**Asaas (sandbox):** a conta precisa de uma chave Pix cadastrada para gerar QR Code. Preencha `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` em `backend/.env`. O webhook (`/api/webhooks/asaas`) só funciona com a API publicada na internet, mas não é obrigatório: a tela de pagamento consulta a Asaas a cada poucos segundos. Para confirmar um pagamento de teste, abra a cobrança no painel do sandbox e use *Confirmar pagamento*.
 
-- *Authentication → URL Configuration:* URL do site e URLs de redirecionamento do frontend (em desenvolvimento, `http://localhost:8443`).
-- *Authentication → Emails → SMTP Settings:* um provedor de e-mail próprio. O envio padrão do Supabase só entrega para membros da organização e tem limite de poucas mensagens por hora; como o cadastro exige confirmação de e-mail, sem SMTP os usuários não conseguem ativar a conta.
+No repasse ao músico, o sandbox só aceita as [chaves Pix fictícias do Banco Central](https://docs.asaas.com/docs/testando-transferências), como `cliente-a00001@pix.bcb.gov.br`, que a conta de demonstração já usa. Transferências feitas pela API ficam aguardando autorização no painel da Asaas (*Transferências*), a menos que essa exigência seja desativada nas configurações de segurança da conta. Sem webhook, o app consulta a situação da transferência sempre que o comprovante é aberto.
 
-**Asaas**
+**Publicação da API (opcional, mas libera o webhook da Asaas e o uso fora do Wi-Fi de casa):**
 
-- Crie uma conta sandbox, gere a chave de API e cadastre uma chave Pix na conta (sem ela o QR Code gerado só vale até o fim do dia).
-- Em *Integrações → Webhooks*, aponte para `https://SEU-BACKEND/api/webhooks/asaas`, defina um token de autenticação e habilite os eventos de cobrança (recebida, confirmada, vencida, removida e estornada) e de transferência (concluída, falha e cancelada).
-- Preencha `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` (o mesmo token do webhook) em `backend/.env`.
-- **Repasses e estornos saem do saldo da conta.** Em *Configurações → Segurança*, desative a validação por token (SMS/app) para transferências feitas pela API, ou elas ficarão pendentes de aprovação manual. Mantenha saldo além do valor recebido: a Asaas não devolve as tarifas no estorno.
-- Sem a chave configurada, o app funciona normalmente até o checkout, que responde com um erro controlado ("pagamentos não configurados"). A confirmação do pagamento também é conferida pela API a cada consulta da tela de checkout, então funciona mesmo sem o webhook alcançar o servidor.
+1. No [Render](https://render.com), crie um *Web Service* ligado a este repositório, com build `npm i -g pnpm && pnpm install` e start `pnpm start:api`.
+2. Copie as variáveis de `backend/.env` para o painel do serviço e defina `ALLOWED_ORIGINS` com o endereço onde o app web vai rodar.
+3. No app, aponte `EXPO_PUBLIC_API_URL` para `https://SEU-SERVICO.onrender.com/api`.
+4. Na Asaas, em *Integrações → Webhooks*, cadastre `https://SEU-SERVICO.onrender.com/api/webhooks/asaas` com o mesmo `ASAAS_WEBHOOK_TOKEN`.
 
-**Hospedagem do backend**
+Atrás de proxy, preencha `TRUSTED_PROXY_IPS`. Railway ou qualquer serviço Node funciona do mesmo jeito.
 
-- O webhook da Asaas precisa alcançar a API pela internet; em produção, hospede `backend/` em um serviço Node (Render, Railway etc.) com o comando `pnpm start:api` e as variáveis de `backend/.env.example`.
-- Inclua a URL do frontend publicado em `ALLOWED_ORIGINS` e aponte `VITE_API_URL` para a URL da API.
+**E-mail:** o envio padrão do Supabase serve só para testes (poucos e-mails por hora). Para a confirmação de cadastro e a recuperação de senha chegarem a qualquer pessoa, configure um SMTP (por exemplo, Resend ou Brevo) em *Authentication → Emails*, e use os mesmos dados em `SMTP_*` no `backend/.env` para os avisos da API.
+
+**Links de confirmação e senha:** em *Authentication → URL Configuration*, inclua `http://localhost:8081/**`, `exp://**` e `muve://**` (e o endereço do app publicado, se houver).
+
+**Entrar com Google:**
+
+1. No [Google Cloud Console](https://console.cloud.google.com/apis/credentials), crie um *ID do cliente OAuth* do tipo *Aplicativo da Web*. Em *URIs de redirecionamento autorizados*, coloque `https://SEU-PROJETO.supabase.co/auth/v1/callback`.
+2. No Supabase, em *Authentication → Sign In / Providers → Google*, ative e cole o *Client ID* e o *Client Secret*.
+3. Confira os redirecionamentos (`http://localhost:8081/**`, `exp://**`, `muve://**`) em *Authentication → URL Configuration*.
+
+Sem isso, o botão "Continuar com Google" avisa que o login ainda não foi ativado.
+
+**Notificações com o app fechado (push):** o Expo Go no Android não recebe push. Para testar:
+
+1. `npm i -g eas-cli`, `eas login` e, na pasta `mobile`, `eas init` (grava o `projectId` no `app.json`).
+2. `eas build --profile development --platform android` e instale o app gerado.
+3. A API envia pelo serviço gratuito da Expo; não precisa de chave.
+
+Dentro do app, as notificações já funcionam em tempo real sem nada disso.
+
+**Contestações:** defina `ADMIN_TOKEN` em `backend/.env` (um texto longo e aleatório). Com a API rodando:
+
+```bash
+node scripts/resolver-contestacao.mjs
+```
+
+lista as contestações abertas, e `node scripts/resolver-contestacao.mjs <id> pagar|devolver "observação"` decide. O aviso de cada contestação nova também vai por e-mail para o suporte, se houver SMTP.
+
+**Conta Escrow (próximo passo do pagamento):** veja [docs/conta-escrow.md](docs/conta-escrow.md). Exige uma conta sandbox da Asaas como pessoa jurídica.
 
 ## Estrutura
 
 ```text
-src/                 frontend web
-  auth/              sessão (Supabase Auth) e perfil autenticado
-  screens/           telas, por área: auth, account, musician, contractor, shared
-  services/          acesso à API (escritas) e ao banco (leituras via RLS)
-  components/ hooks/ utils/
-backend/src/         API Node.js
-  http/              rotas, autenticação, CORS, limite de tentativas
-  services/          regras de negócio (dependem apenas de interfaces)
-  adapters/          Supabase e Asaas
-  domain/            esquemas de validação e tipos
-shared/              código usado por mais de um lado
-  dominio.ts         regras (frontend, mobile e backend)
-  client/            serviços de API, leituras do banco, sessão e utilidades (web e mobile)
-mobile/              app React Native (Expo Router)
-  app/               telas, por rota: (auth), (app) com abas, event/, account/
-  components/        blocos de interface e campos compostos
-  lib/               cliente Supabase, tema
+mobile/
+  app/           telas por rota: (auth), (app) com abas, event/, account/
+  components/    blocos de interface e formulários
+  lib/           cliente, tema e sessão
+backend/src/
+  http/          rotas, autenticação, CORS e limite de tentativas
+  services/      regras de negócio
+  adapters/      Supabase, Asaas e e-mail
+  domain/        validação de entrada e tipos
+shared/
+  dominio.ts     regras usadas pelo app e pela API
+  client/        acesso à API e ao banco, sessão e formatação
 supabase/
-  migrations/        schema, RLS, funções e buckets
-  tests/database/    testes pgTAP
-docs/                arquitetura e especificações
+  migrations/    schema, RLS, funções e buckets
+  tests/         testes pgTAP
+scripts/         testes de banco, ponta a ponta e contas de demonstração
+docs/            arquitetura e especificação
 ```

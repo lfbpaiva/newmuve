@@ -1,9 +1,5 @@
 import { StyleSheet } from "react-native";
 
-// Tema do Muve: editorial e esportivo. Preto quase puro, branco, um único
-// acento (lima) para ação e destaque, tipografia display em caixa alta.
-// A logo roxa aparece em branco sobre este fundo.
-
 export const colors = {
   bg: "#0a0a0c",
   surface: "#111114",
@@ -13,9 +9,10 @@ export const colors = {
   ink: "#ffffff",
   ink2: "#b9b9c2",
   ink3: "#7d7d88",
-  accent: "#d4ff3f",
-  onAccent: "#0a0a0c",
-  accentDim: "#2e3a0f",
+  accent: "#6d4aff",
+  accentPressed: "#5a38e8",
+  onAccent: "#ffffff",
+  accentText: "#a58bff",
   error: "#ff6b7a",
   errorBg: "#2a1217",
   success: "#8de08b",
@@ -23,7 +20,6 @@ export const colors = {
   star: "#ffd166",
 };
 
-// Display: Archivo Black em caixa alta, bem justo. Texto: Manrope.
 export const type = StyleSheet.create({
   display: { fontFamily: "Archivo_900Black", fontSize: 40, lineHeight: 40, letterSpacing: -1.2, textTransform: "uppercase", color: colors.ink },
   headline: { fontFamily: "Archivo_900Black", fontSize: 26, lineHeight: 27, letterSpacing: -0.6, textTransform: "uppercase", color: colors.ink },
@@ -37,6 +33,15 @@ export const type = StyleSheet.create({
   stat: { fontFamily: "Archivo_900Black", fontSize: 44, lineHeight: 44, letterSpacing: -1.5, color: colors.ink },
 });
 
+export const stackOptions = {
+  headerStyle: { backgroundColor: colors.bg },
+  headerShadowVisible: false,
+  headerTintColor: colors.ink,
+  headerTitleStyle: { fontFamily: "Archivo_800ExtraBold", fontSize: 15 },
+  headerBackButtonDisplayMode: "minimal",
+  contentStyle: { backgroundColor: colors.bg },
+} as const;
+
 export const radius = { xs: 2, sm: 4, md: 8, lg: 12, pill: 999 };
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 40 };
 
@@ -46,14 +51,12 @@ export const styles = StyleSheet.create({
   section: { gap: space.md },
   row: { flexDirection: "row", alignItems: "center", gap: space.sm },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.sm },
-  // Blocos editoriais: fundo um tom acima, cantos quase retos.
   card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: space.lg, gap: space.sm },
   cardRaised: { backgroundColor: colors.surface2, borderRadius: radius.md, padding: space.lg, gap: space.sm },
-  // Linhas finas separam itens; nada de caixas dentro de caixas.
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
   rule: { height: 1, backgroundColor: colors.ink, opacity: 0.9 },
   input: { backgroundColor: "transparent", borderBottomWidth: 1, borderBottomColor: colors.line, paddingHorizontal: 0, minHeight: 48, paddingVertical: 12, color: colors.ink, fontFamily: "Manrope_500Medium", fontSize: 16 },
-  inputFocused: { borderBottomColor: colors.accent },
+  inputFocused: { borderBottomColor: colors.accentText },
   inputError: { borderBottomColor: colors.error },
   alertError: { backgroundColor: colors.errorBg, borderRadius: radius.sm, padding: space.md },
   alertSuccess: { backgroundColor: colors.successBg, borderRadius: radius.sm, padding: space.md },

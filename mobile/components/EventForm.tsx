@@ -1,52 +1,57 @@
 import { useState } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
-import { formatCurrency, minutesToTimeInput, timeInputToMinutes, toDateInput, toTimeInput } from "../../shared/client/format.ts";
-import { calcularCobranca, ESTILOS_EVENTO, FORMACOES, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
-import { space } from "../lib/theme";
+import { eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
+import { calcularCobranca, CASA_SEMANAS_MAXIMAS, comissaoPercentual, ESTILOS_EVENTO, FORMACOES, horarioLocalDoEvento, isPro, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
+import { space, type } from "../lib/theme";
+import { useMe } from "../lib/useMe";
 import { ImageField, LocationFields } from "./fields";
 import { Alert, Button, Checkbox, Chips, Field, Section, Select } from "./ui";
 
 type EditableEvent = EventItem & { endereco: string };
 
-/** "DD/MM/AAAA" ↔ "AAAA-MM-DD"; a data é digitada, sem seletor nativo. */
+const SEMANAS = Array.from({ length: CASA_SEMANAS_MAXIMAS }, (_, i) => ({ value: String(i + 1), label: i === 0 ? "Só esta data" : `Toda semana, por ${i + 1} semanas` }));
+
 const maskDate = (v: string) => v.replace(/\D/g, "").slice(0, 8).replace(/(\d{2})(\d)/, "$1/$2").replace(/(\d{2})\/(\d{2})(\d)/, "$1/$2/$3");
 const maskTime = (v: string) => v.replace(/\D/g, "").slice(0, 4).replace(/(\d{2})(\d)/, "$1:$2");
 const toIsoDate = (br: string) => br.split("/").reverse().join("-");
-const fromIsoDate = (iso: string) => iso.split("-").reverse().join("/");
 
-function initialForm(event: EditableEvent | null) {
-  const inicio = event ? new Date(event.inicio) : null;
+function initialForm(event: EditableEvent | null, local?: { uf: string | null; cidade: string | null }) {
+  const inicio = event ? eventDateParts(event.inicio, event.uf) : null;
   return {
     titulo: event?.titulo ?? "",
     tipoEvento: event?.tipoEvento ?? "",
-    data: inicio ? fromIsoDate(toDateInput(inicio)) : "",
-    horario: inicio ? toTimeInput(inicio) : "",
+    data: inicio ? inicio.data : "",
+    horario: inicio ? inicio.time : "",
     duracao: event ? minutesToTimeInput(event.duracaoMinutos) : "",
-    cache: event ? String(event.cache).replace(".", ",") : "",
-    uf: event?.uf ?? "",
-    cidade: event?.cidade ?? "",
+    cache: event ? toValorInput(event.cache) : "",
+    uf: event?.uf ?? local?.uf ?? "",
+    cidade: event?.cidade ?? local?.cidade ?? "",
     endereco: event?.endereco ?? "",
     estilosMusicais: event?.estilosMusicais ?? [],
     formacao: event?.formacao ?? "Indiferente",
     somDisponivel: event?.somDisponivel ?? false,
     descricao: event?.descricao ?? "",
+    repetirSemanas: 1,
   };
 }
 
-export default function EventForm({ event, onSaved }: { event: EditableEvent | null; onSaved: (id: string) => void }) {
-  const [form, setForm] = useState(() => initialForm(event));
+export default function EventForm({ event, local, onSaved }: { event: EditableEvent | null; local?: { uf: string | null; cidade: string | null }; onSaved: (id: string) => void }) {
+  const [form, setForm] = useState(() => initialForm(event, local));
   const [imagem, setImagem] = useState<UploadFile | null>(null);
   const [preview, setPreview] = useState(event?.imagemUrl ?? "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
-  const cacheNumber = Number(form.cache.replace(/\./g, "").replace(",", "."));
+  const cacheNumber = parseValor(form.cache);
+  const me = useMe();
+  const casa = isPro(me.casaAte);
+  const taxa = comissaoPercentual(me.casaAte);
 
   async function submit() {
-    const inicio = new Date(`${toIsoDate(form.data)}T${form.horario}`);
+    const inicio = horarioLocalDoEvento(toIsoDate(form.data), form.horario, form.uf);
     if (!form.titulo.trim()) return setError("Informe o título do evento.");
     if (!form.tipoEvento || form.data.length !== 10 || form.horario.length !== 5 || form.duracao.length !== 5) return setError("Informe tipo, data, horário de início e duração do evento.");
     if (Number.isNaN(inicio.getTime())) return setError("Data ou horário inválido.");
@@ -71,6 +76,7 @@ export default function EventForm({ event, onSaved }: { event: EditableEvent | n
       somDisponivel: form.somDisponivel,
       cache: cacheNumber,
       descricao: form.descricao,
+      repetirSemanas: event ? 1 : form.repetirSemanas,
     };
     setSubmitting(true);
     try {
@@ -103,15 +109,19 @@ export default function EventForm({ event, onSaved }: { event: EditableEvent | n
     <Section title="Quem você procura">
       <Chips options={ESTILOS_EVENTO} selected={form.estilosMusicais} onToggle={(estilo) => {
         const selected = form.estilosMusicais.includes(estilo);
-        // "Qualquer estilo" é exclusivo: marca-lo limpa os demais, e vice-versa.
         set({ estilosMusicais: estilo === QUALQUER_ESTILO ? (selected ? [] : [QUALQUER_ESTILO]) : selected ? form.estilosMusicais.filter((x) => x !== estilo) : [...form.estilosMusicais.filter((x) => x !== QUALQUER_ESTILO), estilo] });
       }}/>
       <Select label="Formação" value={form.formacao} options={options(FORMACOES)} onChange={(formacao) => set({ formacao })}/>
       <Checkbox label="O local oferece equipamento de som (caixas, mesa e microfones)" checked={form.somDisponivel} onChange={(somDisponivel) => set({ somDisponivel })}/>
     </Section>
     <Section title="Cachê">
-      <Field label="Valor oferecido (R$)" value={form.cache} onChangeText={(v) => set({ cache: v.replace(/[^\d.,]/g, "") })} keyboardType="decimal-pad" placeholder="100,00 ou mais" hint={cacheNumber >= 100 ? `Com a taxa de serviço de 10%, você pagará ${formatCurrency(calcularCobranca(cacheNumber).total)}. O músico recebe ${formatCurrency(cacheNumber)}.` : "Mínimo de R$ 100,00. A taxa de serviço de 10% é somada ao cachê."}/>
+      <Field label="Valor oferecido (R$)" value={form.cache} onChangeText={(v) => set({ cache: v.replace(/[^\d.,]/g, "") })} keyboardType="decimal-pad" placeholder="100,00 ou mais" hint={cacheNumber >= 100 ? `Com a taxa de serviço de ${taxa}%, você pagará ${formatCurrency(calcularCobranca(cacheNumber, taxa).total)}. O músico recebe ${formatCurrency(cacheNumber)}.` : `Mínimo de R$ 100,00. A taxa de serviço de ${taxa}% é somada ao cachê.`}/>
     </Section>
+    {!event && <Section title="Repetir">
+      {casa
+        ? <Select label="Quantas semanas" value={String(form.repetirSemanas)} options={SEMANAS} onChange={(v) => set({ repetirSemanas: Number(v) })}/>
+        : <Text style={type.bodySmall}>Com o Muve Casa, um evento semanal vira até {CASA_SEMANAS_MAXIMAS} eventos de uma vez.</Text>}
+    </Section>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button title={event ? "Salvar alterações" : "Publicar evento"} icon={event ? "save-outline" : "megaphone-outline"} onPress={submit} loading={submitting}/>
   </>;

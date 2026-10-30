@@ -9,6 +9,7 @@ afterEach(() => {
 });
 
 describe("Asaas Sandbox gateway", () => {
+<<<<<<< HEAD
   it("reconhece cliente salvo inexistente e busca outro pelo documento e referência", async () => {
     const fetchMock = vi.fn(async (input: string) => {
       const url = new URL(input);
@@ -50,6 +51,8 @@ describe("Asaas Sandbox gateway", () => {
     await expect(gateway().findPendingPixCharge("e1:c1", "cus_test", 200)).rejects.toMatchObject({ code: "COBRANCA_CONCILIACAO" });
   });
 
+=======
+>>>>>>> upstream/main
   it("distingue recusa de estorno de dados de cobrança", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ errors: [{ code: "invalid_action", description: "Saldo insuficiente" }] }, { status: 400 })));
@@ -118,6 +121,7 @@ describe("Asaas Sandbox gateway", () => {
     await expect(gateway().getPixQrCode("pay_test")).resolves.toEqual({ payload: "000201...", encodedImage: "base64" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+<<<<<<< HEAD
   it("envia a referência única e consulta dados atuais da transferência", async () => {
     const calls: Array<{ method: string; url: URL; body: Record<string, unknown> | null }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
@@ -157,4 +161,6 @@ describe("Asaas Sandbox gateway", () => {
     expect(result).toEqual({ matches: [], complete: false });
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
+=======
+>>>>>>> upstream/main
 });

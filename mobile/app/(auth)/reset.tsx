@@ -5,7 +5,6 @@ import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { Alert, Button, Heading, PasswordField, Screen } from "../../components/ui";
 
-// Exibida quando o usuário chega pelo link de redefinição enviado por e-mail.
 export default function ResetPasswordScreen() {
   const { finishPasswordRecovery } = useAuth();
   const [password, setPassword] = useState("");

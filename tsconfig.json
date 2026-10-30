@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "useDefineForClassFields": true,
     "lib": [
       "ES2020",
       "DOM",
@@ -10,12 +9,6 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ]
-    },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -30,9 +23,7 @@
     "verbatimModuleSyntax": true
   },
   "include": [
-    "src",
     "shared",
-    "backend/src",
-    "vite.config.ts"
+    "backend/src"
   ]
 }

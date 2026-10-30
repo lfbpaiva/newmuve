@@ -6,7 +6,7 @@
     "scheme": "muve",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0d0e14",
+    "backgroundColor": "#0a0a0c",
     "newArchEnabled": true,
     "android": {
       "package": "br.com.muve.app",
@@ -30,7 +30,7 @@
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 220,
-          "backgroundColor": "#0d0e14"
+          "backgroundColor": "#0a0a0c"
         }
       ],
       [
@@ -39,7 +39,14 @@
           "photosPermission": "O Muve usa suas fotos para a foto de perfil e a imagem do evento."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#6d4aff"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

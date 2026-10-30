@@ -1,16 +1,14 @@
-// Cria (ou recria) as contas de demonstração, já confirmadas e com perfil completo.
-// Uso: node scripts/contas-demo.mjs        (usa backend/.env)
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 
 const env = Object.fromEntries(readFileSync("backend/.env", "utf8").split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]));
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const PASSWORD = "teste123";
-const FOTO = "https://placehold.co/400x400/0a0a0c/d4ff3f/png?text=M";
+const unsplash = (id) => `https://images.unsplash.com/photo-${id}?w=400&h=400&fit=crop`;
 
 const contas = [
-  { email: "teste@teste.com", role: "MUSICIAN", perfil: { nome_completo: "Músico Teste", documento: "52998224725", telefone: "45999990001", foto_perfil_url: FOTO, uf: "PR", cidade: "Cascavel", estilos_musicais: ["Rock", "MPB", "Sertanejo"], bio: "Conta de demonstração. Voz e violão, repertório variado.", chave_pix_tipo: "EMAIL", chave_pix: "teste@teste.com" } },
-  { email: "contratante@teste.com", role: "CONTRACTOR", perfil: { nome_fantasia: "Bar Teste", documento: "11222333000181", telefone: "45322210001", foto_perfil_url: FOTO.replace("text=M", "text=B"), uf: "PR", cidade: "Cascavel" } },
+  { email: "teste@teste.com", role: "MUSICIAN", perfil: { nome_completo: "Músico Teste", documento: "52998224725", telefone: "45999990001", foto_perfil_url: unsplash("1510915361894-db8b60106cb1"), uf: "PR", cidade: "Cascavel", estilos_musicais: ["Rock", "MPB", "Sertanejo"], bio: "Conta de demonstração. Voz e violão, repertório variado.", chave_pix_tipo: "EMAIL", chave_pix: "cliente-a00001@pix.bcb.gov.br" } },
+  { email: "contratante@teste.com", role: "CONTRACTOR", perfil: { nome_fantasia: "Bar Teste", documento: "11222333000181", telefone: "45322210001", foto_perfil_url: unsplash("1514933651103-005eec06c04b"), uf: "PR", cidade: "Cascavel" } },
 ];
 
 const { data } = await admin.auth.admin.listUsers({ perPage: 200 });

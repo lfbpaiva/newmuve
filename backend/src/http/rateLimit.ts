@@ -3,9 +3,12 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 import { AppError } from "../domain/errors.ts";
 
+<<<<<<< HEAD
 // Limite de requisições por cliente em janela fixa, mantido em memória.
 // Suficiente para uma única instância do servidor; com várias instâncias, o
 // contador precisaria ir para um armazenamento compartilhado (ex.: Redis).
+=======
+>>>>>>> upstream/main
 function validIp(value: string | undefined): string | undefined {
   const address = value?.trim();
   if (!address) return undefined;
@@ -17,7 +20,10 @@ function socketIp(c: Context): string | undefined {
   try {
     return getConnInfo(c).remote.address;
   } catch {
+<<<<<<< HEAD
     // app.request() nos testes não possui socket; o servidor Node possui.
+=======
+>>>>>>> upstream/main
     return undefined;
   }
 }
@@ -41,8 +47,11 @@ export function rateLimit(options: {
     const time = now();
     const peer = validIp(remoteAddress(c));
     let client = peer ?? "desconhecido";
+<<<<<<< HEAD
     // Só proxies conhecidos podem encaminhar o IP. Percorrer da direita para
     // a esquerda impede que um cliente injete um IP falso no início da lista.
+=======
+>>>>>>> upstream/main
     if (peer && trusted.has(peer)) {
       for (const address of (c.req.header("x-forwarded-for") ?? "").split(",").reverse()) {
         const forwarded = validIp(address);

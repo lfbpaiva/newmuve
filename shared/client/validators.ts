@@ -27,7 +27,6 @@ export const maskPhone = (value: string) => {
     .replace(/(\d{5})(\d)/, "$1-$2");
 };
 
-/** CPF até 11 dígitos; a partir do 12º, CNPJ. */
 export const maskDocumento = (value: string) => (value.replace(/\D/g, "").length <= 11 ? maskCPF(value) : maskCNPJ(value));
 
 export const sanitizeEmail = (value: string) =>

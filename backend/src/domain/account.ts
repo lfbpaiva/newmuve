@@ -23,17 +23,27 @@ const password = z
 
 const nome = texto("Informe seu nome.").min(1, "Informe seu nome.").max(120, "O nome deve ter no máximo 120 caracteres.");
 
-// Cadastro mínimo: o resto do perfil é preenchido depois, quando fizer falta.
 export const signupSchema = z.object({
   role: z.enum(["MUSICIAN", "CONTRACTOR"], { error: "Selecione o tipo de conta." }),
   nome,
   email,
   password,
+  aceiteTermos: z.literal(true, { error: "Aceite os Termos de Uso para criar a conta." }),
   redirectTo: z.string().trim().max(300).optional(),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
-/** Campo opcional em que string vazia significa "não informado". */
+export const dispositivoSchema = z.object({
+  token: z.string({ error: "Token inválido." }).regex(/^Expo(nent)?PushToken\[.+\]$/, "Token inválido."),
+});
+
+export const completarPerfilSchema = z.object({
+  role: z.enum(["MUSICIAN", "CONTRACTOR"], { error: "Selecione o tipo de conta." }),
+  nome,
+  aceiteTermos: z.literal(true, { error: "Aceite os Termos de Uso para criar a conta." }),
+});
+export type CompletarPerfilInput = z.infer<typeof completarPerfilSchema>;
+
 const optionalText = <T>(schema: z.ZodType<T, string>) =>
   z
     .string()
@@ -42,7 +52,14 @@ const optionalText = <T>(schema: z.ZodType<T, string>) =>
     .transform((value) => value || undefined)
     .pipe(schema.optional());
 
-// CPF ou CNPJ, para os dois perfis.
+const clearableText = <T>(schema: z.ZodType<T, string>) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value || null))
+    .pipe(schema.nullable().optional());
+
 const documento = optionalText(z.string().refine(isValidDocumento, "Informe um CPF ou CNPJ válido.").transform(onlyDigits));
 
 const profileCommon = {
@@ -58,14 +75,12 @@ const contractorProfile = z.object(profileCommon);
 const musicianProfile = z
   .object({
     ...profileCommon,
-    bio: optionalText(z.string().max(1000, "A bio deve ter no máximo 1000 caracteres.")),
+    bio: clearableText(z.string().max(1000, "A bio deve ter no máximo 1000 caracteres.")),
     estilosMusicais: z
       .array(z.enum(ESTILOS_MUSICAIS, { error: "Estilo musical inválido." }))
       .optional()
       .transform((estilos) => (estilos && estilos.length ? [...new Set(estilos)] : undefined)),
-    // Link de vídeo ou áudio (YouTube, Instagram, Spotify...).
-    portfolioUrl: optionalText(z.string().refine(isValidUrl, "Informe um link válido, começando com http:// ou https://.")),
-    // A chave Pix é o destino do repasse do cachê.
+    portfolioUrl: clearableText(z.string().refine(isValidUrl, "Informe um link válido, começando com http:// ou https://.")),
     chavePixTipo: optionalText(z.enum(TIPOS_CHAVE_PIX, { error: "Tipo de chave Pix inválido." })),
     chavePix: optionalText(z.string()),
   })
@@ -77,7 +92,6 @@ const musicianProfile = z
     chavePixTipo: p.chavePix ? p.chavePixTipo : undefined,
   }));
 
-// O e-mail não é editável.
 export const updateProfileSchemas = { MUSICIAN: musicianProfile, CONTRACTOR: contractorProfile };
 export type ProfileChanges = z.infer<typeof musicianProfile> | z.infer<typeof contractorProfile>;
 
@@ -87,7 +101,6 @@ export const deleteAccountSchema = z.object({
 });
 export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 
-// Perfil completo, como devolvido ao próprio dono da conta. Campos nulos ainda não foram preenchidos.
 export interface Account {
   id: string;
   role: Role;
@@ -104,4 +117,7 @@ export interface Account {
   chavePixTipo?: string | null;
   chavePix?: string | null;
   portfolioUrl?: string | null;
+  visibilidadeReduzidaAte?: Date | null;
+  proAte?: Date | null;
+  casaAte?: Date | null;
 }

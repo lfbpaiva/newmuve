@@ -1,0 +1,260 @@
+# Muve: proposta, regras e o que o documento não dizia
+
+Este documento explica o produto de ponta a ponta: o problema, como o app resolve, as regras completas e as decisões que a monografia (`Projeto Acadêmico - Aplicativo Muve`) deixou em aberto. As decisões técnicas estão em [arquitetura.md](arquitetura.md).
+
+## 1. A proposta
+
+**Problema (monografia, 1.1):** contratar músicos independentes é informal. O músico corre o risco de levar calote ou receber com atraso; o contratante corre o risco de o músico faltar ou cancelar em cima da hora. Ninguém tem garantia nem histórico confiável da outra parte.
+
+**Resposta da Muve:** um intermediário que segura o dinheiro até o show acontecer e registra a reputação dos dois lados.
+
+| Dor | Como a Muve resolve |
+|---|---|
+| Músico leva calote | O contratante paga antes, por Pix. O valor fica retido e só sai para o músico depois do show. |
+| Músico falta | O contratante registra a ausência e recebe tudo de volta. |
+| Contratante cancela em cima da hora | Com menos de 24h, não há devolução: o cachê vai para o músico. |
+| Não se conhecem | Avaliações de 1 a 5 dos dois lados, só depois de um show concluído. |
+| Achar o músico certo | O evento só aparece para músicos do estilo pedido, na cidade ou num raio de até 200 km. |
+| Combinar detalhes | Conversa dentro do app e proposta de cachê na inscrição. |
+
+## 2. A jornada
+
+```mermaid
+flowchart TD
+    A[Contratante publica o evento<br/>data, local, estilos, cachê oferecido] --> B[Evento aparece para músicos<br/>do estilo, até 200 km]
+    B --> C[Músico se inscreve<br/>aceita o cachê ou propõe outro valor]
+    C --> D{Contratante analisa}
+    D -- conversa --> E[Chat da inscrição<br/>repertório, horário, valor]
+    E --> D
+    D -- recusa --> F[Músico é avisado<br/>conversa encerrada]
+    D -- aprova --> G[Pix gerado: cachê + 10%<br/>válido por 15 min]
+    G -- pago --> H[Contratação efetivada<br/>valor retido, endereço e telefone liberados<br/>demais candidatos avisados]
+    G -- expira ou é cancelado --> D
+    H --> I{Antes do show}
+    I -- músico desiste --> J[Estorno integral<br/>evento reabre]
+    I -- contratante cancela com mais de 24h --> K[Estorno integral<br/>evento cancelado]
+    I -- contratante cancela com menos de 24h --> L[Sem estorno<br/>cachê repassado ao músico]
+    I -- show acontece --> M{Depois do show}
+    M -- as duas partes confirmam --> N[Concluído<br/>cachê transferido por Pix]
+    M -- ninguém registra nada em 7 dias --> N
+    M -- contratante registra ausência em até 7 dias --> O[Estorno integral<br/>evento cancelado]
+    N --> P[Avaliação mútua]
+```
+
+## 3. Estados
+
+### Evento
+
+```mermaid
+stateDiagram-v2
+    [*] --> ABERTO: publicado
+    ABERTO --> CONTRATADO: pagamento confirmado
+    ABERTO --> [*]: excluído pelo contratante
+    CONTRATADO --> ABERTO: músico desiste (estorno integral)
+    CONTRATADO --> CANCELADO: contratante cancela ou registra ausência
+    CONTRATADO --> CONCLUIDO: duas confirmações ou 7 dias sem ocorrência
+    CANCELADO --> [*]
+    CONCLUIDO --> [*]
+```
+
+Um evento ABERTO cuja data passou aparece como "Encerrado sem contratação" e pode ser excluído.
+
+### Inscrição
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDENTE: músico se inscreve
+    PENDENTE --> PENDENTE: músico revê o valor proposto
+    PENDENTE --> [*]: músico cancela (mais de 24h antes)
+    PENDENTE --> RECUSADO: contratante recusa ou contrata outro
+    PENDENTE --> APROVADO: pagamento confirmado
+    APROVADO --> [*]: músico desiste (inscrição removida, evento reabre)
+```
+
+### Dinheiro
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDENTE: Pix gerado
+    PENDENTE --> EXPIRADO: 15 min sem pagamento
+    PENDENTE --> CANCELADO: contratante cancela a cobrança
+    PENDENTE --> PAGO: Asaas confirma
+    state PAGO {
+        [*] --> RETIDO
+        RETIDO --> PROCESSANDO: show concluído ou cancelamento em cima da hora
+        PROCESSANDO --> REPASSADO: Asaas conclui a transferência
+        PROCESSANDO --> FALHOU: transferência recusada
+        FALHOU --> PROCESSANDO: nova tentativa
+    }
+    PAGO --> ESTORNADO: desistência, cancelamento com 24h ou ausência
+```
+
+O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, confirmação e repasse ficam suspensos.
+
+## 4. Regras
+
+| Regra | Valor |
+|---|---|
+| Cachê mínimo | R$ 100,00 |
+| Taxa da plataforma | 10%, somada ao cachê e paga pelo contratante; o músico recebe o cachê inteiro |
+| Valor cobrado | Proposta do músico, se houver; senão, o cachê oferecido. Sempre lido do banco. |
+| Revisão da proposta | Só com a inscrição pendente, sem cobrança em andamento e antes da data do evento |
+| Cachê alterado pelo contratante | Quem tinha aceitado o valor antigo continua com ele; a proposta de quem pediu outro valor não muda |
+| Evento editado | Inscritos que deixam de combinar (cidade ou estilos) são recusados e avisados; os demais são avisados da mudança |
+| Show duplo | Um músico não se inscreve, não é cobrado nem é contratado para um show que se sobrepõe a outro em que já foi contratado |
+| Validade do Pix | 15 minutos; um Pix pago quando a cobrança já não vale (expirada, trocada, músico indisponível ou show já iniciado) não contrata e é devolvido, com nova tentativa se a Asaas recusar |
+| Alcance do evento | Mesmos estilos (ou "Qualquer estilo"); mesma cidade ou até 200 km |
+| Cancelar inscrição | Até 24h antes do evento |
+| Encerrar inscrições | O contratante pode encerrar e reabrir antes da contratação; encerrado, o evento sai do feed, mas os inscritos continuam podendo ser aprovados |
+| Horário do evento | Digitado e exibido no fuso do estado do evento (Acre, Amazonas, Rondônia, Roraima, Mato Grosso e Mato Grosso do Sul fora do horário de Brasília) |
+| Cancelamento pelo contratante | Mais de 24h antes: estorno integral. Menos de 24h: sem estorno, cachê vai ao músico. Se o prazo virar enquanto a tela está aberta, a API pede nova confirmação. |
+| Desistência do músico contratado | Antes do início: estorno integral e o evento reabre; só voltam a concorrer os inscritos que perderam para ele (os recusados pelo contratante continuam recusados) |
+| Não comparecimento | Depois do horário, até 7 dias, se ninguém confirmou o show: estorno integral. Se o músico já confirmou, o caminho é a contestação |
+| Conclusão | Duas confirmações, ou 7 dias após a data sem registro de ausência |
+| Avaliação | 1 a 5 estrelas, uma por pessoa por evento, só depois de concluído |
+| Conversa | Entre o músico e o dono do evento; fecha quando a inscrição é recusada ou o evento termina |
+| Contraproposta | No chat, qualquer uma das partes propõe um valor; a outra aceita ou recusa. Aceita, ela vira o valor da inscrição. Uma proposta nova substitui a anterior |
+| Penalidades do músico | Ausência: multa de 20% do cachê, descontada do próximo repasse, e 15 dias sem ver novos eventos. Desistência com menos de 24h: 15 dias sem ver novos eventos |
+| Contestação | Depois do início do show e até o repasse, qualquer parte contesta; o repasse fica suspenso e o suporte decide (pagar o músico ou devolver ao contratante) |
+| CNPJ | Conferido na Receita Federal (BrasilAPI) ao ser cadastrado; CNPJ inexistente ou inativo é recusado. CPF é validado pelos dígitos |
+| Muve Pro (músico) | R$ 19,90/mês por Pix, assinatura recorrente na Asaas. Eventos novos com mais de 7 dias de antecedência aparecem 24h antes; destaque com selo no topo da lista de candidatos; raio de até 400 km. Cancelar encerra a renovação e mantém o Pro até o fim do período pago. Não muda garantia, cancelamentos, multas nem avaliações |
+| Muve Casa (contratante) | R$ 49,90/mês por Pix, assinatura recorrente na Asaas. Taxa de serviço de 6% em vez de 10% nos pagamentos feitos com o plano ativo; evento semanal repetido em até 8 datas de uma vez; favoritar músicos que já se inscreveram em eventos seus e convidá-los para um evento aberto (o convidado pode se inscrever mesmo com inscrições encerradas ou fora do raio); agenda do mês em calendário. Não muda nada para o músico |
+| Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez |
+| Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
+| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
+
+## 5. Notificações
+
+| Acontecimento | Quem recebe | Também por e-mail |
+|---|---|---|
+| Nova inscrição (com o valor proposto) | Contratante | não |
+| Nova mensagem | A outra parte da conversa | não |
+| Inscrição recusada | Músico | não |
+| Evento mudou e não combina mais / evento excluído | Músico inscrito | não |
+| Voltou a concorrer (o contratado desistiu) | Inscritos que tinham perdido para ele | não |
+| Pix recebido fora de hora / devolução pendente | Contratante | sim |
+| Muve Pro ativado ou renovado | Músico | sim |
+| Muve Casa ativado ou renovado | Contratante | sim |
+| Convite de um contratante (Muve Casa) | Músico | não |
+| Devolução recusada pela Asaas | Contratante (e o músico, se foi ele quem desistiu) | sim |
+| Repasse falhou (conferir chave Pix) | Músico | sim |
+| Pagamento confirmado | Músico contratado e contratante | sim |
+| Outro músico foi escolhido | Demais inscritos | não |
+| Evento alterado (data, local, estilos ou cachê) | Inscritos pendentes | não |
+| A outra parte confirmou o show | Quem ainda não confirmou | sim |
+| Desistência ou cancelamento | A outra parte | sim |
+| Não comparecimento registrado | Músico | sim |
+| Cachê repassado | Músico | sim |
+
+E-mail só sai se houver SMTP configurado. No app, o sino da tela inicial mostra os avisos em tempo real.
+
+## 6. Dados
+
+```mermaid
+erDiagram
+    profiles ||--o| musician_profiles : "é"
+    profiles ||--o| contractor_profiles : "é"
+    contractor_profiles ||--o{ events : publica
+    events ||--|| event_locations : "endereço privado"
+    events ||--o{ event_candidates : recebe
+    musician_profiles ||--o{ event_candidates : "se inscreve"
+    event_candidates ||--o{ candidate_messages : conversa
+    events ||--o{ payments : "cobrança"
+    event_candidates ||--o{ payments : "aprovada por"
+    events ||--o{ reviews : "avaliado em"
+    profiles ||--o{ notifications : recebe
+    municipios ||..o{ events : "coordenadas"
+```
+
+| Tabela | Para quê |
+|---|---|
+| `profiles` | Tipo de conta de cada usuário do Supabase Auth |
+| `musician_profiles` / `contractor_profiles` | Dados do perfil; documento, telefone e chave Pix só pela API |
+| `events` / `event_locations` | Evento; o endereço fica separado e só o contratado lê |
+| `event_candidates` | Inscrições, com status e valor proposto |
+| `candidate_messages` | Conversa de cada inscrição |
+| `payments` | Cobrança, valores, retenção, repasse e estorno |
+| `asaas_webhook_events` | Avisos da Asaas já processados (evita duplicidade) |
+| `reviews` | Avaliações mútuas |
+| `notifications` | Avisos dentro do app |
+| `municipios` | Coordenadas das 5.571 cidades, para a distância |
+
+## 7. API
+
+| Método e rota | O que faz |
+|---|---|
+| `POST /auth/signup` | Cadastro com aceite dos Termos |
+| `GET /me`, `PATCH /me`, `DELETE /me` | Perfil, completar perfil, excluir conta |
+| `POST /me/notificacoes/lidas` | Marca as notificações como lidas |
+| `POST /events`, `PATCH /events/:id`, `DELETE /events/:id` | Publicar, editar e excluir evento |
+| `POST /events/:id/candidatura` | Inscrever-se, com proposta opcional |
+| `PATCH /events/:id/candidatura` | Rever a proposta |
+| `DELETE /events/:id/candidatura` | Cancelar a inscrição |
+| `POST /events/:id/candidatos/:candidateId/recusa` | Contratante recusa uma inscrição |
+| `PATCH /events/:id/inscricoes` | Encerrar ou reabrir as inscrições |
+| `POST /candidaturas/:id/mensagens` | Enviar mensagem na conversa |
+| `POST /events/:id/checkout`, `GET`, `DELETE` | Gerar, consultar e cancelar o Pix |
+| `GET /events/:id/contratacao` | Comprovante da contratação |
+| `DELETE /events/:id/contratacao` | Cancelar ou desistir |
+| `POST /events/:id/nao-comparecimento` | Registrar ausência do músico |
+| `POST /events/:id/confirmacao` | Confirmar que o show aconteceu |
+| `POST /events/:id/avaliacao` | Avaliar a outra parte |
+| `POST /webhooks/asaas` | Avisos de pagamento, estorno e transferência |
+
+Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações, notificações) vão direto ao banco, limitadas pela RLS.
+
+## 8. O que a monografia não definia, e o que decidimos
+
+| Ponto em aberto | Decisão |
+|---|---|
+| Quem procura quem? A monografia fala em criar eventos (RF03) e em filtros de busca do contratante (RF04). | O contratante publica o evento e os músicos compatíveis se inscrevem. Evita o contratante ter de garimpar perfis e dá ao músico uma lista de oportunidades. |
+| Negociação do valor | O músico aceita o cachê ou propõe outro na inscrição, e pode rever enquanto espera. O valor cobrado é sempre o que está gravado. |
+| Comunicação entre as partes | Conversa por inscrição dentro do app; telefone e WhatsApp só depois de contratado, para o pagamento não sair da plataforma. |
+| "Repasse em D+7" e "após confirmação mútua" (4.2 e RN02) se contradizem | Duas confirmações liberam na hora; sem confirmação e sem reclamação, o show é dado como realizado em 7 dias. |
+| O que acontece se ninguém confirma | Conclusão automática em 7 dias. O contratante tem esses 7 dias para registrar ausência. |
+| Desistência do músico contratado | Estorno integral ao contratante e o evento volta a receber inscrições. |
+| Validade da cobrança | 15 minutos; um Pix pago depois de expirado ou cancelado é estornado sozinho. |
+| Candidatos não escolhidos | São avisados; o contratante também pode recusar inscrições uma a uma. |
+| Evento alterado depois de receber inscrições | Permitido até a contratação; os inscritos são avisados de mudanças relevantes. |
+| Evento que passou sem contratação | Fica como "encerrado sem contratação" e pode ser excluído. |
+| Exclusão de conta (LGPD) | Permitida a qualquer momento, exceto com show contratado ou dinheiro ainda não repassado ou devolvido. |
+| Termos de uso | Tela própria, aceite obrigatório no cadastro, versão e data gravadas. |
+| Notificações (RNF04 só cita "processamento assíncrono") | Avisos no app em tempo real e e-mail opcional, com a lista da seção 5. |
+| Raio de atuação do artista (RF02) | Em vez de um raio fixo no perfil, o músico escolhe no feed: minha cidade, 50, 100 ou 200 km. |
+
+## 9. Monografia × implementação
+
+| Item | Situação | Observação |
+|---|---|---|
+| RN01/RN02: taxa de 15% descontada do artista, split 85/15 | Adaptado | Taxa de 10% somada ao cachê, paga pelo contratante. A plataforma recebe e transfere por Pix (custódia própria). Em produção, o caminho regulado é o split com Conta Escrow da Asaas. |
+| RN03: cancelamento sem penalidade só com 24h | Implementado | |
+| RN04: cancelamento tardio retém 20% (10% artista, 10% plataforma) | Adaptado | Hoje o músico recebe o cachê inteiro. Mais simples de explicar e mais justo com quem reservou a data. |
+| RN05: ausência gera estorno e multa de 20% no cartão do artista | Adaptado | Estorno integral e multa de 20%. A multa é descontada do próximo cachê em vez de cobrada no cartão, para não exigir cartão de quem quer receber. |
+| RN06: data, horário e duração obrigatórios | Implementado | |
+| RN07: busca prioriza Premium e nota alta | Adaptado | Muve Pro: o músico assinante aparece no topo da lista de candidatos, com selo, e vê eventos novos 24h antes. O feed ordena por distância e depois por data. |
+| RN08: Shadowban de 15 dias | Implementado | Ausência ou desistência com menos de 24h: o músico fica 15 dias sem ver novos eventos no feed. |
+| RN09: informações estratégicas só para contratantes | Interpretado | Perfil completo do músico só para o dono do evento em que ele se inscreveu. |
+| RN10/RF01: KYC de CPF/CNPJ na Receita | Parcial | CNPJ consultado na Receita (BrasilAPI); CPF só pelos dígitos, porque não há consulta gratuita. Um documento por conta. |
+| RF04: filtros de busca | Parcial | Busca por texto, período, tipo de evento, cachê mínimo e distância. Sem filtro por público-alvo. |
+| RF05: cartão tokenizado do artista | Não implementado | Ver RN05. |
+| RF06/RF08: escrow e split no gateway | Adaptado | Retenção na conta da plataforma e transferência Pix (sandbox). |
+| RF07: duplo OK | Implementado | Com conclusão automática em 7 dias. |
+| RF09: multas automáticas | Implementado | Regra das 24h do contratante e multa por ausência do músico. |
+| RF10: avaliação mútua | Implementado | |
+| RNF01: PCI-DSS | Não se aplica | Só Pix; nenhum dado de cartão passa pelo sistema. |
+| RNF02: Docker e Azure | Adaptado | API Node simples de hospedar (Render, Railway); banco no Supabase. |
+| RNF03: log imutável | Parcial | Webhooks registrados e datas em cada tabela; sem trilha de auditoria completa. |
+| RNF04: notificações e webhooks assíncronos | Implementado | |
+| Protótipo: aba Contratos | Adaptado | O comprovante da contratação cumpre esse papel. |
+| Mediação de disputas | Implementado | Contestação no app; o suporte decide pelo script `scripts/resolver-contestacao.mjs`. |
+| Notificações com o app fechado | Implementado no código | Push da Expo; funciona no app gerado pelo EAS (ver README). |
+
+## 10. O que ainda falta
+
+1. **Conta Escrow com subcontas.** Desenho completo em [conta-escrow.md](conta-escrow.md). Depende de uma conta sandbox da Asaas como pessoa jurídica.
+2. **Ativar o login com Google** no Supabase e no Google Cloud (passo a passo no README).
+3. **Gerar o app pelo EAS** para as notificações com o app fechado funcionarem (o Expo Go no Android não recebe push).
+4. **Hospedagem da API e SMTP** (passo a passo no README).
+5. **Autorização de transferências na Asaas** no modelo atual (manual no sandbox).
+6. **Público geral** (agenda de shows abertos ao público): ideia registrada, sem implementação.
+7. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.

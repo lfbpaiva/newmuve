@@ -55,12 +55,15 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
         avaliacaoMedia: Number(data.avaliacao_media),
         totalAvaliacoes: data.total_avaliacoes,
       };
+      if (role === "CONTRACTOR") account.casaAte = data.casa_ate ? new Date(data.casa_ate) : null;
       if (role === "MUSICIAN") {
         account.bio = data.bio;
         account.estilosMusicais = data.estilos_musicais;
         account.chavePixTipo = data.chave_pix_tipo;
         account.chavePix = data.chave_pix;
         account.portfolioUrl = data.portfolio_url;
+        account.visibilidadeReduzidaAte = data.visibilidade_reduzida_ate ? new Date(data.visibilidade_reduzida_ate) : null;
+        account.proAte = data.pro_ate ? new Date(data.pro_ate) : null;
       }
       return account;
     },
@@ -71,7 +74,6 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       return data.user?.email ?? null;
     },
 
-    // Só grava o que veio na requisição; campo ausente não apaga o valor atual.
     async updateProfile(userId, role, changes) {
       const row: Record<string, unknown> = { [nameColumn(role)]: changes.nome };
       if (changes.documento !== undefined) row.documento = changes.documento;
@@ -92,16 +94,28 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       if (error?.code === UNIQUE_VIOLATION) throw new AppError(409, "DOCUMENTO_EM_USO", "Este CPF/CNPJ já está vinculado a outra conta.");
       if (error) throw error;
     },
+
+    async reduceVisibility(musicianId, until) {
+      const { error } = await admin.from("musician_profiles").update({ visibilidade_reduzida_ate: until.toISOString() }).eq("user_id", musicianId);
+      if (error) throw error;
+    },
+
+    async resetPaymentCustomer(userId) {
+      const { error } = await admin.from("contractor_profiles").update({ asaas_customer_id: null }).eq("user_id", userId);
+      if (error) throw error;
+    },
   };
 }
 
-// signUp e signInWithPassword usam a chave pública: assim valem as mesmas regras
-// do Supabase Auth aplicadas a qualquer cliente (e-mail de confirmação, limites de tentativas).
 export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: string): AuthGateway {
   const publicClient = () => createClient(url, anonKey, serverOnly);
 
   return {
+<<<<<<< HEAD
     async signUp(email, password, redirectTo) {
+=======
+    async signUp(email, password, termosVersao, redirectTo) {
+>>>>>>> upstream/main
       let retryAfter: string | undefined;
       const signupClient = createClient(url, anonKey, {
         ...serverOnly,
@@ -116,7 +130,10 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       const { data, error } = await signupClient.auth.signUp({
         email,
         password,
-        options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+        options: {
+          emailRedirectTo: redirectTo,
+          data: { termos_versao: termosVersao, termos_aceitos_em: new Date().toISOString() },
+        },
       });
       if (error?.code === "user_already_exists" || error?.code === "email_exists") return { emailTaken: true };
       if (error?.status === 429 || error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {
@@ -125,7 +142,6 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       if (error?.code === "weak_password") throw new AppError(400, "SENHA_FRACA", "Escolha uma senha mais forte.");
       if (error?.code === "email_address_invalid") throw new AppError(400, "EMAIL_INVALIDO", "Informe um e-mail válido.");
       if (error) throw error;
-      // Com confirmação de e-mail ativa, um e-mail já confirmado volta como usuário sem identidades.
       if (!data.user || (data.user.identities ?? []).length === 0) return { emailTaken: true };
       return { userId: data.user.id };
     },
@@ -135,6 +151,13 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       if (!error) return true;
       if (error.code === "invalid_credentials") return false;
       throw error;
+    },
+
+    async recordTermsAcceptance(userId, termosVersao) {
+      const { error } = await admin.auth.admin.updateUserById(userId, {
+        user_metadata: { termos_versao: termosVersao, termos_aceitos_em: new Date().toISOString() },
+      });
+      if (error) throw error;
     },
 
     async deleteUser(userId) {

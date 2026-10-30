@@ -4,13 +4,11 @@ import { appendFile, clientConfig, supabase, type UploadFile } from "./config.ts
 
 export type Role = "MUSICIAN" | "CONTRACTOR";
 
-/** Conta autenticada, como devolvida por GET /me. */
 export interface Me {
   id: string;
   email: string;
   role: Role;
   nome: string;
-  /** CPF ou CNPJ, só dígitos. Nulo enquanto não for preenchido no perfil. */
   documento: string | null;
   telefone: string | null;
   uf: string | null;
@@ -23,9 +21,11 @@ export interface Me {
   chavePixTipo?: string | null;
   chavePix?: string | null;
   portfolioUrl?: string | null;
+  visibilidadeReduzidaAte?: string | null;
+  proAte?: string | null;
+  casaAte?: string | null;
 }
 
-/** Dados do perfil; campos vazios são ignorados pela API (não apagam o valor atual). */
 export interface ProfileData {
   nome: string;
   documento?: string;
@@ -39,12 +39,12 @@ export interface ProfileData {
   portfolioUrl?: string;
 }
 
-/** Cadastro mínimo: o restante é preenchido no perfil, quando fizer falta. */
 export interface SignupData {
   role: Role;
   nome: string;
   email: string;
   password: string;
+  aceiteTermos: boolean;
 }
 
 const REMEMBERED_EMAIL_KEY = "muve.rememberedEmail";
@@ -56,7 +56,6 @@ function withFile(dados: object, avatar: UploadFile | null): FormData {
   return form;
 }
 
-// Traduz os erros do Supabase Auth para mensagens exibíveis ao usuário.
 function authError(error: AuthError): ApiError {
   const messages: Record<string, string> = {
     invalid_credentials: "E-mail não cadastrado ou senha incorreta.",
@@ -72,7 +71,6 @@ function authError(error: AuthError): ApiError {
 }
 
 export async function signUp(dados: SignupData): Promise<void> {
-  // redirectTo: para onde o link de confirmação leva (site ou app); a API só aceita destinos autorizados.
   await apiRequest("/auth/signup", { method: "POST", body: { ...dados, redirectTo: clientConfig().redirectUrl } });
 }
 
@@ -81,8 +79,13 @@ export async function signIn(email: string, password: string): Promise<void> {
   if (error) throw authError(error);
 }
 
+export const registerDevice = (token: string) => apiRequest("/me/dispositivos", { method: "POST", body: { token } });
+export const unregisterDevice = (token: string) => apiRequest("/me/dispositivos/remover", { method: "POST", body: { token } });
+
+export const completeProfile = (dados: { role: Role; nome: string; aceiteTermos: boolean }) =>
+  apiRequest("/me/perfil", { method: "POST", body: dados });
+
 export async function signOut(): Promise<void> {
-  // "local": encerra a sessão deste navegador mesmo se o servidor estiver inacessível.
   await supabase().auth.signOut({ scope: "local" });
 }
 
@@ -110,8 +113,6 @@ export async function deleteAccount(email: string, password: string): Promise<vo
   await signOut();
 }
 
-// "Lembrar de mim": mantém apenas o e-mail preenchido na tela de login.
-// Falhas de armazenamento (ex.: navegação privada) são ignoradas: o login segue normalmente.
 export async function rememberedEmail(): Promise<string> {
   return (await clientConfig().storage.get(REMEMBERED_EMAIL_KEY).catch(() => null)) ?? "";
 }

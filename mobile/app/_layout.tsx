@@ -8,8 +8,9 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
-import { supabase } from "../lib/client";
-import { colors } from "../lib/theme";
+import { consumeAuthLink } from "../lib/authLinks";
+import { usePushNotifications } from "../lib/push";
+import { colors, stackOptions } from "../lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -22,11 +23,6 @@ export default function RootLayout() {
   </AuthProvider>;
 }
 
-/**
- * No navegador, o app fica numa coluna com largura de celular, centralizada.
- * Sem isso, em uma tela de computador as fotos e listas esticam até as bordas.
- * No celular (iOS/Android) não muda nada.
- */
 function WebFrame({ children }: { children: ReactNode }) {
   if (Platform.OS !== "web") return children;
   return <View style={{ flex: 1, alignItems: "center", backgroundColor: "#050506" }}>
@@ -36,28 +32,21 @@ function WebFrame({ children }: { children: ReactNode }) {
   </View>;
 }
 
-/** Abre a sessão a partir dos links de confirmação de e-mail e de redefinição de senha (muve://auth#access_token=...). */
 function useAuthLinks() {
+  const { beginPasswordRecovery } = useAuth();
   useEffect(() => {
-    async function handle(url: string | null) {
-      if (!url?.startsWith("muve://auth")) return;
-      const params = new URLSearchParams(url.split("#")[1] ?? url.split("?")[1] ?? "");
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
-      if (access_token && refresh_token) await supabase.auth.setSession({ access_token, refresh_token });
-    }
+    const handle = (url: string | null) => consumeAuthLink(url, beginPasswordRecovery);
     Linking.getInitialURL().then(handle);
     const subscription = Linking.addEventListener("url", (event) => handle(event.url));
     return () => subscription.remove();
-  }, []);
+  }, [beginPasswordRecovery]);
 }
 
-// Decide entre as telas públicas e as autenticadas; a sessão vem do AuthContext compartilhado com a web.
-// Stack.Protected garante que nenhuma tela interna seja montada sem sessão (nem por link direto).
 function AuthGate() {
   const { state, recoveringPassword, retrySession } = useAuth();
   const router = useRouter();
   useAuthLinks();
+  usePushNotifications(state.status === "signedIn");
   const loading = state.status === "loading";
   const signedIn = state.status === "signedIn" && !recoveringPassword;
 
@@ -65,13 +54,14 @@ function AuthGate() {
     if (loading) return;
     SplashScreen.hideAsync().catch(() => {});
     if (recoveringPassword) router.replace("/(auth)/reset");
-  }, [loading, recoveringPassword, router]);
+    else if (state.status === "needsProfile") router.replace("/(auth)/completar");
+  }, [loading, recoveringPassword, state.status, router]);
 
-  // Enquanto a sessão é lida do armazenamento, a splash continua visível.
   if (loading) return null;
 
   if (state.status === "error") return <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, backgroundColor: colors.bg }}>
     <Text style={{ color: colors.ink, textAlign: "center", marginBottom: 20 }}>{state.notice}</Text>
+<<<<<<< HEAD
     <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={{ padding: 14, backgroundColor: colors.accent, borderRadius: 8 }}>
       <Text style={{ color: colors.bg, fontWeight: "700" }}>Tentar novamente</Text>
     </Pressable>
@@ -86,6 +76,14 @@ function AuthGate() {
     contentStyle: { backgroundColor: colors.bg },
     animation: "slide_from_right",
   }}>
+=======
+    <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 20, backgroundColor: pressed ? colors.accentPressed : colors.accent, borderRadius: 4 })}>
+      <Text style={{ color: colors.onAccent, fontWeight: "700" }}>Tentar novamente</Text>
+    </Pressable>
+  </View>;
+
+  return <Stack screenOptions={{ ...stackOptions, animation: "slide_from_right" }}>
+>>>>>>> upstream/main
     <Stack.Protected guard={!signedIn}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
     </Stack.Protected>
@@ -96,9 +94,18 @@ function AuthGate() {
       <Stack.Screen name="event/[id]/edit" options={{ title: "EDITAR EVENTO" }}/>
       <Stack.Screen name="event/[id]/checkout" options={{ title: "PAGAMENTO" }}/>
       <Stack.Screen name="event/[id]/hiring" options={{ title: "CONTRATAÇÃO" }}/>
+      <Stack.Screen name="event/[id]/candidate/[candidateId]" options={{ title: "PERFIL DO MÚSICO" }}/>
+      <Stack.Screen name="conversa/[candidateId]" options={{ title: "CONVERSA" }}/>
+      <Stack.Screen name="notificacoes" options={{ title: "NOTIFICAÇÕES" }}/>
+      <Stack.Screen name="pro" options={{ title: "MUVE PRO" }}/>
+      <Stack.Screen name="casa" options={{ title: "MUVE CASA" }}/>
+      <Stack.Screen name="favoritos" options={{ title: "FAVORITOS" }}/>
+      <Stack.Screen name="agenda" options={{ title: "AGENDA" }}/>
       <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
       <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
       <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>
     </Stack.Protected>
+    <Stack.Screen name="terms" options={{ title: "TERMOS DE USO" }}/>
+    <Stack.Screen name="auth" options={{ headerShown: false }}/>
   </Stack>;
 }

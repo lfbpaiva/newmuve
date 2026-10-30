@@ -19,8 +19,6 @@ const motivo: Record<AcaoPerfil, string> = {
   pagar: "aprovar um candidato",
 };
 
-// Edição do perfil. Com "acao", vira a tela "Complete seu perfil": mostra só o
-// que falta para aquela ação e volta de onde o usuário veio.
 export default function EditProfileScreen() {
   const me = useMe();
   const { refreshMe } = useAuth();

@@ -15,7 +15,7 @@ export default function AppLayout() {
     headerShown: false,
     tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.line, height: 66, paddingTop: 8 },
     tabBarLabelStyle: { fontFamily: "Manrope_800ExtraBold", fontSize: 10, letterSpacing: 1, textTransform: "uppercase" },
-    tabBarActiveTintColor: colors.accent,
+    tabBarActiveTintColor: colors.accentText,
     tabBarInactiveTintColor: colors.ink2,
   }}>
     <Tabs.Screen name="index" options={{ title: "Início", tabBarIcon: tab("home-outline", "home") }}/>

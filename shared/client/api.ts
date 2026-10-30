@@ -16,11 +16,12 @@ export class ApiError extends Error {
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
-  /** FormData é enviado como multipart; qualquer outro valor, como JSON. */
   body?: FormData | object;
-  /** Token a usar; por padrão, o da sessão atual (se houver). */
   accessToken?: string;
+<<<<<<< HEAD
   /** Tempo máximo para concluir a resposta da API. */
+=======
+>>>>>>> upstream/main
   timeoutMs?: number;
 }
 

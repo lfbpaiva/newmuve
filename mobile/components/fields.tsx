@@ -7,8 +7,6 @@ import { imageProblem, ROTULOS_CHAVE_PIX, TIPOS_CHAVE_PIX, UFS } from "../../sha
 import { colors, radius, space, type } from "../lib/theme";
 import { Field, Icon, Select } from "./ui";
 
-// Campos compostos compartilhados por cadastro, perfil e evento.
-
 export function LocationFields({ uf, cidade, onUfChange, onCidadeChange, onError }: { uf: string; cidade: string; onUfChange: (uf: string) => void; onCidadeChange: (cidade: string) => void; onError?: (message: string) => void }) {
   const [loaded, setLoaded] = useState<{ uf: string; cidades: string[] }>({ uf: "", cidades: [] });
   const loading = Boolean(uf) && loaded.uf !== uf;
@@ -47,7 +45,6 @@ export function PixKeyFields({ tipo, chave, onTipoChange, onChaveChange }: { tip
   </>;
 }
 
-/** Seleciona uma imagem da galeria e a prepara para envio multipart. */
 export function ImageField({ label, preview, shape = "circle", onPick, onError }: { label: string; preview: string; shape?: "circle" | "banner"; onPick: (file: UploadFile, uri: string) => void; onError: (message: string) => void }) {
   async function pick() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -59,7 +56,7 @@ export function ImageField({ label, preview, shape = "circle", onPick, onError }
     const problem = imageProblem({ type: mime, size: asset.fileSize ?? 0 });
     if (problem) return onError(problem);
     const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
-    onPick({ uri: asset.uri, name: `imagem.${extension}`, type: mime }, asset.uri);
+    onPick(asset.file ?? { uri: asset.uri, name: `imagem.${extension}`, type: mime }, asset.uri);
   }
 
   if (shape === "banner") {
@@ -67,7 +64,7 @@ export function ImageField({ label, preview, shape = "circle", onPick, onError }
       {preview ? <Image source={{ uri: preview }} style={{ width: "100%", height: "100%" }}/> : <Icon name="image-outline" size={30} color={colors.ink2}/>}
       {!preview && <Text style={type.label}>{label}</Text>}
       {!preview && <Text style={type.bodySmall}>PNG, JPEG ou WebP, até 5 MB</Text>}
-      {preview && <View style={{ position: "absolute", right: 10, bottom: 10, backgroundColor: "#0f1016cc", borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", gap: 6, alignItems: "center" }}><Icon name="camera-outline" size={14}/><Text style={type.labelSmall}>Trocar</Text></View>}
+      {preview ? <View style={{ position: "absolute", right: 10, bottom: 10, backgroundColor: "#0a0a0ccc", borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", gap: 6, alignItems: "center" }}><Icon name="camera-outline" size={14}/><Text style={type.labelSmall}>Trocar</Text></View> : null}
     </Pressable>;
   }
 

@@ -1,12 +1,15 @@
 import { COBRANCA_VALIDADE_MS } from "../../../shared/dominio.ts";
 import type { Account } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, EventRecord, PaymentRecord } from "../domain/event.ts";
+import type { CandidateRecord, DisputeRecord, EventRecord, MessageRecord, PaymentRecord, PenaltyRecord } from "../domain/event.ts";
 import type { AccountStore, ImageStore } from "./accountService.ts";
+<<<<<<< HEAD
 import type { Mailer } from "./notifications.ts";
 import type { AsaasGateway, AsaasTransferRecord, EventStore, PaymentStore, PayoutIntentRecord } from "./ports.ts";
-
-// Implementações em memória das portas, usadas apenas pelos testes dos serviços.
+=======
+import type { Inbox, Mailer, NotificationInput } from "./notifications.ts";
+import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
+>>>>>>> upstream/main
 
 export const NOW = new Date("2030-06-10T12:00:00Z");
 export const hoursFromNow = (hours: number) => new Date(NOW.getTime() + hours * 60 * 60 * 1000);
@@ -40,16 +43,32 @@ export function memoryWorld() {
   const events = new Map<string, EventRecord>();
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
+<<<<<<< HEAD
   const payments = new Map<string, PaymentRecord & { asaasTransferId?: string; createdAt: number }>();
   const payoutIntents = new Map<string, PayoutIntentRecord>();
   const asaasTransfers = new Map<string, AsaasTransferRecord>();
+=======
+  const messages: MessageRecord[] = [];
+  const penalties: (PenaltyRecord & { quitada: boolean })[] = [];
+  const disputes: DisputeRecord[] = [];
+  const favorites = new Set<string>();
+  const invites = new Set<string>();
+  const notifications: (NotificationInput & { lida: boolean })[] = [];
+  const payments = new Map<string, PaymentRecord & { createdAt: number }>();
+  const asaasTransfers = new Map<string, string>();
+  const asaasSubscriptions = new Map<string, { customer: string; value: number; payments: { id: string; status: string; dueDate: string }[]; cancelled: boolean }>();
+>>>>>>> upstream/main
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
   const images = new Set<string>();
   const customers = new Map<string, string>();
   const asaasCustomers = new Map<string, { cpfCnpj: string; externalReference: string }>();
   const webhookEvents = new Set<string>();
+<<<<<<< HEAD
   // Estado da "Asaas": cobranças, estornos e transferências.
   const asaasCharges = new Map<string, { status: string; value: number; customer?: string; externalReference?: string }>();
+=======
+  const asaasCharges = new Map<string, { status: string; value: number }>();
+>>>>>>> upstream/main
   const asaasCalls = {
     createCustomer: 0,
     createPixCharge: [] as { value: number; customer: string }[],
@@ -62,12 +81,22 @@ export function memoryWorld() {
   let databaseTime = NOW;
   const nextId = (prefix: string) => `${prefix}${sequence++}`;
 
+  const inbox: Inbox = {
+    add: async (notification) => void notifications.push({ ...notification, lida: false }),
+    markAllRead: async (userId) => {
+      for (const notification of notifications) if (notification.userId === userId) notification.lida = true;
+    },
+  };
+
   const accountStore = {
     findAccount: async (id: string) => accounts.get(id) ?? null,
     findEmail: async (id: string) => (accounts.has(id) ? `${id}@exemplo.com` : null),
+    reduceVisibility: async (id: string, until: Date) => {
+      const account = accounts.get(id);
+      if (account) account.visibilidadeReduzidaAte = until;
+    },
   } as unknown as AccountStore;
-  // Distâncias entre cidades (km), por "uf/cidade" normalizada; ausente = desconhecida.
-  const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430]]);
+  const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430], ["PR/londrina", 380]]);
   const sent: { to: string; subject: string; text: string }[] = [];
   const mailer: Mailer = { send: async (message) => void sent.push(message) };
 
@@ -79,6 +108,15 @@ export function memoryWorld() {
     },
     removeByUrl: async (_bucket, url) => void images.delete(url),
     removeAllOf: async () => {},
+  };
+
+  const reopenEvent = (event: EventRecord) => {
+    for (const [id, candidate] of candidates) {
+      if (candidate.eventId !== event.id) continue;
+      if (candidate.musicianId === event.musicoContratadoId) candidates.delete(id);
+      else if (candidate.status === "RECUSADO" && candidate.motivoRecusa === "OUTRO_CONTRATADO") Object.assign(candidate, { status: "PENDENTE", motivoRecusa: null });
+    }
+    Object.assign(event, { status: "ABERTO", musicoContratadoId: null, confirmacaoMusico: false, confirmacaoContratante: false });
   };
 
   const eventStore: EventStore = {
@@ -94,6 +132,8 @@ export function memoryWorld() {
         status: "ABERTO",
         confirmacaoMusico: false,
         confirmacaoContratante: false,
+        inscricoesEncerradas: false,
+        createdAt: hoursFromNow(-48),
       };
       events.set(event.id, event);
       enderecos.set(event.id, endereco);
@@ -111,7 +151,6 @@ export function memoryWorld() {
       const event = events.get(eventId)!;
       if (party === "musico") event.confirmacaoMusico = true;
       else event.confirmacaoContratante = true;
-      // Mesmo comportamento da trigger events_conclude_when_both_confirm.
       if (event.status === "CONTRATADO" && event.confirmacaoMusico && event.confirmacaoContratante) event.status = "CONCLUIDO";
       return event;
     },
@@ -122,36 +161,102 @@ export function memoryWorld() {
       return event;
     },
     cancelEvent: async (eventId) => void (events.get(eventId)!.status = "CANCELADO"),
-    // Mesmo comportamento da função reopen_event.
-    reopenEvent: async (eventId) => {
-      const event = events.get(eventId)!;
-      for (const [id, candidate] of candidates) {
-        if (candidate.eventId !== eventId) continue;
-        if (candidate.musicianId === event.musicoContratadoId) candidates.delete(id);
-        else candidate.status = "PENDENTE";
-      }
-      Object.assign(event, { status: "ABERTO", musicoContratadoId: null, confirmacaoMusico: false, confirmacaoContratante: false });
-    },
     distanceKm: async (eventId, musicianId) => {
       const event = events.get(eventId)!;
       const musician = accounts.get(musicianId)!;
       const same = event.uf === musician.uf && event.cidade.toLowerCase() === (musician.cidade ?? "").toLowerCase();
       return same ? 0 : (distances.get(`${event.uf}/${event.cidade.toLowerCase()}`) ?? null);
     },
-    hasOngoingHiring: async (userId) =>
-      [...events.values()].some((e) => e.status === "CONTRATADO" && (e.contractorId === userId || e.musicoContratadoId === userId)),
+    hasOngoingHiring: async (userId) => {
+      const involved = (e: EventRecord) => e.contractorId === userId || e.musicoContratadoId === userId;
+      if ([...events.values()].some((e) => e.status === "CONTRATADO" && involved(e))) return true;
+      return [...payments.values()].some((p) => {
+        const event = p.eventId ? events.get(p.eventId) : undefined;
+        const unsettled = (p.status === "PAGO" && p.repasseStatus !== null && p.repasseStatus !== "REPASSADO") || p.refundStatus === "PROCESSANDO";
+        return Boolean(event && involved(event) && unsettled);
+      });
+    },
+    listCandidates: async (eventId) => [...candidates.values()].filter((c) => c.eventId === eventId),
+    setApplicationsClosed: async (eventId, closed) => {
+      const event = events.get(eventId);
+      if (event?.status === "ABERTO") event.inscricoesEncerradas = closed;
+    },
+    declineCandidate: async (id, motivo) => {
+      const candidate = candidates.get(id);
+      if (candidate?.status !== "PENDENTE") return false;
+      candidate.status = "RECUSADO";
+      candidate.motivoRecusa = motivo;
+      return true;
+    },
+    listEventsOf: async (userId, role) =>
+      role === "CONTRACTOR"
+        ? [...events.values()].filter((e) => e.contractorId === userId)
+        : [...candidates.values()].filter((c) => c.musicianId === userId && c.status === "PENDENTE").map((c) => events.get(c.eventId)!),
+    openDispute: async (dispute) => {
+      if (disputes.some((d) => d.eventId === dispute.eventId && d.status === "ABERTA")) {
+        throw new AppError(409, "CONTESTACAO_EXISTENTE", "Já existe uma contestação aberta para este evento.");
+      }
+      const record: DisputeRecord = { ...dispute, id: nextId("disp"), status: "ABERTA", decisao: null, observacao: null, createdAt: new Date() };
+      disputes.push(record);
+      return record;
+    },
+    findOpenDispute: async (eventId) => disputes.find((d) => d.eventId === eventId && d.status === "ABERTA") ?? null,
+    findDispute: async (id) => disputes.find((d) => d.id === id) ?? null,
+    resolveDispute: async (id, decisao, observacao) => {
+      const dispute = disputes.find((d) => d.id === id);
+      if (dispute?.status !== "ABERTA") return false;
+      Object.assign(dispute, { status: "RESOLVIDA", decisao, observacao });
+      return true;
+    },
+    hasAppliedToContractor: async (musicianId, contractorId) =>
+      [...candidates.values()].some((c) => c.musicianId === musicianId && events.get(c.eventId)?.contractorId === contractorId),
+    setFavorite: async (contractorId, musicianId, favorite) => {
+      const key = `${contractorId}:${musicianId}`;
+      if (favorite) favorites.add(key);
+      else favorites.delete(key);
+    },
+    isFavorite: async (contractorId, musicianId) => favorites.has(`${contractorId}:${musicianId}`),
+    insertInvite: async (eventId, musicianId) => void invites.add(`${eventId}:${musicianId}`),
+    hasInvite: async (eventId, musicianId) => invites.has(`${eventId}:${musicianId}`),
+    musicianHasConflict: async (musicianId, eventId) => {
+      const alvo = events.get(eventId);
+      if (!alvo) return false;
+      const fim = (e: EventRecord) => e.inicio.getTime() + e.duracaoMinutos * 60_000;
+      return [...events.values()].some((e) => e.id !== eventId && e.status === "CONTRATADO" && e.musicoContratadoId === musicianId && e.inicio.getTime() < fim(alvo) && alvo.inicio.getTime() < fim(e));
+    },
     findCandidate: async (eventId, musicianId) =>
       [...candidates.values()].find((c) => c.eventId === eventId && c.musicianId === musicianId) ?? null,
     findCandidateById: async (id) => candidates.get(id) ?? null,
-    insertCandidate: async (eventId, musicianId) => {
+    insertCandidate: async (eventId, musicianId, valorProposto) => {
       if ([...candidates.values()].some((c) => c.eventId === eventId && c.musicianId === musicianId)) {
         throw new AppError(409, "JA_INSCRITO", "Você já se inscreveu neste evento.");
       }
-      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status: "PENDENTE" };
+      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status: "PENDENTE", valorProposto, motivoRecusa: null };
       candidates.set(candidate.id, candidate);
       return candidate;
     },
+    updateCandidateProposal: async (id, valorProposto) => {
+      const candidate = candidates.get(id);
+      if (candidate?.status === "PENDENTE") candidate.valorProposto = valorProposto;
+    },
     deleteCandidate: async (id) => void candidates.delete(id),
+    insertMessage: async ({ valor, ...message }) => {
+      const record: MessageRecord = valor === undefined
+        ? { ...message, tipo: "TEXTO", valor: null, statusProposta: null, id: nextId("msg"), createdAt: new Date() }
+        : { ...message, tipo: "PROPOSTA", valor, statusProposta: "ABERTA", id: nextId("msg"), createdAt: new Date() };
+      messages.push(record);
+      return record;
+    },
+    findMessage: async (id) => messages.find((m) => m.id === id) ?? null,
+    closeOpenProposals: async (candidateId) => {
+      for (const m of messages) if (m.candidateId === candidateId && m.statusProposta === "ABERTA") m.statusProposta = "SUBSTITUIDA";
+    },
+    answerProposal: async (id, status) => {
+      const message = messages.find((m) => m.id === id);
+      if (message?.statusProposta !== "ABERTA") return false;
+      message.statusProposta = status;
+      return true;
+    },
     insertReview: async (review) => {
       if (reviews.some((r) => r.eventId === review.eventId && r.authorId === review.authorId)) {
         throw new AppError(409, "JA_AVALIADO", "Você já avaliou este evento.");
@@ -162,12 +267,20 @@ export function memoryWorld() {
   };
 
   const paymentStore: PaymentStore = {
+    addPenalty: async (penalty) => void penalties.push({ ...penalty, id: nextId("pen"), quitada: false }),
+    openFines: async (musicianId) => penalties.filter((p) => p.musicianId === musicianId && !p.quitada && p.multa > 0),
+    settleFines: async (ids) => {
+      for (const penalty of penalties) if (ids.includes(penalty.id)) penalty.quitada = true;
+    },
+    setPayoutDiscount: async (paymentId, valor) => void (payments.get(paymentId)!.multaDescontada = valor),
     findPendingPayment: async (eventId) => [...payments.values()].find((p) => p.eventId === eventId && p.status === "PENDENTE") ?? null,
     findLatestPayment: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null,
     findPaymentByAsaasId: async (asaasPaymentId) => [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId) ?? null,
     findPaymentById: async (id) => payments.get(id) ?? null,
     findPaymentByTransferId: async (transferId) => [...payments.values()].find((p) => p.asaasTransferId === transferId) ?? null,
+    findLateRefundsToRetry: async (eventId) =>
+      [...payments.values()].filter((p) => p.eventId === eventId && p.refundAction === "NENHUMA" && p.status !== "ESTORNADO" && (p.refundStatus === null || p.refundStatus === "NEGADO")),
     insertPayment: async (data) => {
       if ([...payments.values()].some((p) => p.eventId === data.eventId && p.status === "PENDENTE")) {
         throw new AppError(409, "COBRANCA_EM_ANDAMENTO", "Já existe uma cobrança em andamento para este evento.");
@@ -179,20 +292,31 @@ export function memoryWorld() {
         status: "PENDENTE" as const,
         valorCache: Math.round((data.valor - data.valorComissao) * 100) / 100,
         repasseStatus: null,
+<<<<<<< HEAD
         refundStatus: null,
         refundAction: null,
         latePaymentDetectedAt: null,
+=======
+        asaasTransferId: null,
+        multaDescontada: 0,
+        refundStatus: null,
+        refundAction: null,
+        refundRequestedAt: null,
+>>>>>>> upstream/main
         createdAt: sequence,
       };
       payments.set(payment.id, payment);
       return payment;
     },
+<<<<<<< HEAD
     expirePayment: async (id) => {
       const payment = payments.get(id)!;
       if (payment.status !== "PENDENTE" || payment.expiraEm > databaseTime) return false;
       payment.status = "EXPIRADO";
       return true;
     },
+=======
+>>>>>>> upstream/main
     setPaymentStatus: async (id, status) => {
       const payment = payments.get(id)!;
       if ((status === "EXPIRADO" || status === "CANCELADO") && payment.status !== "PENDENTE") return;
@@ -203,12 +327,25 @@ export function memoryWorld() {
       if (!((payment.status === "PAGO" && (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")) || (action === "NENHUMA" && (payment.status === "PENDENTE" || payment.status === "EXPIRADO" || payment.status === "CANCELADO"))) || (payment.refundStatus !== null && payment.refundStatus !== "NEGADO")) return false;
       payment.refundStatus = "PROCESSANDO";
       payment.refundAction = action;
+<<<<<<< HEAD
+=======
+      payment.refundRequestedAt = new Date();
+>>>>>>> upstream/main
       return true;
     },
     setRefundStatus: async (id, status) => {
       const payment = payments.get(id)!;
       if (payment.refundStatus === "PROCESSANDO") payment.refundStatus = status;
     },
+<<<<<<< HEAD
+=======
+    releaseRefund: async (id, previous) => {
+      const payment = payments.get(id)!;
+      if (payment.refundStatus !== "PROCESSANDO") return;
+      payment.refundStatus = previous.refundStatus;
+      payment.refundAction = previous.refundAction;
+    },
+>>>>>>> upstream/main
     finalizeRefund: async (id) => {
       const payment = payments.get(id)!;
       if (payment.status === "ESTORNADO") return "JA_PROCESSADO";
@@ -216,7 +353,11 @@ export function memoryWorld() {
       const payoutConflict = payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO";
       const event = payment.eventId ? events.get(payment.eventId) : null;
       if (event?.status === "CONTRATADO" && payment.refundAction !== "NENHUMA") {
+<<<<<<< HEAD
         if (payment.refundAction === "REABRIR" && !payoutConflict) await eventStore.reopenEvent(event.id);
+=======
+        if (payment.refundAction === "REABRIR" && !payoutConflict) reopenEvent(event);
+>>>>>>> upstream/main
         else await eventStore.cancelEvent(event.id);
       }
       payment.status = "ESTORNADO";
@@ -224,11 +365,15 @@ export function memoryWorld() {
       if (!payoutConflict) payment.repasseStatus = null;
       return payoutConflict ? "REPASSE_CONFLITANTE" : "CONFIRMADO";
     },
+<<<<<<< HEAD
     // Mesmo comportamento da função confirm_asaas_payment.
+=======
+>>>>>>> upstream/main
     confirmPayment: async (asaasPaymentId) => {
       const payment = [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId);
       if (!payment) return "PAGAMENTO_NAO_ENCONTRADO";
       if (payment.status === "PAGO") return "JA_PROCESSADO";
+<<<<<<< HEAD
       if (payment.status === "EXPIRADO" || (payment.status === "PENDENTE" && payment.expiraEm <= databaseTime)) {
         payment.status = "EXPIRADO";
         payment.latePaymentDetectedAt ??= databaseTime;
@@ -236,18 +381,24 @@ export function memoryWorld() {
         return expiredEvent?.status === "ABERTO" ? "PAGAMENTO_EXPIRADO" : "EVENTO_INDISPONIVEL";
       }
       if (payment.status !== "PENDENTE") return "EVENTO_INDISPONIVEL";
+=======
+      if (payment.status !== "PENDENTE" || payment.refundStatus !== null) return "EVENTO_INDISPONIVEL";
+>>>>>>> upstream/main
       const event = payment.eventId ? events.get(payment.eventId) : undefined;
       const chosen = payment.candidateId ? candidates.get(payment.candidateId) : undefined;
-      if (!event || event.status !== "ABERTO" || !chosen) return "EVENTO_INDISPONIVEL";
+      if (!event || event.status !== "ABERTO" || !chosen || event.inicio.getTime() <= Date.now()) return "EVENTO_INDISPONIVEL";
+      if (await eventStore.musicianHasConflict(chosen.musicianId, event.id)) return "EVENTO_INDISPONIVEL";
       payment.status = "PAGO";
       payment.repasseStatus = "RETIDO";
       event.status = "CONTRATADO";
       event.musicoContratadoId = chosen.musicianId;
+      Object.assign(chosen, { status: "APROVADO", motivoRecusa: null });
       for (const candidate of candidates.values()) {
-        if (candidate.eventId === event.id) candidate.status = candidate.id === chosen.id ? "APROVADO" : "RECUSADO";
+        if (candidate.eventId === event.id && candidate.id !== chosen.id && candidate.status === "PENDENTE") Object.assign(candidate, { status: "RECUSADO", motivoRecusa: "OUTRO_CONTRATADO" });
       }
       return "CONTRATADO";
     },
+<<<<<<< HEAD
     markLatePaymentDetected: async (id) => {
       const payment = payments.get(id);
       if (payment && payment.status !== "PAGO") payment.latePaymentDetectedAt ??= databaseTime;
@@ -278,6 +429,11 @@ export function memoryWorld() {
         createdAt: NOW,
       };
       payoutIntents.set(id, intent);
+=======
+    claimPayout: async (id) => {
+      const payment = payments.get(id)!;
+      if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
+>>>>>>> upstream/main
       payment.repasseStatus = "PROCESSANDO";
       return intent;
     },
@@ -411,6 +567,7 @@ export function memoryWorld() {
       };
     },
     transferPix: async (transfer) => {
+<<<<<<< HEAD
       if (failures.transfer) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada antes do envio");
       const id = nextId("tra_");
       const remote: AsaasTransferRecord = {
@@ -430,6 +587,24 @@ export function memoryWorld() {
       });
       if (failures.transferAfterCreate) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "resposta perdida após aceite");
       return { id, status: remote.status };
+=======
+      if (failures.transfer) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada na transferência");
+      asaasCalls.transferPix.push({ value: transfer.value, pixAddressKey: transfer.pixAddressKey, pixAddressKeyType: transfer.pixAddressKeyType });
+      const id = nextId("tra_");
+      asaasTransfers.set(id, "PENDING");
+      return { id, status: "PENDING" };
+    },
+    getTransferStatus: async (transferId) => asaasTransfers.get(transferId) ?? null,
+    createSubscription: async (subscription) => {
+      const id = nextId("sub_");
+      asaasSubscriptions.set(id, { ...subscription, payments: [{ id: nextId("pay_"), status: "PENDING", dueDate: subscription.nextDueDate }], cancelled: false });
+      return id;
+    },
+    listSubscriptionPayments: async (subscriptionId) => asaasSubscriptions.get(subscriptionId)?.payments ?? [],
+    cancelSubscription: async (subscriptionId) => {
+      const subscription = asaasSubscriptions.get(subscriptionId);
+      if (subscription) subscription.cancelled = true;
+>>>>>>> upstream/main
     },
   };
 
@@ -439,6 +614,12 @@ export function memoryWorld() {
     events,
     enderecos,
     candidates,
+    messages,
+    penalties,
+    disputes,
+    favorites,
+    invites,
+    notifications,
     payments,
     payoutIntents,
     asaasTransfers,
@@ -446,12 +627,18 @@ export function memoryWorld() {
     images,
     webhookEvents,
     asaasCharges,
+    asaasTransfers,
+    asaasSubscriptions,
     asaasCalls,
     failures,
     sent,
+<<<<<<< HEAD
     setDatabaseTime: (time: Date) => { databaseTime = time; },
     stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer },
     /** Atalho: evento aberto de c1, compatível com os músicos m1 e m2. */
+=======
+    stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer, inbox },
+>>>>>>> upstream/main
     seedEvent(overrides: Partial<EventRecord> = {}): EventRecord {
       const event: EventRecord = {
         id: nextId("e"),
@@ -472,6 +659,8 @@ export function memoryWorld() {
         status: "ABERTO",
         confirmacaoMusico: false,
         confirmacaoContratante: false,
+        inscricoesEncerradas: false,
+        createdAt: hoursFromNow(-48),
         ...overrides,
       };
       events.set(event.id, event);
@@ -479,14 +668,13 @@ export function memoryWorld() {
       return event;
     },
     seedCandidate(eventId: string, musicianId: string, status: CandidateRecord["status"] = "PENDENTE"): CandidateRecord {
-      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status };
+      const candidate: CandidateRecord = { id: nextId("cand"), eventId, musicianId, status, valorProposto: null, motivoRecusa: status === "RECUSADO" ? "CONTRATANTE" : null };
       candidates.set(candidate.id, candidate);
       return candidate;
     },
   };
 }
 
-/** Marca na "Asaas" que a cobrança foi paga, como aconteceria após o Pix do contratante. */
 export function payAtAsaas(world: ReturnType<typeof memoryWorld>, asaasPaymentId: string): void {
   const charge = world.asaasCharges.get(asaasPaymentId)!;
   world.asaasCharges.set(asaasPaymentId, { ...charge, status: "RECEIVED" });

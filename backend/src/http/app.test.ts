@@ -20,6 +20,7 @@ function setup() {
     createEvent: vi.fn(async () => ({ id: "e1" })),
     apply: vi.fn(async () => {}),
     reportNoShow: vi.fn(async () => {}),
+    sendMessage: vi.fn(async () => ({})),
   };
   const payments = {
     startCheckout: vi.fn(async () => ({
@@ -46,14 +47,26 @@ function setup() {
     asaasWebhookToken: WEBHOOK_TOKEN,
     verifyToken: async (token) => (token === "token-valido" ? { id: "u1", email: "bar@exemplo.com" } : null),
     allowedOrigins: [ORIGIN],
-    allowedRedirects: ["muve://auth"],
+    allowedRedirects: ["muve://auth", "exp://*"],
   });
   return { app, accounts, events, payments };
 }
 
 const signupBody = (dados: object) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
 
-const contratante = { role: "CONTRACTOR", nome: "Bar do Zé", email: "  Contato@BarDoZe.com.br ", password: "segredo1" };
+const contratante = { role: "CONTRACTOR", nome: "Bar do Zé", email: "  Contato@BarDoZe.com.br ", password: "segredo1", aceiteTermos: true };
+
+describe("DELETE /api/events/:id/checkout", () => {
+  it("exige autenticação para cancelar uma cobrança pendente", async () => {
+    const { app, payments } = setup();
+    const anonymous = await app.request("/api/events/e1/checkout", { method: "DELETE" });
+    const authorized = await app.request("/api/events/e1/checkout", { method: "DELETE", headers: { Authorization: "Bearer token-valido" } });
+
+    expect([anonymous.status, authorized.status]).toEqual([401, 200]);
+    expect(await authorized.json()).toEqual({ situacao: "COBRANCA_CANCELADA" });
+    expect(payments.cancelPendingCheckout).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1");
+  });
+});
 
 describe("DELETE /api/events/:id/checkout", () => {
   it("exige autenticação para cancelar uma cobrança pendente", async () => {
@@ -82,6 +95,7 @@ describe("POST /api/auth/signup", () => {
     [{ password: "123" }, "A senha deve ter pelo menos 6 caracteres."],
     [{ nome: "" }, "Informe seu nome."],
     [{ role: "ADMIN" }, "Selecione o tipo de conta."],
+    [{ aceiteTermos: false }, "Aceite os Termos de Uso para criar a conta."],
   ])("rejeita %j", async (override, message) => {
     const { app, accounts } = setup();
 
@@ -97,9 +111,34 @@ describe("POST /api/auth/signup", () => {
 
     await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "muve://auth" }));
     await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "https://malicioso.example" }));
+    await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: `${ORIGIN}/auth` }));
+    await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "exp://192.168.0.10:8081/--/auth" }));
+    await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: `${ORIGIN}/outra-pagina` }));
 
     expect(accounts.signup).toHaveBeenNthCalledWith(1, expect.anything(), "muve://auth");
     expect(accounts.signup).toHaveBeenNthCalledWith(2, expect.anything(), undefined);
+    expect(accounts.signup).toHaveBeenNthCalledWith(3, expect.anything(), `${ORIGIN}/auth`);
+    expect(accounts.signup).toHaveBeenNthCalledWith(4, expect.anything(), "exp://192.168.0.10:8081/--/auth");
+    expect(accounts.signup).toHaveBeenNthCalledWith(5, expect.anything(), undefined);
+  });
+
+  it("não consome o limite com formulários inválidos", async () => {
+    const { app, accounts } = setup();
+    for (let i = 0; i < 11; i++) {
+      expect((await app.request("/api/auth/signup", signupBody({ ...contratante, role: "ADMIN" }))).status).toBe(400);
+    }
+    expect((await app.request("/api/auth/signup", signupBody(contratante))).status).toBe(201);
+    expect(accounts.signup).toHaveBeenCalledTimes(1);
+  });
+
+  it("propaga o 429 e o prazo informado pelo serviço de autenticação", async () => {
+    const { app, accounts } = setup();
+    accounts.signup.mockRejectedValueOnce(new AppError(429, "LIMITE_DE_ENVIO", "Limite temporário do provedor.", "60"));
+
+    const response = await app.request("/api/auth/signup", signupBody(contratante));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(await response.json()).toEqual({ error: { code: "LIMITE_DE_ENVIO", message: "Limite temporário do provedor." } });
   });
 
   it("não consome o limite com formulários inválidos", async () => {
@@ -198,10 +237,25 @@ describe("eventos e checkout", () => {
     const criar = await app.request("/api/events", { method: "POST", body: new FormData() });
     const inscrever = await app.request("/api/events/e1/candidatura", { method: "POST" });
     const checkout = await app.request("/api/events/e1/checkout", { method: "POST", body: "{}" });
+    const mensagem = await app.request("/api/candidaturas/c1/mensagens", { method: "POST", body: JSON.stringify({ texto: "oi" }) });
 
-    expect([criar.status, inscrever.status, checkout.status]).toEqual([401, 401, 401]);
+    expect([criar.status, inscrever.status, checkout.status, mensagem.status]).toEqual([401, 401, 401, 401]);
     expect(events.createEvent).not.toHaveBeenCalled();
     expect(payments.startCheckout).not.toHaveBeenCalled();
+  });
+
+  it("candidatura aceita proposta de valor e recusa valor abaixo do mínimo", async () => {
+    const { app, events } = setup();
+    const inscrever = (body: object) => app.request("/api/events/e1/candidatura", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+    const semProposta = await inscrever({});
+    const comProposta = await inscrever({ valorProposto: 800 });
+    const abaixo = await inscrever({ valorProposto: 50 });
+
+    expect([semProposta.status, comProposta.status, abaixo.status]).toEqual([204, 204, 400]);
+    expect(events.apply).toHaveBeenNthCalledWith(1, expect.anything(), "e1", null);
+    expect(events.apply).toHaveBeenNthCalledWith(2, expect.anything(), "e1", 800);
+    expect(await abaixo.json()).toEqual({ error: { code: "DADOS_INVALIDOS", message: "O cachê mínimo é de R$ 100,00." } });
   });
 
   it("POST /api/events rejeita cachê abaixo do mínimo antes de chegar ao serviço", async () => {

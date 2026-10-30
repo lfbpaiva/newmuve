@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { TERMOS_VERSAO } from "../../../shared/dominio.ts";
 import type { Account, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, createAccountService, type AccountStore, type AuthGateway, type ImageStore } from "./accountService.ts";
 
-// Implementações em memória das portas do serviço.
 function fakes() {
   const accounts = new Map<string, Account>();
-  const users = new Map<string, { email: string; password: string }>();
+  const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
-  const state = { failCreateProfile: false, ongoingHiring: false };
+  const state = { failCreateProfile: false, ongoingHiring: false, customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
   let nextId = 1;
 
   const store: AccountStore = {
@@ -19,6 +19,8 @@ function fakes() {
     },
     findAccount: async (userId) => accounts.get(userId) ?? null,
     findEmail: async (userId) => users.get(userId)?.email ?? null,
+    resetPaymentCustomer: async (userId) => void state.customerResets.push(userId),
+    reduceVisibility: async () => {},
     updateProfile: async (userId, _role: Role, changes) => {
       const current = accounts.get(userId)!;
       const next = { ...current };
@@ -28,13 +30,17 @@ function fakes() {
   };
 
   const auth: AuthGateway = {
-    signUp: async (email, password) => {
+    signUp: async (email, password, termosVersao) => {
       if ([...users.values()].some((u) => u.email === email)) return { emailTaken: true };
       const userId = `user-${nextId++}`;
-      users.set(userId, { email, password });
+      users.set(userId, { email, password, termosVersao });
       return { userId };
     },
     verifyPassword: async (email, password) => [...users.values()].some((u) => u.email === email && u.password === password),
+    recordTermsAcceptance: async (userId, termosVersao) => {
+      const existing = users.get(userId);
+      if (existing) existing.termosVersao = termosVersao;
+    },
     deleteUser: async (userId) => {
       users.delete(userId);
       accounts.delete(userId);
@@ -58,12 +64,12 @@ function fakes() {
     users,
     images,
     state,
-    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring }),
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} }, releaseAccount: async () => {}, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
   };
 }
 
 const png = (name = "foto.png") => new File(["x"], name, { type: "image/png" });
-const musico: SignupInput = { role: "MUSICIAN", nome: "Ana Souza", email: "ana@empresa.com.br", password: "segredo1" };
+const musico: SignupInput = { role: "MUSICIAN", nome: "Ana Souza", email: "ana@empresa.com.br", password: "segredo1", aceiteTermos: true };
 const user = { id: "user-1", email: "ana@empresa.com.br" };
 
 describe("cadastro mínimo", () => {
@@ -76,6 +82,12 @@ describe("cadastro mínimo", () => {
     await t.service.signup(musico);
 
     expect(t.accounts.get("user-1")).toMatchObject({ role: "MUSICIAN", nome: "Ana Souza", documento: null });
+  });
+
+  it("registra a versão dos Termos de Uso aceita no cadastro", async () => {
+    await t.service.signup(musico);
+
+    expect(t.users.get("user-1")).toMatchObject({ termosVersao: TERMOS_VERSAO });
   });
 
   it("recusa e-mail já vinculado a uma conta", async () => {
@@ -107,6 +119,23 @@ describe("perfil progressivo", () => {
     expect(t.accounts.get(user.id)?.fotoPerfilUrl).toContain("foto.png");
   });
 
+  it("apaga a bio e o link do trabalho quando o músico limpa os campos", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: "Voz e violão", portfolioUrl: "https://youtube.com/ana" }, null);
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: null, portfolioUrl: null }, null);
+
+    expect(t.accounts.get("user-1")).toMatchObject({ bio: null, portfolioUrl: null });
+  });
+
+  it("confere o CNPJ na Receita: recusa inexistente ou inativo e aceita quando a consulta está fora do ar", async () => {
+    t.state.cnpjs = { "11444777000161": "INEXISTENTE", "11222333000181": "INATIVA", "45997418000153": null };
+
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "11444777000161" }, null)).rejects.toMatchObject({ code: "CNPJ_INEXISTENTE" });
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "11222333000181" }, null)).rejects.toMatchObject({ code: "CNPJ_INATIVO" });
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "45997418000153" }, null);
+
+    expect(t.accounts.get("user-1")?.documento).toBe("45997418000153");
+  });
+
   it("recusa documento já usado por outra conta", async () => {
     await t.service.signup({ ...musico, email: "beto@exemplo.com" });
     await t.service.updateProfile({ id: "user-2", email: "beto@exemplo.com" }, "MUSICIAN", { nome: "Beto", documento: "52998224725" }, null);
@@ -131,7 +160,6 @@ describe("perfil progressivo", () => {
 
     const completo: Account = { ...account, uf: "PR", cidade: "Cascavel", estilosMusicais: ["Rock"], fotoPerfilUrl: "x", documento: "1", telefone: "1", chavePix: "k" };
     expect(() => assertProfileComplete(completo, "candidatar")).not.toThrow();
-    // Contratante não precisa de estilos nem de chave Pix.
     expect(() => assertProfileComplete({ ...completo, role: "CONTRACTOR", estilosMusicais: null, chavePix: null }, "criarEvento")).not.toThrow();
   });
 });
@@ -159,5 +187,19 @@ describe("exclusão de conta", () => {
 
     expect(t.accounts.size).toBe(0);
     await expect(t.service.signup(musico)).resolves.toBeUndefined();
+  });
+});
+
+describe("cadastro pelo Google", () => {
+  it("cria o perfil de quem entrou sem cadastro e registra o aceite dos Termos", async () => {
+    const t = fakes();
+    t.users.set("google-1", { email: "ana@gmail.com", password: "", termosVersao: "" });
+    const google = { id: "google-1", email: "ana@gmail.com" };
+
+    await t.service.completeProfile(google, { role: "CONTRACTOR", nome: "Ana Eventos", aceiteTermos: true });
+
+    expect(t.accounts.get("google-1")).toMatchObject({ role: "CONTRACTOR", nome: "Ana Eventos" });
+    expect(t.users.get("google-1")?.termosVersao).toBe(TERMOS_VERSAO);
+    await expect(t.service.completeProfile(google, { role: "MUSICIAN", nome: "Outro", aceiteTermos: true })).rejects.toMatchObject({ code: "PERFIL_EXISTENTE" });
   });
 });

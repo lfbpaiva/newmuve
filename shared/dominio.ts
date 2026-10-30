@@ -1,8 +1,3 @@
-// Regras de domínio compartilhadas entre o backend e o frontend.
-// Módulo puro: sem dependências de Node, do navegador ou de bibliotecas.
-
-// Gêneros que se contratam no Brasil. A lista vive aqui (não no banco) para
-// crescer sem migration; "Outros" cobre o que não está nela.
 export const ESTILOS_MUSICAIS = [
   "MPB", "Bossa nova", "Samba", "Pagode", "Sertanejo", "Forró", "Axé", "Funk", "Rap / Hip-hop", "Gospel",
   "Pop", "Rock", "Indie", "Metal", "Reggae", "Eletrônico / DJ", "Jazz", "Blues", "Soul / R&B", "Clássico / Erudito",
@@ -10,7 +5,6 @@ export const ESTILOS_MUSICAIS = [
 ] as const;
 export type EstiloMusical = (typeof ESTILOS_MUSICAIS)[number];
 
-/** Opção do contratante: o evento aparece para músicos de qualquer estilo. */
 export const QUALQUER_ESTILO = "Qualquer estilo";
 export const ESTILOS_EVENTO = [QUALQUER_ESTILO, ...ESTILOS_MUSICAIS] as const;
 
@@ -25,10 +19,17 @@ export const UFS = [
 export const FORMACOES = ["Indiferente", "Solo", "Dupla", "Trio", "Banda"] as const;
 export type Formacao = (typeof FORMACOES)[number];
 
-/** Raios disponíveis no feed do músico (km). 0 = apenas a mesma cidade. */
 export const RAIOS_FEED_KM = [0, 50, 100, 200] as const;
-/** Maior raio aceito em uma candidatura: o mesmo máximo oferecido no feed. */
+export const RAIOS_FEED_PRO_KM = [0, 50, 100, 200, 400] as const;
 export const RAIO_MAXIMO_KM = 200;
+export const PRO_RAIO_MAXIMO_KM = 400;
+export const PRO_PRECO = 19.9;
+export const PLANO_DIAS_POR_PAGAMENTO = 31;
+export const CASA_PRECO = 49.9;
+export const COMISSAO_CASA_PERCENTUAL = 6;
+export const CASA_SEMANAS_MAXIMAS = 8;
+export const PRO_ANTECIPACAO_HORAS = 24;
+export const PRO_ANTECEDENCIA_MINIMA_DIAS = 7;
 
 export const TIPOS_CHAVE_PIX = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"] as const;
 export type TipoChavePix = (typeof TIPOS_CHAVE_PIX)[number];
@@ -45,12 +46,27 @@ export const SENHA_TAMANHO_MINIMO = 6;
 export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
 export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
-/** Taxa de serviço da plataforma, somada ao cachê e paga pelo contratante. */
 export const COMISSAO_PERCENTUAL = 10;
-/** Antecedência mínima para cancelar: a inscrição (músico) ou a contratação com reembolso (contratante). */
+export const EMAIL_SUPORTE = "muveapp.contato@gmail.com";
+export const MULTA_AUSENCIA_PERCENTUAL = 20;
+export const VISIBILIDADE_REDUZIDA_DIAS = 15;
+
+const FUSOS_FORA_DE_BRASILIA: Record<string, { fuso: string; offset: string }> = {
+  AC: { fuso: "America/Rio_Branco", offset: "-05:00" },
+  AM: { fuso: "America/Manaus", offset: "-04:00" },
+  MS: { fuso: "America/Campo_Grande", offset: "-04:00" },
+  MT: { fuso: "America/Cuiaba", offset: "-04:00" },
+  RO: { fuso: "America/Porto_Velho", offset: "-04:00" },
+  RR: { fuso: "America/Boa_Vista", offset: "-04:00" },
+};
+
+export const fusoDaUf = (uf: string) => FUSOS_FORA_DE_BRASILIA[uf]?.fuso ?? "America/Sao_Paulo";
+
+export const horarioLocalDoEvento = (data: string, horario: string, uf: string) =>
+  new Date(`${data}T${horario}:00${FUSOS_FORA_DE_BRASILIA[uf]?.offset ?? "-03:00"}`);
+export const TERMOS_VERSAO = "2026-10-29";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
-/** Com apenas uma confirmação, o show é dado como concluído após este prazo. */
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const onlyDigits = (value: string) => value.replace(/\D/g, "");
@@ -88,7 +104,6 @@ export function isValidCNPJ(value: string): boolean {
   );
 }
 
-/** Músicos e contratantes podem se cadastrar com CPF ou CNPJ. */
 export const isValidDocumento = (value: string) => isValidCPF(value) || isValidCNPJ(value);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -110,7 +125,6 @@ export function isValidChavePix(tipo: string, chave: string): boolean {
   }
 }
 
-/** Formato em que a chave é guardada e enviada à Asaas (documentos e telefone só com dígitos). */
 export function normalizeChavePix(tipo: string, chave: string): string {
   if (tipo === "CPF" || tipo === "CNPJ" || tipo === "PHONE") return onlyDigits(chave);
   return chave.trim().toLowerCase();
@@ -124,7 +138,6 @@ export function imageProblem(file: { type: string; size: number }): string | nul
   return null;
 }
 
-/** Compara cidades ignorando caixa, acentuação e espaços nas pontas. */
 export const normalizeCidade = (value: string) =>
   value
     .normalize("NFD")
@@ -132,38 +145,41 @@ export const normalizeCidade = (value: string) =>
     .trim()
     .toLowerCase();
 
-/**
- * O músico só vê e se candidata a eventos de um dos seus estilos, na sua cidade
- * ou dentro do raio máximo (distância em km entre as sedes dos municípios).
- */
+export const isPro = (proAte: Date | string | null | undefined, now = new Date()) => Boolean(proAte && new Date(proAte).getTime() > now.getTime());
+
+export function emAcessoAntecipado(evento: { inicio: Date | string; criadoEm: Date | string }, now = new Date()): boolean {
+  const criado = new Date(evento.criadoEm).getTime();
+  const inicio = new Date(evento.inicio).getTime();
+  return now.getTime() - criado < PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000 && inicio - criado > PRO_ANTECEDENCIA_MINIMA_DIAS * 24 * 60 * 60 * 1000;
+}
+
+export const liberadoParaTodosEm = (criadoEm: Date | string) => new Date(new Date(criadoEm).getTime() + PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000);
+
 export function eventMatchesMusician(
   event: { uf: string; cidade: string; estilosMusicais: readonly string[] },
   musician: { uf: string; cidade: string; estilosMusicais: readonly string[] },
   distanciaKm: number | null = null,
+  raioMaximoKm: number = RAIO_MAXIMO_KM,
 ): boolean {
   if (!estilosCompativeis(event.estilosMusicais, musician.estilosMusicais)) return false;
   const mesmaCidade = event.uf === musician.uf && normalizeCidade(event.cidade) === normalizeCidade(musician.cidade);
-  return mesmaCidade || (distanciaKm !== null && distanciaKm <= RAIO_MAXIMO_KM);
+  return mesmaCidade || (distanciaKm !== null && distanciaKm <= raioMaximoKm);
 }
 
-/** O evento aceita qualquer estilo, ou há ao menos um estilo em comum. */
 export const estilosCompativeis = (doEvento: readonly string[], doMusico: readonly string[]) =>
   doEvento.includes(QUALQUER_ESTILO) || doEvento.some((estilo) => doMusico.includes(estilo));
 
-/** Verdadeiro enquanto faltam mais de 24 horas para o início do evento. */
 export const hasCancellationNotice = (inicio: Date, now: Date) =>
   inicio.getTime() - now.getTime() > CANCELAMENTO_ANTECEDENCIA_MINIMA_MS;
 
-/** Valores da contratação: o contratante paga cachê + comissão; o músico recebe o cachê. */
-export function calcularCobranca(cache: number): { cache: number; comissao: number; total: number } {
+export const comissaoPercentual = (casaAte: Date | string | null | undefined, now = new Date()) =>
+  isPro(casaAte, now) ? COMISSAO_CASA_PERCENTUAL : COMISSAO_PERCENTUAL;
+
+export function calcularCobranca(cache: number, percentual: number = COMISSAO_PERCENTUAL): { cache: number; comissao: number; total: number } {
   const centavos = Math.round(cache * 100);
-  const comissao = Math.round((centavos * COMISSAO_PERCENTUAL) / 100);
+  const comissao = Math.round((centavos * percentual) / 100);
   return { cache: centavos / 100, comissao: comissao / 100, total: (centavos + comissao) / 100 };
 }
-
-// ---------------------------------------------------------------------------
-// Cadastro progressivo: cada dado do perfil é exigido só quando faz falta.
-// ---------------------------------------------------------------------------
 
 export type AcaoPerfil = "feed" | "candidatar" | "criarEvento" | "pagar";
 export type CampoPerfil = "foto" | "documento" | "telefone" | "cidade" | "estilos" | "chavePix";
@@ -188,7 +204,6 @@ export interface PerfilParaChecagem {
   chavePix?: string | null;
 }
 
-/** Campos ainda vazios que a ação exige, na ordem em que devem ser pedidos. */
 export function camposFaltantes(perfil: PerfilParaChecagem, acao: AcaoPerfil): CampoPerfil[] {
   const exigidos: CampoPerfil[] =
     acao === "feed" ? ["cidade", "estilos"]
