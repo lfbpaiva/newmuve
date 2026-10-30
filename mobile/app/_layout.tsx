@@ -61,12 +61,29 @@ function AuthGate() {
 
   if (state.status === "error") return <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, backgroundColor: colors.bg }}>
     <Text style={{ color: colors.ink, textAlign: "center", marginBottom: 20 }}>{state.notice}</Text>
+<<<<<<< HEAD
+    <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={{ padding: 14, backgroundColor: colors.accent, borderRadius: 8 }}>
+      <Text style={{ color: colors.bg, fontWeight: "700" }}>Tentar novamente</Text>
+    </Pressable>
+  </View>;
+
+  return <Stack screenOptions={{
+    headerStyle: { backgroundColor: colors.bg },
+    headerShadowVisible: false,
+    headerTintColor: colors.ink,
+    headerTitleStyle: { fontFamily: "Archivo_800ExtraBold", fontSize: 15 },
+    headerBackButtonDisplayMode: "minimal",
+    contentStyle: { backgroundColor: colors.bg },
+    animation: "slide_from_right",
+  }}>
+=======
     <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 20, backgroundColor: pressed ? colors.accentPressed : colors.accent, borderRadius: 4 })}>
       <Text style={{ color: colors.onAccent, fontWeight: "700" }}>Tentar novamente</Text>
     </Pressable>
   </View>;
 
   return <Stack screenOptions={{ ...stackOptions, animation: "slide_from_right" }}>
+>>>>>>> upstream/main
     <Stack.Protected guard={!signedIn}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
     </Stack.Protected>

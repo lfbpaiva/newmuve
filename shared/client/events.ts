@@ -119,7 +119,11 @@ export interface Hiring {
   };
   contratante: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
   musico: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
+<<<<<<< HEAD
+  pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null } | null;
+=======
   pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null; multaDescontada: number } | null;
+>>>>>>> upstream/main
   avaliou: boolean;
   contestacao: { motivo: string; abertaPorMim: boolean } | null;
   podeContestar: boolean;
@@ -203,7 +207,11 @@ const toEvent = (row: EventRow): EventItem => ({
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
+<<<<<<< HEAD
+const CANDIDATE_SELECT = `id, status, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, ${PUBLIC_PROFILE})`;
+=======
 const CANDIDATE_SELECT = `id, status, valor_proposto, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, pro_ate, ${PUBLIC_PROFILE})`;
+>>>>>>> upstream/main
 
 const toPublicProfile = (row: ProfileRow, nameColumn: "nome_completo" | "nome_fantasia"): PublicProfile => ({
   id: row.user_id,
@@ -215,20 +223,35 @@ const toPublicProfile = (row: ProfileRow, nameColumn: "nome_completo" | "nome_fa
   totalAvaliacoes: row.total_avaliacoes,
 });
 
+<<<<<<< HEAD
+const toCandidate = (row: Row): Candidate => ({
+  id: row.id,
+  status: row.status,
+=======
 const toValor = (value: number | string | null) => (value === null ? null : Number(value));
 
 const toCandidate = (row: CandidateRow): Candidate => ({
   id: row.id,
   status: row.status,
   valorProposto: toValor(row.valor_proposto),
+>>>>>>> upstream/main
   musician: {
     ...toPublicProfile(row.musician, "nome_completo"),
     bio: row.musician.bio,
     estilosMusicais: row.musician.estilos_musicais ?? [],
     portfolioUrl: row.musician.portfolio_url,
+<<<<<<< HEAD
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Leituras
+// ---------------------------------------------------------------------------
+=======
     pro: Boolean(row.musician.pro_ate && new Date(row.musician.pro_ate) > new Date()),
   },
 });
+>>>>>>> upstream/main
 
 export async function fetchFeed(raioKm: number): Promise<EventItem[]> {
   const matches = unwrap<{ event_id: string; distancia_km: number | null }[]>(await supabase().rpc("musician_feed", { p_raio_km: raioKm }));
@@ -296,16 +319,27 @@ export async function fetchCandidates(eventId: string): Promise<Candidate[]> {
     .select(CANDIDATE_SELECT)
     .eq("event_id", eventId)
     .order("created_at");
+<<<<<<< HEAD
+  return unwrap<Row[]>(result).map(toCandidate);
+}
+
+/** Perfil público de uma candidatura específica; a RLS exige o dono do evento ou o próprio músico. */
+=======
   return unwrap<CandidateRow[]>(result).map(toCandidate).sort((a, b) => Number(b.musician.pro) - Number(a.musician.pro));
 }
 
+>>>>>>> upstream/main
 export async function fetchCandidateProfile(eventId: string, candidateId: string): Promise<Candidate | null> {
   const { data, error } = await supabase()
     .from("event_candidates")
     .select(CANDIDATE_SELECT)
     .eq("event_id", eventId)
     .eq("id", candidateId)
+<<<<<<< HEAD
+    .maybeSingle();
+=======
     .maybeSingle<CandidateRow>();
+>>>>>>> upstream/main
   if (error) unwrap({ data: null, error });
   return data?.musician ? toCandidate(data) : null;
 }
@@ -348,10 +382,15 @@ export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candi
 
 export const fetchHiring = (id: string) => apiRequest<Hiring>(`/events/${id}/contratacao`);
 export type CancellationResult = { situacao: "COBRANCA_CANCELADA" | "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" };
+<<<<<<< HEAD
+export const reportNoShow = (id: string) => apiRequest<CancellationResult>(`/events/${id}/nao-comparecimento`, { method: "POST" });
+export const cancelHiring = (id: string) => apiRequest<CancellationResult>(`/events/${id}/contratacao`, { method: "DELETE" });
+=======
 export const openDispute = (id: string, motivo: string) => apiRequest(`/events/${id}/contestacao`, { method: "POST", body: { motivo } });
 export const reportNoShow = (id: string) => apiRequest<CancellationResult>(`/events/${id}/nao-comparecimento`, { method: "POST" });
 export const cancelHiring = (id: string, esperado?: "COM_ESTORNO" | "SEM_ESTORNO") =>
   apiRequest<CancellationResult>(`/events/${id}/contratacao${esperado ? `?esperado=${esperado}` : ""}`, { method: "DELETE" });
+>>>>>>> upstream/main
 export const cancelPendingCheckout = (id: string) => apiRequest<CancellationResult>(`/events/${id}/checkout`, { method: "DELETE" });
 
 export const confirmCompletion = (id: string) =>

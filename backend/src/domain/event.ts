@@ -179,11 +179,18 @@ export interface PaymentRecord {
   valorCache: number;
   status: PaymentStatus;
   repasseStatus: PayoutStatus | null;
+<<<<<<< HEAD
+  refundStatus: RefundStatus | null;
+  refundAction: RefundAction | null;
+  /** Pix confirmado na Asaas após o prazo; requer decisão de conciliação. */
+  latePaymentDetectedAt: Date | null;
+=======
   asaasTransferId: string | null;
   multaDescontada: number;
   refundStatus: RefundStatus | null;
   refundAction: RefundAction | null;
   refundRequestedAt: Date | null;
+>>>>>>> upstream/main
   pixCopiaCola: string | null;
   pixQrCode: string | null;
   expiraEm: Date;

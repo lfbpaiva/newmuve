@@ -68,6 +68,18 @@ describe("DELETE /api/events/:id/checkout", () => {
   });
 });
 
+describe("DELETE /api/events/:id/checkout", () => {
+  it("exige autenticação para cancelar uma cobrança pendente", async () => {
+    const { app, payments } = setup();
+    const anonymous = await app.request("/api/events/e1/checkout", { method: "DELETE" });
+    const authorized = await app.request("/api/events/e1/checkout", { method: "DELETE", headers: { Authorization: "Bearer token-valido" } });
+
+    expect([anonymous.status, authorized.status]).toEqual([401, 200]);
+    expect(await authorized.json()).toEqual({ situacao: "COBRANCA_CANCELADA" });
+    expect(payments.cancelPendingCheckout).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1");
+  });
+});
+
 describe("POST /api/auth/signup", () => {
   it("normaliza os dados e repassa ao serviço", async () => {
     const { app, accounts } = setup();
@@ -128,6 +140,25 @@ describe("POST /api/auth/signup", () => {
     expect(response.headers.get("Retry-After")).toBe("60");
     expect(await response.json()).toEqual({ error: { code: "LIMITE_DE_ENVIO", message: "Limite temporário do provedor." } });
   });
+
+  it("não consome o limite com formulários inválidos", async () => {
+    const { app, accounts } = setup();
+    for (let i = 0; i < 11; i++) {
+      expect((await app.request("/api/auth/signup", signupBody({ ...contratante, role: "ADMIN" }))).status).toBe(400);
+    }
+    expect((await app.request("/api/auth/signup", signupBody(contratante))).status).toBe(201);
+    expect(accounts.signup).toHaveBeenCalledTimes(1);
+  });
+
+  it("propaga o 429 e o prazo informado pelo serviço de autenticação", async () => {
+    const { app, accounts } = setup();
+    accounts.signup.mockRejectedValueOnce(new AppError(429, "LIMITE_DE_ENVIO", "Limite temporário do provedor.", "60"));
+
+    const response = await app.request("/api/auth/signup", signupBody(contratante));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(await response.json()).toEqual({ error: { code: "LIMITE_DE_ENVIO", message: "Limite temporário do provedor." } });
+  });
 });
 
 describe("rotas autenticadas", () => {
@@ -166,6 +197,14 @@ describe("rotas autenticadas", () => {
 });
 
 describe("erros e CORS", () => {
+  it("responde ao health check sem consultar serviços nem expor configuração", async () => {
+    const { app, accounts, payments } = setup();
+    const response = await app.request("/api/health");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok" });
+    expect(accounts.getMe).not.toHaveBeenCalled();
+    expect(payments.startCheckout).not.toHaveBeenCalled();
+  });
   it("não expõe detalhes de erros inesperados", async () => {
     const { app, accounts } = setup();
     accounts.getMe.mockRejectedValueOnce(new Error("connection refused at 10.0.0.5:5432"));
@@ -312,3 +351,4 @@ describe("POST /api/events/:id/nao-comparecimento", () => {
     expect(events.reportNoShow).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1");
   });
 });
+

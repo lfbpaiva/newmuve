@@ -1,8 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
+<<<<<<< HEAD
+import type { CandidateRecord, EventInput, EventRecord, PaymentRecord } from "../domain/event.ts";
+import type { ConfirmPaymentResult, EventStore, PaymentStore, PayoutIntentRecord, PayoutIntentState } from "../services/ports.ts";
+=======
 import type { CandidateRecord, CandidateStatus, DisputeRecord, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
 import type { Inbox } from "../services/notifications.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
+>>>>>>> upstream/main
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -144,16 +149,35 @@ const toPayment = (row: PaymentRow): PaymentRecord => ({
   valorCache: Number(row.valor_cache),
   status: row.status,
   repasseStatus: row.repasse_status,
+<<<<<<< HEAD
+  refundStatus: row.refund_status ?? null,
+  refundAction: row.refund_action ?? null,
+  latePaymentDetectedAt: row.late_payment_detected_at ? new Date(row.late_payment_detected_at) : null,
+=======
   asaasTransferId: row.repasse_asaas_id ?? null,
   multaDescontada: Number(row.multa_descontada ?? 0),
   refundStatus: row.refund_status ?? null,
   refundAction: row.refund_action ?? null,
   refundRequestedAt: row.refund_requested_at ? new Date(row.refund_requested_at) : null,
+>>>>>>> upstream/main
   pixCopiaCola: row.pix_copia_cola,
   pixQrCode: row.pix_qr_code,
   expiraEm: new Date(row.expira_em),
 });
 
+const toPayoutIntent = (row: Row): PayoutIntentRecord => ({
+  id: row.id,
+  paymentId: row.payment_id,
+  eventId: row.event_id,
+  musicianId: row.musician_id,
+  amount: Number(row.amount),
+  pixKey: row.pix_key,
+  pixKeyType: row.pix_key_type,
+  state: row.state,
+  asaasTransferId: row.asaas_transfer_id,
+  createdAt: new Date(row.created_at),
+  reconciliationRequired: row.reconciliation_required ?? false,
+});
 const eventColumns = (data: EventInput & { imagemUrl?: string }) => ({
   titulo: data.titulo,
   tipo_evento: data.tipoEvento,
@@ -419,6 +443,11 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     return data && toPayment(data);
   }
 
+  async function findIntent(column: string, value: string): Promise<PayoutIntentRecord | null> {
+    const { data, error } = await admin.from("payout_intents").select("*").eq(column, value).maybeSingle();
+    if (error) throw error;
+    return data ? toPayoutIntent(data) : null;
+  }
   return {
     async addPenalty(penalty) {
       const { error } = await admin.from("penalties").insert({ musician_id: penalty.musicianId, event_id: penalty.eventId, tipo: penalty.tipo, multa: penalty.multa });
@@ -461,6 +490,7 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     },
 
     findPaymentByAsaasId: (asaasPaymentId) => findOne("asaas_payment_id", asaasPaymentId),
+    findPaymentById: (id) => findOne("id", id),
     findPaymentByTransferId: (asaasTransferId) => findOne("repasse_asaas_id", asaasTransferId),
 
     async findLateRefundsToRetry(eventId) {
@@ -487,7 +517,7 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
           valor_comissao: payment.valorComissao,
           pix_copia_cola: payment.pixCopiaCola,
           pix_qr_code: payment.pixQrCode,
-          expira_em: payment.expiraEm.toISOString(),
+          // O banco define expira_em a partir do horário da inserção.
         })
         .select()
         .single();
@@ -498,13 +528,45 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       return toPayment(data);
     },
 
+    async expirePayment(id) {
+      const { data, error } = await admin.rpc("expire_asaas_payment", { p_payment_id: id });
+      if (error) throw error;
+      return data === true;
+    },
+
     async setPaymentStatus(id, status) {
       let query = admin.from("payments").update({ status }).eq("id", id);
+<<<<<<< HEAD
+      // Um webhook de vencimento/exclusão pode chegar junto da confirmação paga.
+      // A transição para PAGO nunca deve ser sobrescrita por uma leitura antiga.
+=======
+>>>>>>> upstream/main
       if (status === "EXPIRADO" || status === "CANCELADO") query = query.eq("status", "PENDENTE");
       const { error } = await query;
       if (error) throw error;
     },
 
+<<<<<<< HEAD
+      async claimRefund(id, action) {
+        const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action });
+        if (error) throw error;
+        return data === true;
+      },
+
+      async setRefundStatus(id, status) {
+        const { error } = await admin.from("payments")
+          .update({ refund_status: status })
+          .eq("id", id)
+          .eq("refund_status", "PROCESSANDO");
+        if (error) throw error;
+      },
+
+      async finalizeRefund(id) {
+        const { data, error } = await admin.rpc("finalize_asaas_refund", { p_payment_id: id });
+        if (error) throw error;
+        return data as "CONFIRMADO" | "JA_PROCESSADO" | "REPASSE_CONFLITANTE";
+      },
+=======
     async claimRefund(id, action) {
       const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action });
       if (error) throw error;
@@ -530,6 +592,7 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       if (error) throw error;
       return data as "CONFIRMADO" | "JA_PROCESSADO" | "REPASSE_CONFLITANTE";
     },
+>>>>>>> upstream/main
 
     async confirmPayment(asaasPaymentId) {
       const { data, error } = await admin.rpc("confirm_asaas_payment", { p_asaas_payment_id: asaasPaymentId });
@@ -537,6 +600,66 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       return data as ConfirmPaymentResult;
     },
 
+<<<<<<< HEAD
+    async markLatePaymentDetected(id) {
+      const { error } = await admin.rpc("mark_late_payment_detected", { p_payment_id: id });
+      if (error) throw error;
+    },
+    findPayoutIntentByPaymentId: (paymentId) => findIntent("payment_id", paymentId),
+    findPayoutIntentById: (id) => findIntent("id", id),
+    findPayoutIntentByTransferId: (transferId) => findIntent("asaas_transfer_id", transferId),
+
+    async reservePayoutIntent(payout) {
+      const { data, error } = await admin.rpc("reserve_payout_intent", {
+        p_payment_id: payout.paymentId,
+        p_event_id: payout.eventId,
+        p_musician_id: payout.musicianId,
+        p_amount: payout.amount,
+        p_pix_key: payout.pixKey,
+        p_pix_key_type: payout.pixKeyType,
+      });
+      if (error) throw error;
+      return data ? findIntent("id", String(data)) : null;
+    },
+
+    async markPayoutSent(id) {
+      const { data, error } = await admin.rpc("mark_payout_sent", { p_intent_id: id });
+      if (error) throw error;
+      return data === true;
+    },
+
+    async markPayoutUnknown(id) {
+      const { error } = await admin.rpc("mark_payout_unknown", { p_intent_id: id });
+      if (error) throw error;
+    },
+
+    async linkPayoutTransfer(id, transferId) {
+      const { data, error } = await admin.rpc("link_payout_transfer", { p_intent_id: id, p_transfer_id: transferId });
+      if (error) throw error;
+      return data === true;
+    },
+
+    async applyPayoutTransfer(id, transfer) {
+      const { data, error } = await admin.rpc("apply_payout_transfer", {
+        p_intent_id: id,
+        p_transfer_id: transfer.id,
+        p_external_reference: transfer.externalReference,
+        p_status: transfer.status,
+        p_value: transfer.value,
+        p_operation_type: transfer.operationType,
+        p_pix_key: transfer.pixAddressKey,
+      });
+      if (error) throw error;
+      return data as PayoutIntentState | "DESCONHECIDO";
+    },
+    async markPayoutPreflightFailure(id) {
+      const { error } = await admin.from("payments")
+        .update({ repasse_status: "FALHOU" })
+        .eq("id", id)
+        .eq("status", "PAGO")
+        .is("refund_status", null)
+        .in("repasse_status", ["RETIDO", "FALHOU"]);
+=======
     async claimPayout(id) {
       const { data, error } = await admin
         .from("payments")
@@ -559,9 +682,9 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
           ...(payout.status === "REPASSADO" ? { repassado_em: new Date().toISOString() } : {}),
         })
         .eq("id", id);
+>>>>>>> upstream/main
       if (error) throw error;
     },
-
     async getAsaasCustomerId(contractorId) {
       const { data, error } = await admin.from("contractor_profiles").select("asaas_customer_id").eq("user_id", contractorId).maybeSingle();
       if (error) throw error;
@@ -582,7 +705,7 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     async recordWebhookEvent(event) {
       const { error } = await admin
         .from("asaas_webhook_events")
-        .upsert({ id: event.id, tipo: event.tipo, asaas_payment_id: event.asaasPaymentId ?? null, payload: event.payload });
+        .upsert({ id: event.id, tipo: event.tipo, asaas_payment_id: event.asaasPaymentId ?? null, asaas_transfer_id: event.asaasTransferId ?? null, payload: event.payload }, { onConflict: "id", ignoreDuplicates: true });
       if (error) throw error;
     },
   };

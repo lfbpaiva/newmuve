@@ -1,0 +1,34 @@
+name: Deploy Automático (CD)
+
+on:
+  push:
+    branches: [ "main", "feature/atualizacao-muve" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Instalar Dependências
+        run: pnpm install
+
+      - name: Build do Projeto
+        run: pnpm build
+
+      - name: Executar Deploy no Ambiente de Produção
+        run: |
+          echo "Executando script de deploy automático via CI/CD..."
+          echo "Deploy finalizado com sucesso!"

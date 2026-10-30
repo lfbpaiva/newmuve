@@ -7,8 +7,12 @@ type AuthState =
   | { status: "loading" }
   | { status: "signedOut"; notice?: string }
   | { status: "error"; notice: string }
+<<<<<<< HEAD
+  | { status: "signedIn"; me: Me };
+=======
   | { status: "signedIn"; me: Me }
   | { status: "needsProfile"; email: string; nomeSugerido: string };
+>>>>>>> upstream/main
 
 interface AuthContextValue {
   state: AuthState;
@@ -106,8 +110,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const finishPasswordRecovery = useCallback(() => setRecoveringPassword(false), []);
 
   const value = useMemo(
+<<<<<<< HEAD
+    () => ({ state, recoveringPassword, finishPasswordRecovery, refreshMe, retrySession, signOut }),
+    [state, recoveringPassword, finishPasswordRecovery, refreshMe, retrySession, signOut],
+=======
     () => ({ state, recoveringPassword, beginPasswordRecovery, finishPasswordRecovery, refreshMe, retrySession, signOut }),
     [state, recoveringPassword, beginPasswordRecovery, finishPasswordRecovery, refreshMe, retrySession, signOut],
+>>>>>>> upstream/main
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

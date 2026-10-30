@@ -3,7 +3,11 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { ZodError } from "zod";
+<<<<<<< HEAD
+import { deleteAccountSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
+=======
 import { completarPerfilSchema, deleteAccountSchema, dispositivoSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
+>>>>>>> upstream/main
 import { AppError } from "../domain/errors.ts";
 import { asaasWebhookSchema, cancelamentoSchema, conviteSchema, candidaturaSchema, contestacaoSchema, inscricoesSchema, propostaSchema, resolucaoSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
 import type { AccountService, AuthUser } from "../services/accountService.ts";
@@ -112,6 +116,10 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     await next();
   }, sensitive, async (c) => {
     const input = c.get("signupInput");
+<<<<<<< HEAD
+    // Destino do link: o informado pelo cliente (site ou app), se autorizado; senão a origem da requisição.
+=======
+>>>>>>> upstream/main
     const origin = c.req.header("Origin");
     const redirectTo = redirectAllowed(input.redirectTo) ? input.redirectTo : redirectAllowed(origin) ? origin : undefined;
     await accounts.signup(input, redirectTo);
@@ -274,6 +282,10 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.json({ situacao: "COBRANCA_CANCELADA" });
   });
 
+<<<<<<< HEAD
+  // Comprovante da contratação: endereço, contatos, valores e situação do repasse.
+=======
+>>>>>>> upstream/main
   app.get("/events/:id/contratacao", async (c) => c.json(await events.getHiring(c.get("user"), c.req.param("id"))));
 
   app.delete("/events/:id/contratacao", async (c) => {
@@ -281,6 +293,11 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.json(await events.cancelHiring(c.get("user"), c.req.param("id"), esperado));
   });
 
+<<<<<<< HEAD
+  // Garantia do contratante: músico não compareceu → estorno integral.
+  app.post("/events/:id/nao-comparecimento", async (c) => {
+    return c.json(await events.reportNoShow(c.get("user"), c.req.param("id")));
+=======
   app.post("/events/:id/convites", async (c) => {
     const { musicianId } = conviteSchema.parse(await readJson(c));
     await events.inviteMusician(c.get("user"), c.req.param("id"), musicianId);
@@ -298,6 +315,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     const { decisao, observacao } = resolucaoSchema.parse(await readJson(c));
     await events.resolveDispute(c.req.param("id"), decisao, observacao || null);
     return c.body(null, 204);
+>>>>>>> upstream/main
   });
 
   app.post("/events/:id/nao-comparecimento", async (c) => {

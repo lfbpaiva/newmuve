@@ -18,6 +18,10 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: FormData | object;
   accessToken?: string;
+<<<<<<< HEAD
+  /** Tempo máximo para concluir a resposta da API. */
+=======
+>>>>>>> upstream/main
   timeoutMs?: number;
 }
 

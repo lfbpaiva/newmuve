@@ -39,6 +39,7 @@ export default function LoginScreen() {
       else await forgetEmail();
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
       setSubmitting(false);
     }
   }

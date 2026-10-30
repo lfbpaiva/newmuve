@@ -9,6 +9,50 @@ afterEach(() => {
 });
 
 describe("Asaas Sandbox gateway", () => {
+<<<<<<< HEAD
+  it("reconhece cliente salvo inexistente e busca outro pelo documento e referência", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname === "/v3/customers/cus_antigo") return Response.json({}, { status: 404 });
+      expect(url.searchParams.get("externalReference")).toBe("u1");
+      expect(url.searchParams.get("cpfCnpj")).toBe("24971563792");
+      return Response.json({ data: [{ id: "cus_atual", cpfCnpj: "24971563792", externalReference: "u1" }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(gateway().getCustomer("cus_antigo")).resolves.toBeNull();
+    await expect(gateway().findCustomerByReference("u1", "24971563792")).resolves.toEqual({
+      id: "cus_atual", cpfCnpj: "24971563792", externalReference: "u1",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifica a resposta invalid_customer sem culpar os dados do perfil", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ errors: [{ code: "invalid_customer" }] }, { status: 400 })));
+    await expect(gateway().createPixCharge({
+      customer: "cus_antigo", value: 220, dueDate: "2030-06-10", description: "Teste", externalReference: "e1",
+    })).rejects.toMatchObject({ code: "PAGAMENTO_CLIENTE_INVALIDO", status: 502 });
+  });
+
+  it("reaproveita somente cobrança Pix pendente da mesma referência, cliente e valor", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = new URL(input);
+      expect(url.pathname).toBe("/v3/payments");
+      expect(url.searchParams.get("externalReference")).toBe("e1:c1");
+      expect(url.searchParams.get("customer")).toBe("cus_test");
+      expect(url.searchParams.get("status")).toBe("PENDING");
+      return Response.json({ data: [{
+        id: "pay_existing", externalReference: "e1:c1", customer: "cus_test", value: 220,
+        status: "PENDING", billingType: "PIX",
+      }], hasMore: false });
+    }));
+    await expect(gateway().findPendingPixCharge("e1:c1", "cus_test", 220)).resolves.toBe("pay_existing");
+    await expect(gateway().findPendingPixCharge("e1:c1", "cus_test", 200)).rejects.toMatchObject({ code: "COBRANCA_CONCILIACAO" });
+  });
+
+=======
+>>>>>>> upstream/main
   it("distingue recusa de estorno de dados de cobrança", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ errors: [{ code: "invalid_action", description: "Saldo insuficiente" }] }, { status: 400 })));
@@ -77,4 +121,46 @@ describe("Asaas Sandbox gateway", () => {
     await expect(gateway().getPixQrCode("pay_test")).resolves.toEqual({ payload: "000201...", encodedImage: "base64" });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+<<<<<<< HEAD
+  it("envia a referência única e consulta dados atuais da transferência", async () => {
+    const calls: Array<{ method: string; url: URL; body: Record<string, unknown> | null }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string, init: RequestInit) => {
+      const url = new URL(input);
+      calls.push({ method: init.method!, url, body: init.body ? JSON.parse(String(init.body)) : null });
+      if (init.method === "POST") return Response.json({ id: "tra_test", status: "PENDING" });
+      if (url.pathname.endsWith("/tra_test")) return Response.json({
+        id: "tra_test", status: "DONE", externalReference: "intent-1", value: 500,
+        operationType: "PIX", bankAccount: { pixAddressKey: "m1@example.com" },
+      });
+      return Response.json({ data: [
+        { id: "tra_test", externalReference: "intent-1" },
+        { id: "tra_other", externalReference: "other" },
+      ], hasMore: false });
+    }));
+
+    const asaas = gateway();
+    const created = await asaas.transferPix({
+      value: 500, pixAddressKey: "m1@example.com", pixAddressKeyType: "EMAIL",
+      description: "Cachê", externalReference: "intent-1",
+    });
+    const transfer = await asaas.getTransfer(created.id);
+    const search = await asaas.findTransfersByReference("intent-1", new Date("2030-06-10T12:00:00Z"));
+
+    expect(calls[0]?.body).toMatchObject({ value: 500, externalReference: "intent-1", pixAddressKey: "m1@example.com" });
+    expect(transfer).toMatchObject({ id: "tra_test", status: "DONE", externalReference: "intent-1", pixAddressKey: "m1@example.com" });
+    expect(search).toEqual({ matches: ["tra_test"], complete: true });
+    expect(calls[2]?.url.searchParams.get("dateCreated[ge]")).toBe("2030-06-09");
+  });
+
+  it("busca inconclusiva é limitada e nunca prova ausência da transferência", async () => {
+    const fetchMock = vi.fn(async () => Response.json({ data: [], hasMore: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await gateway().findTransfersByReference("intent-1", new Date("2030-06-10T12:00:00Z"));
+
+    expect(result).toEqual({ matches: [], complete: false });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+=======
+>>>>>>> upstream/main
 });

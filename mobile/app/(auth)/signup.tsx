@@ -39,7 +39,10 @@ export default function SignupScreen() {
     if (!form.nome.trim()) return setError("Informe seu nome.");
     if (!isValidEmail(form.email)) return setError("Informe um e-mail válido.");
     if (form.password.length < SENHA_TAMANHO_MINIMO) return setError(`A senha deve ter pelo menos ${SENHA_TAMANHO_MINIMO} caracteres.`);
+<<<<<<< HEAD
+=======
     if (!form.aceiteTermos) return setError("Aceite os Termos de Uso para criar a conta.");
+>>>>>>> upstream/main
     inFlight.current = true;
     setSubmitting(true);
     try {
@@ -85,8 +88,12 @@ export default function SignupScreen() {
       <Button title="Ler os Termos de Uso" variant="text" block={false} onPress={() => router.push("/terms")}/>
     </View>
     {error ? <Alert tone="error">{error}</Alert> : null}
+<<<<<<< HEAD
+    <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting}/>
+=======
     {waiting && !error ? <Alert tone="info">Muitas tentativas de cadastro em pouco tempo. Aguarde alguns instantes; o botão volta a funcionar sozinho.</Alert> : null}
     <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting}/>
     <GoogleButton onError={setError}/>
+>>>>>>> upstream/main
   </Screen>;
 }

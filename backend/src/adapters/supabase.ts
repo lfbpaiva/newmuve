@@ -111,7 +111,11 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
   const publicClient = () => createClient(url, anonKey, serverOnly);
 
   return {
+<<<<<<< HEAD
+    async signUp(email, password, redirectTo) {
+=======
     async signUp(email, password, termosVersao, redirectTo) {
+>>>>>>> upstream/main
       let retryAfter: string | undefined;
       const signupClient = createClient(url, anonKey, {
         ...serverOnly,
