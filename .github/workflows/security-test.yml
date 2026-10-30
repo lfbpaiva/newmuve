@@ -1,0 +1,33 @@
+name: Testes de Segurança (CI)
+
+on:
+  pull_request:
+    branches: [ "main", "feature/*" ]
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Instalar Dependências
+        run: pnpm install
+
+      - name: Executar Testes de Segurança
+        run: |
+          pnpm vitest run backend/src/http/idor.test.ts
+          pnpm vitest run backend/src/http/crypto.test.ts
+          pnpm vitest run backend/src/http/injection.test.ts
+          pnpm vitest run backend/src/http/bots.test.ts
