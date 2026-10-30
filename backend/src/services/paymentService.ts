@@ -118,12 +118,19 @@ export function createPaymentService(deps: {
     return payments.applyPayoutTransfer(intent.id, remote);
   }
   async function ensureCustomer(user: AuthUser): Promise<string> {
-    const existing = await payments.getAsaasCustomerId(user.id);
-    if (existing) return existing;
-
     const account = await accounts.findAccount(user.id);
     if (!account) throw new AppError(404, "CONTA_NAO_ENCONTRADA", "Conta não encontrada.");
     assertProfileComplete(account, "pagar");
+    const existing = await payments.getAsaasCustomerId(user.id);
+    if (existing) {
+      const remote = await asaas.getCustomer(existing);
+      if (remote?.externalReference === user.id && remote.cpfCnpj === account.documento) return existing;
+    }
+    const found = await asaas.findCustomerByReference(user.id, account.documento!);
+    if (found) {
+      await payments.setAsaasCustomerId(user.id, found.id);
+      return found.id;
+    }
     // O telefone do perfil é opcional para a Asaas e pode ser recusado pela
     // validação própria do provedor. As notificações do cliente são desativadas.
     const customerId = await asaas.createCustomer({
@@ -173,13 +180,16 @@ export function createPaymentService(deps: {
 
       const cobranca = calcularCobranca(event.cache);
       const customer = await ensureCustomer(user);
-      const asaasPaymentId = await asaas.createPixCharge({
-        customer,
-        value: cobranca.total,
-        dueDate: dueDateInSaoPaulo(now),
-        description: `Muve — contratação de músico para "${event.titulo}"`,
-        externalReference: event.id,
-      });
+      // A referência identifica a mesma tentativa após uma resposta perdida do POST.
+      const reference = `${event.id}:${candidateId}`;
+      const asaasPaymentId = await asaas.findPendingPixCharge(reference, customer, cobranca.total)
+        ?? await asaas.createPixCharge({
+          customer,
+          value: cobranca.total,
+          dueDate: dueDateInSaoPaulo(now),
+          description: `Muve — contratação de músico para "${event.titulo}"`,
+          externalReference: reference,
+        });
       try {
         const qrCode = await asaas.getPixQrCode(asaasPaymentId);
         return await payments.insertPayment({

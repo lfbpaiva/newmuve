@@ -46,9 +46,10 @@ export function memoryWorld() {
   const reviews: { eventId: string; authorId: string; reviewedId: string; rating: number }[] = [];
   const images = new Set<string>();
   const customers = new Map<string, string>();
+  const asaasCustomers = new Map<string, { cpfCnpj: string; externalReference: string }>();
   const webhookEvents = new Set<string>();
   // Estado da "Asaas": cobranças, estornos e transferências.
-  const asaasCharges = new Map<string, { status: string; value: number }>();
+  const asaasCharges = new Map<string, { status: string; value: number; customer?: string; externalReference?: string }>();
   const asaasCalls = {
     createCustomer: 0,
     createPixCharge: [] as { value: number; customer: string }[],
@@ -56,7 +57,7 @@ export function memoryWorld() {
     refundPayment: [] as string[],
     transferPix: [] as { value: number; pixAddressKey: string; pixAddressKeyType: string; externalReference: string }[],
   };
-  const failures = { refund: false, transfer: false, transferAfterCreate: false, transferLookup: false, transferQuery: false, cancel: false };
+  const failures = { refund: false, chargeAfterCreate: false, transfer: false, transferAfterCreate: false, transferLookup: false, transferQuery: false, cancel: false };
   let sequence = 1;
   let databaseTime = NOW;
   const nextId = (prefix: string) => `${prefix}${sequence++}`;
@@ -357,14 +358,33 @@ export function memoryWorld() {
   };
 
   const asaas: AsaasGateway = {
-    createCustomer: async () => {
+    getCustomer: async (id) => {
+      const customer = asaasCustomers.get(id);
+      return customer ? { id, ...customer } : null;
+    },
+    findCustomerByReference: async (reference, cpfCnpj) => {
+      const found = [...asaasCustomers].find(([, customer]) => customer.externalReference === reference && customer.cpfCnpj === cpfCnpj);
+      return found ? { id: found[0], ...found[1] } : null;
+    },
+    createCustomer: async (customer) => {
       asaasCalls.createCustomer++;
-      return nextId("cus_");
+      const id = nextId("cus_");
+      asaasCustomers.set(id, { cpfCnpj: customer.cpfCnpj, externalReference: customer.externalReference });
+      return id;
+    },
+    findPendingPixCharge: async (reference, customer, value) => {
+      const matches = [...asaasCharges].filter(([, charge]) => charge.externalReference === reference &&
+        charge.customer === customer && charge.status === "PENDING");
+      if (matches.length > 1 || matches.some(([, charge]) => charge.value !== value)) {
+        throw new AppError(409, "COBRANCA_CONCILIACAO", "Cobrança em verificação.");
+      }
+      return matches[0]?.[0] ?? null;
     },
     createPixCharge: async (charge) => {
       asaasCalls.createPixCharge.push({ value: charge.value, customer: charge.customer });
       const id = nextId("pay_");
-      asaasCharges.set(id, { status: "PENDING", value: charge.value });
+      asaasCharges.set(id, { status: "PENDING", value: charge.value, customer: charge.customer, externalReference: charge.externalReference });
+      if (failures.chargeAfterCreate) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "resposta perdida após criação");
       return id;
     },
     getPixQrCode: async (paymentId) => ({ payload: `pix-${paymentId}`, encodedImage: "base64" }),
@@ -415,6 +435,7 @@ export function memoryWorld() {
 
   return {
     accounts,
+    asaasCustomers,
     events,
     enderecos,
     candidates,

@@ -9,6 +9,47 @@ afterEach(() => {
 });
 
 describe("Asaas Sandbox gateway", () => {
+  it("reconhece cliente salvo inexistente e busca outro pelo documento e referência", async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname === "/v3/customers/cus_antigo") return Response.json({}, { status: 404 });
+      expect(url.searchParams.get("externalReference")).toBe("u1");
+      expect(url.searchParams.get("cpfCnpj")).toBe("24971563792");
+      return Response.json({ data: [{ id: "cus_atual", cpfCnpj: "24971563792", externalReference: "u1" }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(gateway().getCustomer("cus_antigo")).resolves.toBeNull();
+    await expect(gateway().findCustomerByReference("u1", "24971563792")).resolves.toEqual({
+      id: "cus_atual", cpfCnpj: "24971563792", externalReference: "u1",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifica a resposta invalid_customer sem culpar os dados do perfil", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ errors: [{ code: "invalid_customer" }] }, { status: 400 })));
+    await expect(gateway().createPixCharge({
+      customer: "cus_antigo", value: 220, dueDate: "2030-06-10", description: "Teste", externalReference: "e1",
+    })).rejects.toMatchObject({ code: "PAGAMENTO_CLIENTE_INVALIDO", status: 502 });
+  });
+
+  it("reaproveita somente cobrança Pix pendente da mesma referência, cliente e valor", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = new URL(input);
+      expect(url.pathname).toBe("/v3/payments");
+      expect(url.searchParams.get("externalReference")).toBe("e1:c1");
+      expect(url.searchParams.get("customer")).toBe("cus_test");
+      expect(url.searchParams.get("status")).toBe("PENDING");
+      return Response.json({ data: [{
+        id: "pay_existing", externalReference: "e1:c1", customer: "cus_test", value: 220,
+        status: "PENDING", billingType: "PIX",
+      }], hasMore: false });
+    }));
+    await expect(gateway().findPendingPixCharge("e1:c1", "cus_test", 220)).resolves.toBe("pay_existing");
+    await expect(gateway().findPendingPixCharge("e1:c1", "cus_test", 200)).rejects.toMatchObject({ code: "COBRANCA_CONCILIACAO" });
+  });
+
   it("distingue recusa de estorno de dados de cobrança", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn(async () => Response.json({ errors: [{ code: "invalid_action", description: "Saldo insuficiente" }] }, { status: 400 })));

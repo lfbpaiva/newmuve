@@ -52,6 +52,9 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
         if (method === "GET" && path.startsWith("/payments/")) {
           throw new AppError(502, "PAGAMENTO_CONSULTA_RECUSADA", "Não foi possível verificar a cobrança no Asaas. Tente novamente em instantes.");
         }
+        if (method === "POST" && path === "/payments" && detail?.errors?.some((item) => item.code === "invalid_customer")) {
+          throw new AppError(502, "PAGAMENTO_CLIENTE_INVALIDO", "O cadastro de pagamento não foi aceito. Tente novamente; se o problema continuar, contate o suporte.");
+        }
         throw new AppError(422, "PAGAMENTO_DADOS_INVALIDOS", "O serviço de pagamentos recusou os dados da cobrança. Revise seu perfil e tente novamente.");
       }
       if (response.status === 429) {
@@ -76,9 +79,42 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
   };
 
   return {
+    async getCustomer(id) {
+      const customer = await request<{ id: string; cpfCnpj: string; externalReference?: string | null }>(
+        "GET", `/customers/${encodeURIComponent(id)}`, undefined, { allowNotFound: true },
+      );
+      if (!customer) return null;
+      return { id: requireId(customer.id, "GET /customers/:id"), cpfCnpj: customer.cpfCnpj, externalReference: customer.externalReference ?? null };
+    },
+
+    async findCustomerByReference(reference, cpfCnpj) {
+      const query = new URLSearchParams({ externalReference: reference, cpfCnpj, limit: "1" });
+      const result = await request<{ data: Array<{ id: string; cpfCnpj: string; externalReference?: string | null }> }>(
+        "GET", `/customers?${query}`,
+      );
+      if (!result || !Array.isArray(result.data)) throw respostaInvalida();
+      const customer = result.data.find((item) => item.externalReference === reference && item.cpfCnpj === cpfCnpj);
+      if (!customer) return null;
+      return { id: requireId(customer.id, "GET /customers"), cpfCnpj: customer.cpfCnpj, externalReference: customer.externalReference ?? null };
+    },
+
     async createCustomer(customer) {
       const created = await request<{ id: string }>("POST", "/customers", { ...customer, notificationDisabled: true });
       return requireId(created?.id, "POST /customers");
+    },
+
+    async findPendingPixCharge(reference, customer, value) {
+      const query = new URLSearchParams({ externalReference: reference, customer, status: "PENDING", billingType: "PIX", limit: "100" });
+      const result = await request<{ data: Array<{ id: string; externalReference: string; customer: string; value: number; status: string; billingType: string }>; hasMore: boolean }>(
+        "GET", `/payments?${query}`,
+      );
+      if (!result || !Array.isArray(result.data) || typeof result.hasMore !== "boolean") throw respostaInvalida();
+      const matches = result.data.filter((item) => item.externalReference === reference && item.customer === customer &&
+        item.status === "PENDING" && item.billingType === "PIX");
+      if (result.hasMore || matches.length > 1 || matches.some((item) => item.value !== value)) {
+        throw new AppError(409, "COBRANCA_CONCILIACAO", "Existe uma cobrança em verificação para este evento. Contate o suporte antes de tentar novamente.");
+      }
+      return matches.length ? requireId(matches[0]!.id, "GET /payments") : null;
     },
 
     async createPixCharge(charge) {

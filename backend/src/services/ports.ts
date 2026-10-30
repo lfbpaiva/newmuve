@@ -112,7 +112,10 @@ export interface PaymentStore {
 }
 
 export interface AsaasGateway {
+  getCustomer(id: string): Promise<{ id: string; cpfCnpj: string; externalReference: string | null } | null>;
+  findCustomerByReference(reference: string, cpfCnpj: string): Promise<{ id: string; cpfCnpj: string; externalReference: string | null } | null>;
   createCustomer(customer: { name: string; cpfCnpj: string; email: string; externalReference: string }): Promise<string>;
+  findPendingPixCharge(reference: string, customer: string, value: number): Promise<string | null>;
   createPixCharge(charge: { customer: string; value: number; dueDate: string; description: string; externalReference: string }): Promise<string>;
   getPixQrCode(paymentId: string): Promise<{ payload: string; encodedImage: string }>;
   getPayment(paymentId: string): Promise<{ status: string; value: number; refunds?: Array<{ status: string; value: number }>; paymentDate?: string | null; clientPaymentDate?: string | null; confirmedDate?: string | null } | null>;

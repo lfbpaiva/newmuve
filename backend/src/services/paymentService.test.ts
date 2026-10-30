@@ -79,6 +79,43 @@ describe("checkout (aprovar candidato)", () => {
     expect(t.world.asaasCalls.createCustomer).toBe(1);
   });
 
+  it("recupera cobrança criada na Asaas quando a resposta do POST se perde", async () => {
+    t.world.failures.chargeAfterCreate = true;
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    t.world.failures.chargeAfterCreate = false;
+
+    const payment = await checkout(minutesLater(1));
+
+    expect(payment.status).toBe("PENDENTE");
+    expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
+    expect(t.world.asaasCharges.size).toBe(1);
+    expect(payment.asaasPaymentId).toBe([...t.world.asaasCharges.keys()][0]);
+  });
+
+  it("substitui o cliente salvo que não existe na conta Asaas atual", async () => {
+    await t.world.stores.payments.setAsaasCustomerId(contratante.id, "cus_outra_conta");
+
+    const first = await checkout();
+    const second = await checkout(minutesLater(2));
+
+    expect(first.status).toBe("PENDENTE");
+    expect(second.id).toBe(first.id);
+    expect(t.world.asaasCalls.createCustomer).toBe(1);
+    expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
+    expect(await t.world.stores.payments.getAsaasCustomerId(contratante.id)).toBe(t.world.asaasCalls.createPixCharge[0]?.customer);
+  });
+
+  it("recupera pelo identificador do usuário um cliente já cadastrado na Asaas", async () => {
+    t.world.asaasCustomers.set("cus_recuperado", { cpfCnpj: t.world.accounts.get(contratante.id)!.documento!, externalReference: contratante.id });
+    await t.world.stores.payments.setAsaasCustomerId(contratante.id, "cus_antigo");
+
+    await checkout();
+
+    expect(t.world.asaasCalls.createCustomer).toBe(0);
+    expect(t.world.asaasCalls.createPixCharge[0]?.customer).toBe("cus_recuperado");
+    expect(await t.world.stores.payments.getAsaasCustomerId(contratante.id)).toBe("cus_recuperado");
+  });
+
   it("não envia telefone opcional que a Asaas pode recusar", async () => {
     t.world.accounts.get(contratante.id)!.telefone = "45322210001";
     const createCustomer = vi.spyOn(t.world.stores.asaas, "createCustomer");
