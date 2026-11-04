@@ -47,9 +47,10 @@ Trechos prontos para substituir ou complementar as seções do documento "Projet
 
 - **RNF01 – Segurança:** o aplicativo só lê dados permitidos pelas regras de acesso do banco (Row Level Security); toda escrita passa pela API, que valida permissões, regras e valores. Chaves privadas ficam apenas no servidor.
 - **RNF02 – Arquitetura:** aplicativo em React Native (Expo), que roda em Android, iOS e navegador; API REST em Node.js (Hono); banco PostgreSQL, autenticação e arquivos no Supabase; pagamentos pela Asaas.
+- **RNF06 – Continuidade:** rotina automática a cada 5 minutos que expira cobranças, confirma pagamentos sem aviso do gateway, acompanha estornos e repasses e conclui shows, sem depender de alguém abrir o aplicativo. Um repasse sem resposta do gateway nunca é repetido sem conferência.
 - **RNF03 – Auditoria:** avisos do gateway registrados para evitar processamento duplicado; datas de criação e atualização em todas as tabelas.
 - **RNF04 – Confiabilidade:** pagamento confirmado por aviso do gateway (webhook) ou por consulta ativa; operações de pagamento, devolução e repasse protegidas contra duplicidade.
-- **RNF05 – Qualidade:** 209 testes automatizados de regras e da API e 103 testes do banco de dados.
+- **RNF05 – Qualidade:** 264 testes automatizados de regras e da API e 124 testes do banco de dados, com verificação automática a cada alteração no repositório (GitHub Actions).
 
 ## 4.5 Protótipo
 

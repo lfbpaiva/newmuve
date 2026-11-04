@@ -133,7 +133,8 @@ function Dashboard() {
   const active = all.filter((event) => (event.status === "ABERTO" && !event.encerrado) || event.status === "CONTRATADO");
   const candidaturas = active.filter((e) => e.status === "ABERTO").reduce((sum, e) => sum + (e.totalCandidatos ?? 0), 0);
   const concluidos = all.filter((e) => e.status === "CONCLUIDO");
-  const investido = concluidos.reduce((sum, e) => sum + (e.cachePago ?? e.cache), 0);
+  const investido = concluidos.reduce((sum, e) => sum + e.cachePago, 0);
+  const emRepasse = concluidos.reduce((sum, e) => sum + e.cacheEmRepasse, 0);
   const faltando = camposFaltantes(me, "criarEvento");
   const create = () => (faltando.length ? router.push({ pathname: "/account/edit", params: { acao: "criarEvento" } }) : router.push("/event/new"));
 
@@ -146,6 +147,7 @@ function Dashboard() {
         </View>)}
       </View>}
       {investido > 0 && <Text style={type.bodySmall}>{formatCurrency(investido)} em cachês pagos a músicos até hoje.</Text>}
+      {emRepasse > 0 && <Text style={type.bodySmall}>{formatCurrency(emRepasse)} em repasse aos músicos.</Text>}
       {faltando.length > 0 && <Alert tone="info">Antes de publicar seu primeiro evento, complete o perfil: {descreverFaltantes(faltando)}.</Alert>}
       {isPro(me.casaAte)
         ? <View style={{ flexDirection: "row", gap: space.sm }}>

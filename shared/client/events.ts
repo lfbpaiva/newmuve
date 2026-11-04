@@ -29,7 +29,8 @@ export interface EventItem {
   inscricoesEncerradas: boolean;
   createdAt: string;
   totalCandidatos?: number;
-  cachePago?: number;
+  cachePago: number;
+  cacheEmRepasse: number;
   distanciaKm?: number;
 }
 
@@ -149,7 +150,7 @@ interface EventRow {
   inscricoes_encerradas: boolean;
   created_at: string;
   event_candidates?: { count: number }[];
-  payments?: { valor_cache: number | string; status: PaymentStatus }[];
+  payments?: { valor_cache: number | string; status: PaymentStatus; repasse_status: string | null }[];
 }
 
 interface ProfileRow {
@@ -177,6 +178,10 @@ export function unwrap<T>(result: { data: unknown; error: PostgrestError | null 
   return result.data as T;
 }
 
+
+const somaDosCaches = (row: { payments?: { valor_cache: number | string; status: PaymentStatus; repasse_status: string | null }[] }, repasse: string) =>
+  (row.payments ?? []).filter((p) => p.status === "PAGO" && p.repasse_status === repasse).reduce((sum, p) => sum + Number(p.valor_cache), 0);
+
 const toEvent = (row: EventRow): EventItem => ({
   id: row.id,
   contractorId: row.contractor_id,
@@ -199,7 +204,8 @@ const toEvent = (row: EventRow): EventItem => ({
   inscricoesEncerradas: row.inscricoes_encerradas,
   createdAt: row.created_at,
   totalCandidatos: row.event_candidates?.[0]?.count,
-  cachePago: row.payments?.filter((p) => p.status === "PAGO").reduce((sum, p) => sum + Number(p.valor_cache), 0),
+  cachePago: somaDosCaches(row, "REPASSADO"),
+  cacheEmRepasse: somaDosCaches(row, "PROCESSANDO"),
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
@@ -261,7 +267,7 @@ export async function fetchContractor(id: string | null): Promise<PublicProfile 
 }
 
 export async function fetchMyEvents(contractorId: string): Promise<EventItem[]> {
-  const result = await supabase().from("events").select("*, event_candidates(count), payments(valor_cache, status)").eq("contractor_id", contractorId).order("inicio");
+  const result = await supabase().from("events").select("*, event_candidates(count), payments(valor_cache, status, repasse_status)").eq("contractor_id", contractorId).order("inicio");
   return unwrap<EventRow[]>(result).map(toEvent);
 }
 

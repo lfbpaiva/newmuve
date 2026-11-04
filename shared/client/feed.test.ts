@@ -27,6 +27,8 @@ const evento = (overrides: Partial<EventItem>): EventItem => ({
   confirmacaoContratante: false,
   inscricoesEncerradas: false,
   createdAt: daysFromNow(-5),
+  cachePago: 0,
+  cacheEmRepasse: 0,
   ...overrides,
 });
 
