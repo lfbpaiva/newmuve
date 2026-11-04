@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
+import { cepDigits, CepError, formatCep, lookupCep } from "../../shared/client/cep.ts";
 import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
 import { eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
@@ -46,9 +47,29 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
   const [submitting, setSubmitting] = useState(false);
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
   const cacheNumber = parseValor(form.cache);
+  const [cep, setCep] = useState("");
+  const [cepAviso, setCepAviso] = useState("");
+  const ultimoCep = useRef("");
   const me = useMe();
   const casa = isPro(me.casaAte);
   const taxa = comissaoPercentual(me.casaAte);
+
+  async function buscarCep(value: string) {
+    const digits = cepDigits(value);
+    setCep(formatCep(value));
+    setCepAviso("");
+    ultimoCep.current = digits;
+    if (digits.length !== 8) return;
+    setCepAviso("Consultando o CEP...");
+    try {
+      const endereco = await lookupCep(digits);
+      if (ultimoCep.current !== digits) return;
+      set({ uf: endereco.uf, cidade: endereco.cidade, endereco: [endereco.logradouro, endereco.bairro].filter(Boolean).join(" - ") || form.endereco });
+      setCepAviso("Endereço encontrado. Confira e informe o número.");
+    } catch (e) {
+      if (ultimoCep.current === digits) setCepAviso(e instanceof CepError ? e.message : "Não foi possível consultar o CEP.");
+    }
+  }
 
   async function submit() {
     const inicio = horarioLocalDoEvento(toIsoDate(form.data), form.horario, form.uf);
@@ -103,6 +124,7 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
       <Field label="Descrição" value={form.descricao} onChangeText={(descricao) => set({ descricao })} multiline maxLength={2000} placeholder="Repertório esperado, público, estrutura disponível..."/>
     </Section>
     <Section title="Onde">
+      <Field label="CEP (opcional)" value={cep} onChangeText={(v) => void buscarCep(v)} keyboardType="numeric" placeholder="00000-000" hint={cepAviso || "Preenche estado, cidade e rua para você."}/>
       <LocationFields uf={form.uf} cidade={form.cidade} onUfChange={(uf) => set({ uf, cidade: "" })} onCidadeChange={(cidade) => set({ cidade })} onError={setError}/>
       <Field label="Endereço" value={form.endereco} onChangeText={(endereco) => set({ endereco })} placeholder="Rua, número, bairro e referência" hint="Visível apenas para o músico contratado."/>
     </Section>
