@@ -409,6 +409,10 @@ export function memoryWorld() {
     findTransfersByReference: async (reference) =>
       [...asaasTransfers.keys()].map(toTransfer).filter((transfer) => transfer.externalReference === reference),
     createSubscription: async (subscription) => {
+      if (failures.staleCustomer) {
+        failures.staleCustomer = false;
+        throw new AppError(502, "PAGAMENTO_CLIENTE_INVALIDO", "cliente de outra conta da Asaas");
+      }
       const id = nextId("sub_");
       asaasSubscriptions.set(id, { ...subscription, payments: [{ id: nextId("pay_"), status: "PENDING", dueDate: subscription.nextDueDate }], cancelled: false });
       return id;

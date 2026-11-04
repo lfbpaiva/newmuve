@@ -45,6 +45,16 @@ beforeEach(() => {
 });
 
 describe("assinaturas Muve Pro e Muve Casa", () => {
+  it("cliente de outra conta da Asaas é recriado na assinatura", async () => {
+    await t.service.subscribe(musico, NOW);
+    await t.service.cancel(musico);
+    const antes = t.world.asaasCalls.createCustomer;
+    t.world.failures.staleCustomer = true;
+
+    await expect(t.service.subscribe(musico, NOW)).resolves.toMatchObject({ assinatura: { status: "AGUARDANDO_PAGAMENTO" } });
+    expect(t.world.asaasCalls.createCustomer).toBe(antes + 1);
+  });
+
   it("o músico assina o Pro e o contratante assina o Casa, cada um pelo seu preço", async () => {
     const pro = await t.service.subscribe(musico, NOW);
     const casa = await t.service.subscribe(contratante, NOW);

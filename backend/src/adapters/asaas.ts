@@ -62,7 +62,7 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
         if (method === "GET" && path.startsWith("/payments/")) {
           throw new AppError(502, "PAGAMENTO_CONSULTA_RECUSADA", "Não foi possível verificar a cobrança no Asaas. Tente novamente em instantes.");
         }
-        if (method === "POST" && path === "/payments" && detail?.errors?.some((item) => item.code === "invalid_customer")) {
+        if (method === "POST" && (path === "/payments" || path === "/subscriptions") && detail?.errors?.some((item) => item.code === "invalid_customer")) {
           throw new AppError(502, "PAGAMENTO_CLIENTE_INVALIDO", "O cadastro de pagamento não foi aceito. Tente novamente em instantes.");
         }
         throw new AppError(422, "PAGAMENTO_DADOS_INVALIDOS", "O serviço de pagamentos recusou os dados da cobrança. Revise seu perfil e tente novamente.");

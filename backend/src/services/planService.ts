@@ -96,12 +96,17 @@ export function createPlanService(deps: { accounts: AccountStore; store: PlanSto
       if (existing && existing.status !== "CANCELADA") return sync(user.id);
 
       const { plano, preco, descricao } = PLANOS[account.role];
-      let customer = await store.getCustomerId(user.id, account.role);
-      if (!customer) {
-        customer = await asaas.createCustomer({ name: account.nome, cpfCnpj: account.documento!, email: user.email, externalReference: user.id });
-        await store.setCustomerId(user.id, account.role, customer);
-      }
-      const asaasSubscriptionId = await asaas.createSubscription({ customer, value: preco, nextDueDate: hojeEmSaoPaulo(now), description: descricao, externalReference: user.id });
+      const newCustomer = async () => {
+        const created = await asaas.createCustomer({ name: account.nome, cpfCnpj: account.documento!, email: user.email, externalReference: user.id });
+        await store.setCustomerId(user.id, account.role, created);
+        return created;
+      };
+      const customer = (await store.getCustomerId(user.id, account.role)) ?? (await newCustomer());
+      const createSubscription = (id: string) => asaas.createSubscription({ customer: id, value: preco, nextDueDate: hojeEmSaoPaulo(now), description: descricao, externalReference: user.id });
+      const asaasSubscriptionId = await createSubscription(customer).catch(async (error: unknown) => {
+        if (!(error instanceof AppError) || error.code !== "PAGAMENTO_CLIENTE_INVALIDO") throw error;
+        return createSubscription(await newCustomer());
+      });
       await store.saveSubscription({ userId: user.id, plano, asaasSubscriptionId, status: "AGUARDANDO_PAGAMENTO", valor: preco });
       return sync(user.id);
     },
