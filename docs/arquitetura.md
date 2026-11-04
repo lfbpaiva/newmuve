@@ -138,3 +138,7 @@ Mocks existem apenas nos testes; a aplicação não tem dados simulados.
 - **Sem mediação de disputas:** se o músico confirmou o show e o contratante diz que ele não compareceu, a plataforma não arbitra.
 - **Distância entre sedes de municípios,** não entre endereços; cidades homônimas são distinguidas pela UF.
 - **CNPJ alfanumérico** (formato novo da Receita Federal) não é aceito; apenas o numérico.
+
+**Rotina financeira dentro da API, sem serviço de agendamento.** Um `setInterval` de 5 minutos em `server.ts` chama as mesmas operações que o app chama ao abrir uma tela. Não exige Cron Job pago nem tabelas de fila, e é seguro repetir: o repasse é reservado de forma atômica (`claimPayout`) e a confirmação do pagamento trava a linha no banco. Com mais de uma instância, continuaria correto, apenas repetindo consultas.
+
+**Repasse: ausência de resposta não é falha.** Só uma recusa clara da Asaas (4xx) marca o repasse como `FALHOU` e permite nova tentativa. Timeout, erro 5xx ou resposta inválida mantêm `PROCESSANDO` sem transferência vinculada, porque a transferência pode ter sido criada. A referência externa é o id do pagamento, e a API localiza a transferência por ela. Encontrar nada não autoriza reenviar sozinho: quem decide é o suporte. As notificações de transferência são conferidas com uma consulta à Asaas, pois podem chegar fora de ordem.

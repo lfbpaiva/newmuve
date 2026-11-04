@@ -64,6 +64,8 @@ npx supabase db push
 | `pnpm test:db` | Testes do banco (pgTAP) no projeto vinculado, sem deixar dados |
 | `pnpm test:e2e` | Fluxo completo contra a API local e o Supabase real |
 
+O GitHub Actions roda `typecheck`, `lint` e `test` a cada pull request e a cada push no `main`.
+
 ## Configuração externa
 
 **Supabase:** veja abaixo os redirecionamentos e o SMTP.
@@ -74,8 +76,8 @@ No repasse ao músico, o sandbox só aceita as [chaves Pix fictícias do Banco C
 
 **Publicação da API (opcional, mas libera o webhook da Asaas e o uso fora do Wi-Fi de casa):**
 
-1. No [Render](https://render.com), crie um *Web Service* ligado a este repositório, com build `npm i -g pnpm && pnpm install` e start `pnpm start:api`.
-2. Copie as variáveis de `backend/.env` para o painel do serviço e defina `ALLOWED_ORIGINS` com o endereço onde o app web vai rodar.
+1. No [Render](https://render.com), crie um *Blueprint* ligado a este repositório: o arquivo `render.yaml` já define o serviço, o build e as variáveis.
+2. Preencha no painel as variáveis marcadas como secretas, com os valores de `backend/.env`, e defina `ALLOWED_ORIGINS` com o endereço onde o app web vai rodar. Em produção a API não inicia se faltar a Asaas ou se a URL dela não corresponder a `ASAAS_ENV`.
 3. No app, aponte `EXPO_PUBLIC_API_URL` para `https://SEU-SERVICO.onrender.com/api`.
 4. Na Asaas, em *Integrações → Webhooks*, cadastre `https://SEU-SERVICO.onrender.com/api/webhooks/asaas` com o mesmo `ASAAS_WEBHOOK_TOKEN`.
 
@@ -100,6 +102,16 @@ Sem isso, o botão "Continuar com Google" avisa que o login ainda não foi ativa
 3. A API envia pelo serviço gratuito da Expo; não precisa de chave.
 
 Dentro do app, as notificações já funcionam em tempo real sem nada disso.
+
+**Rotina financeira:** a cada 5 minutos, enquanto a API está no ar, ela expira cobranças vencidas, confirma Pix cuja notificação se perdeu, acompanha estornos e repasses e conclui os shows com 7 dias passados, sem depender de alguém abrir o app. Não precisa de configuração nem de serviço de agendamento. Contestação aberta ou estorno em andamento seguram o repasse.
+
+**Repasse sem resposta da Asaas:** se a Asaas não responder ao pedido de transferência, o repasse nunca é repetido às cegas. A rotina procura a transferência pela referência do pagamento. Se não encontrar, o repasse fica aguardando conferência:
+
+```bash
+node scripts/resolver-repasse.mjs
+```
+
+lista os casos. Depois de conferir o painel da Asaas, `node scripts/resolver-repasse.mjs <id>` vincula a transferência encontrada ou, se não houver nenhuma, envia de novo.
 
 **Contestações:** defina `ADMIN_TOKEN` em `backend/.env` (um texto longo e aleatório). Com a API rodando:
 

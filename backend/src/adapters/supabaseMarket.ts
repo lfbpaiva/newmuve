@@ -4,6 +4,7 @@ import type { CandidateRecord, CandidateStatus, DisputeRecord, EventInput, Event
 import type { Inbox } from "../services/notifications.ts";
 import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UNIQUE_VIOLATION = "23505";
 
 interface EventRow {
@@ -213,6 +214,12 @@ export function createEventStore(admin: SupabaseClient): EventStore {
 
     setConfirmation: (eventId, party) =>
       updateReturning(eventId, { [party === "musico" ? "confirmacao_musico" : "confirmacao_contratante"]: true }),
+
+    async findDueHirings(startedBefore) {
+      const { data, error } = await admin.from("events").select("id").eq("status", "CONTRATADO").lte("inicio", startedBefore.toISOString());
+      if (error) throw error;
+      return data.map((row) => row.id);
+    },
 
     concludeEvent: (eventId) => updateReturning(eventId, { confirmacao_musico: true, confirmacao_contratante: true }),
 
@@ -463,6 +470,27 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     findPaymentByAsaasId: (asaasPaymentId) => findOne("asaas_payment_id", asaasPaymentId),
     findPaymentByTransferId: (asaasTransferId) => findOne("repasse_asaas_id", asaasTransferId),
 
+    async findPaymentById(id) {
+      if (!UUID.test(id)) return null;
+      const { data, error } = await admin.from("payments").select("*").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data && toPayment(data);
+    },
+
+    async findFinanceFollowUps(now) {
+      const eventIds = async (query: PromiseLike<{ data: { event_id: string | null }[] | null; error: unknown }>) => {
+        const { data, error } = await query;
+        if (error) throw error;
+        return (data ?? []).flatMap((row) => (row.event_id ? [row.event_id] : []));
+      };
+      const [expiredCharges, refunds, payouts] = await Promise.all([
+        eventIds(admin.from("payments").select("event_id").eq("status", "PENDENTE").lte("expira_em", now.toISOString())),
+        eventIds(admin.from("payments").select("event_id").eq("refund_status", "PROCESSANDO")),
+        eventIds(admin.from("payments").select("event_id").eq("status", "PAGO").eq("repasse_status", "PROCESSANDO")),
+      ]);
+      return { expiredCharges, refunds, payouts };
+    },
+
     async findLateRefundsToRetry(eventId) {
       const { data, error } = await admin
         .from("payments")
@@ -540,7 +568,7 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     async claimPayout(id) {
       const { data, error } = await admin
         .from("payments")
-        .update({ repasse_status: "PROCESSANDO" })
+        .update({ repasse_status: "PROCESSANDO", repasse_asaas_id: null })
         .eq("id", id)
         .eq("status", "PAGO")
         .or("refund_status.is.null,refund_status.neq.PROCESSANDO")

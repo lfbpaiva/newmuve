@@ -328,6 +328,7 @@ describe("repasse ao músico", () => {
     await t.service.payout(t.event.id);
     const transferId = t.world.payments.get(payment.id)!.asaasTransferId!;
 
+    t.world.asaasTransfers.set(transferId, "DONE");
     await t.service.handleWebhook({ id: "evt_t1", event: "TRANSFER_DONE", transfer: { id: transferId } });
 
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
@@ -357,6 +358,68 @@ describe("repasse ao músico", () => {
     t.world.failures.transfer = false;
     await t.service.payout(t.event.id);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+  });
+
+  it("resposta perdida da Asaas não gera segunda transferência: o repasse é localizado pela referência", async () => {
+    const payment = await contratado();
+    t.world.failures.transferLost = true;
+
+    await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", asaasTransferId: null });
+
+    t.world.failures.transferLost = false;
+    await t.service.payout(t.event.id);
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.payments.get(payment.id)?.asaasTransferId).toMatch(/^tra_/);
+  });
+
+  it("falha ao gravar depois da transferência não marca o repasse como falho", async () => {
+    const payment = await contratado();
+    vi.spyOn(t.world.stores.payments, "setPayout").mockRejectedValueOnce(new Error("banco fora do ar"));
+
+    await t.service.payout(t.event.id);
+    await t.service.payout(t.event.id);
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+  });
+
+  it("sem transferência localizada, o repasse só é reenviado pela liberação do suporte", async () => {
+    const payment = await contratado();
+    t.world.failures.transfer = true;
+    await t.service.payout(t.event.id);
+    t.world.failures.transfer = false;
+    t.world.payments.get(payment.id)!.repasseStatus = "PROCESSANDO";
+
+    await t.service.payout(t.event.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    await expect(t.service.releaseStuckPayout(payment.id)).resolves.toBe("REENVIADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    await expect(t.service.releaseStuckPayout(payment.id)).rejects.toMatchObject({ code: "REPASSE_NAO_INCERTO" });
+  });
+
+  it("nova tentativa ignora a notificação atrasada da transferência anterior", async () => {
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const primeira = t.world.payments.get(payment.id)!.asaasTransferId!;
+    t.world.asaasTransfers.set(primeira, "FAILED");
+    await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+
+    await t.service.payout(t.event.id);
+    const segunda = t.world.payments.get(payment.id)!.asaasTransferId!;
+    await t.service.handleWebhook({ id: "evt_antigo", event: "TRANSFER_FAILED", transfer: { id: primeira } });
+
+    expect(segunda).not.toBe(primeira);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+  });
+
+  it("cliente de outra conta da Asaas é recriado e a cobrança sai na segunda tentativa", async () => {
+    t.world.failures.staleCustomer = true;
+    await expect(checkout()).resolves.toMatchObject({ status: "PENDENTE" });
+    expect(t.world.asaasCalls.createCustomer).toBe(2);
   });
 
   it("não repassa sem pagamento confirmado nem para músico sem chave Pix", async () => {

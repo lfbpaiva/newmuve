@@ -58,7 +58,9 @@ export function memoryWorld() {
     refundPayment: [] as string[],
     transferPix: [] as { value: number; pixAddressKey: string; pixAddressKeyType: string }[],
   };
-  const failures = { refund: false, transfer: false };
+  const failures = { refund: false, transfer: false, transferLost: false, staleCustomer: false };
+  const asaasTransferDetails = new Map<string, { externalReference: string; value: number }>();
+  const toTransfer = (id: string) => ({ id, status: asaasTransfers.get(id)!, externalReference: asaasTransferDetails.get(id)!.externalReference, value: asaasTransferDetails.get(id)!.value });
   let sequence = 1;
   const nextId = (prefix: string) => `${prefix}${sequence++}`;
 
@@ -181,6 +183,8 @@ export function memoryWorld() {
       disputes.push(record);
       return record;
     },
+    findDueHirings: async (startedBefore) =>
+      [...events.values()].filter((event) => event.status === "CONTRATADO" && event.inicio <= startedBefore).map((event) => event.id),
     findOpenDispute: async (eventId) => disputes.find((d) => d.eventId === eventId && d.status === "ABERTA") ?? null,
     findDispute: async (id) => disputes.find((d) => d.id === id) ?? null,
     resolveDispute: async (id, decisao, observacao) => {
@@ -258,6 +262,16 @@ export function memoryWorld() {
     findLatestPayment: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null,
     findPaymentByAsaasId: async (asaasPaymentId) => [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId) ?? null,
+    findPaymentById: async (id) => payments.get(id) ?? null,
+    findFinanceFollowUps: async (now) => {
+      const all = [...payments.values()];
+      const eventIds = (keep: (payment: PaymentRecord) => boolean) => all.filter(keep).flatMap((p) => (p.eventId ? [p.eventId] : []));
+      return {
+        expiredCharges: eventIds((p) => p.status === "PENDENTE" && p.expiraEm <= now),
+        refunds: eventIds((p) => p.refundStatus === "PROCESSANDO"),
+        payouts: eventIds((p) => p.status === "PAGO" && p.repasseStatus === "PROCESSANDO"),
+      };
+    },
     findPaymentByTransferId: async (transferId) => [...payments.values()].find((p) => p.asaasTransferId === transferId) ?? null,
     findLateRefundsToRetry: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId && p.refundAction === "NENHUMA" && p.status !== "ESTORNADO" && (p.refundStatus === null || p.refundStatus === "NEGADO")),
@@ -342,6 +356,7 @@ export function memoryWorld() {
       const payment = payments.get(id)!;
       if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
       payment.repasseStatus = "PROCESSANDO";
+      payment.asaasTransferId = null;
       return true;
     },
     setPayout: async (id, payout) => {
@@ -361,6 +376,10 @@ export function memoryWorld() {
       return nextId("cus_");
     },
     createPixCharge: async (charge) => {
+      if (failures.staleCustomer) {
+        failures.staleCustomer = false;
+        throw new AppError(502, "PAGAMENTO_CLIENTE_INVALIDO", "cliente de outra conta da Asaas");
+      }
       asaasCalls.createPixCharge.push({ value: charge.value, customer: charge.customer });
       const id = nextId("pay_");
       asaasCharges.set(id, { status: "PENDING", value: charge.value });
@@ -378,13 +397,17 @@ export function memoryWorld() {
       asaasCharges.set(paymentId, { ...asaasCharges.get(paymentId)!, status: "REFUNDED" });
     },
     transferPix: async (transfer) => {
-      if (failures.transfer) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada na transferência");
+      if (failures.transfer) throw new AppError(422, "PAGAMENTO_DADOS_INVALIDOS", "falha simulada na transferência");
       asaasCalls.transferPix.push({ value: transfer.value, pixAddressKey: transfer.pixAddressKey, pixAddressKeyType: transfer.pixAddressKeyType });
       const id = nextId("tra_");
       asaasTransfers.set(id, "PENDING");
+      asaasTransferDetails.set(id, { externalReference: transfer.externalReference, value: transfer.value });
+      if (failures.transferLost) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "resposta perdida depois de a Asaas criar a transferência");
       return { id, status: "PENDING" };
     },
-    getTransferStatus: async (transferId) => asaasTransfers.get(transferId) ?? null,
+    getTransfer: async (transferId) => (asaasTransfers.has(transferId) ? toTransfer(transferId) : null),
+    findTransfersByReference: async (reference) =>
+      [...asaasTransfers.keys()].map(toTransfer).filter((transfer) => transfer.externalReference === reference),
     createSubscription: async (subscription) => {
       const id = nextId("sub_");
       asaasSubscriptions.set(id, { ...subscription, payments: [{ id: nextId("pay_"), status: "PENDING", dueDate: subscription.nextDueDate }], cancelled: false });

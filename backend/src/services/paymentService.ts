@@ -3,10 +3,13 @@ import type { AsaasWebhook, EventRecord, PaymentRecord, RefundAction } from "../
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
-import type { AsaasGateway, AsaasPayment, EventStore, PaymentStore } from "./ports.ts";
+import type { AsaasGateway, AsaasPayment, AsaasTransfer, EventStore, PaymentStore } from "./ports.ts";
 
 const ASAAS_PAID = ["RECEIVED", "CONFIRMED"];
 const REFUND_REQUEST_GRACE_MS = 60_000;
+const TRANSFER_DEAD = ["FAILED", "CANCELLED"];
+
+const transferMayExist = (error: unknown) => !(error instanceof AppError) || error.status === 502;
 
 type RefundState = Pick<PaymentRecord, "refundStatus" | "refundAction">;
 
@@ -32,6 +35,53 @@ export function createPaymentService(deps: {
       await payments.setPayout(payment.id, { status: "FALHOU" });
       await warnPayoutFailed(payment);
     }
+  }
+
+  async function finesToDiscount(musicianId: string, valorCache: number) {
+    const multas: string[] = [];
+    let desconto = 0;
+    for (const fine of await payments.openFines(musicianId)) {
+      if (desconto + fine.multa >= valorCache) break;
+      desconto = Math.round((desconto + fine.multa) * 100) / 100;
+      multas.push(fine.id);
+    }
+    return { multas, desconto };
+  }
+
+  async function settleDiscountedFines(payment: PaymentRecord): Promise<void> {
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    if (!event?.musicoContratadoId) return;
+    const { multas, desconto } = await finesToDiscount(event.musicoContratadoId, payment.valorCache);
+    if (desconto === payment.multaDescontada) await payments.settleFines(multas, payment.id);
+  }
+
+  async function applyTransfer(transfer: AsaasTransfer): Promise<void> {
+    const reference = transfer.externalReference;
+    const payment = (await payments.findPaymentByTransferId(transfer.id)) ?? (reference ? await payments.findPaymentById(reference) : null);
+    if (payment?.repasseStatus !== "PROCESSANDO") return;
+    if (payment.asaasTransferId && payment.asaasTransferId !== transfer.id) return;
+    if (!payment.asaasTransferId) {
+      if (TRANSFER_DEAD.includes(transfer.status)) return;
+      await payments.setPayout(payment.id, { status: "PROCESSANDO", asaasTransferId: transfer.id });
+      await settleDiscountedFines(payment);
+    }
+    await settlePayout(payment, transfer.status);
+  }
+
+  async function activeTransfers(payment: PaymentRecord): Promise<AsaasTransfer[]> {
+    const found = await asaas.findTransfersByReference(payment.id, payment.expiraEm);
+    return found.filter((transfer) => !TRANSFER_DEAD.includes(transfer.status));
+  }
+
+  async function reconcilePayout(payment: PaymentRecord): Promise<void> {
+    if (payment.asaasTransferId) {
+      const transfer = await asaas.getTransfer(payment.asaasTransferId).catch(() => null);
+      if (transfer) await applyTransfer(transfer);
+      return;
+    }
+    const active = await activeTransfers(payment).catch(() => []);
+    if (active.length === 1) await applyTransfer(active[0]);
+    if (active.length > 1) console.error("Mais de uma transferência para o mesmo pagamento; requer conciliação manual", payment.id);
   }
 
   async function warnPayoutFailed(payment: PaymentRecord): Promise<void> {
@@ -154,8 +204,8 @@ export function createPaymentService(deps: {
     await payments.setPaymentStatus(pending.id, pending.expiraEm <= now ? "EXPIRADO" : "CANCELADO");
   }
 
-  async function ensureCustomer(user: AuthUser): Promise<string> {
-    const existing = await payments.getAsaasCustomerId(user.id);
+  async function ensureCustomer(user: AuthUser, recreate = false): Promise<string> {
+    const existing = recreate ? null : await payments.getAsaasCustomerId(user.id);
     if (existing) return existing;
 
     const account = await accounts.findAccount(user.id);
@@ -175,6 +225,20 @@ export function createPaymentService(deps: {
     const event = await events.findEvent(eventId);
     if (!event || event.contractorId !== user.id) throw new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
     return event;
+  }
+
+  async function syncPending(eventId: string, now = new Date()): Promise<PaymentRecord | null> {
+    const latest = await payments.findLatestPayment(eventId);
+    if (latest?.status !== "PENDENTE") return latest;
+
+    const remote = await asaas.getPayment(latest.asaasPaymentId);
+    if (remote && ASAAS_PAID.includes(remote.status) && remote.value >= latest.valor) {
+      await confirm(latest.asaasPaymentId);
+    } else if (latest.expiraEm <= now) {
+      await asaas.cancelCharge(latest.asaasPaymentId);
+      await payments.setPaymentStatus(latest.id, "EXPIRADO");
+    }
+    return payments.findLatestPayment(eventId);
   }
 
   return {
@@ -198,13 +262,16 @@ export function createPaymentService(deps: {
 
       const contratante = await accounts.findAccount(user.id);
       const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache, comissaoPercentual(contratante?.casaAte, now));
-      const customer = await ensureCustomer(user);
-      const asaasPaymentId = await asaas.createPixCharge({
+      const charge = (customer: string) => asaas.createPixCharge({
         customer,
         value: cobranca.total,
         dueDate: dueDateInSaoPaulo(now),
         description: `Muve — contratação de músico para "${event.titulo}"`,
         externalReference: event.id,
+      });
+      const asaasPaymentId = await charge(await ensureCustomer(user)).catch(async (error: unknown) => {
+        if (!(error instanceof AppError) || error.code !== "PAGAMENTO_CLIENTE_INVALIDO") throw error;
+        return charge(await ensureCustomer(user, true));
       });
       try {
         const qrCode = await asaas.getPixQrCode(asaasPaymentId);
@@ -228,18 +295,10 @@ export function createPaymentService(deps: {
     async syncCheckout(user: AuthUser, eventId: string, now = new Date()): Promise<PaymentRecord | null> {
       await findOwnedEvent(user, eventId);
       for (const late of await payments.findLateRefundsToRetry(eventId)) await refundLatePayment(late).catch(() => {});
-      const latest = await payments.findLatestPayment(eventId);
-      if (latest?.status !== "PENDENTE") return latest;
-
-      const remote = await asaas.getPayment(latest.asaasPaymentId);
-      if (remote && ASAAS_PAID.includes(remote.status) && remote.value >= latest.valor) {
-        await confirm(latest.asaasPaymentId);
-      } else if (latest.expiraEm <= now) {
-        await asaas.cancelCharge(latest.asaasPaymentId);
-        await payments.setPaymentStatus(latest.id, "EXPIRADO");
-      }
-      return payments.findLatestPayment(eventId);
+      return syncPending(eventId, now);
     },
+
+    syncPending,
 
     async ensureNoActiveCheckout(eventId: string, now = new Date()): Promise<void> {
       const pending = await payments.findPendingPayment(eventId);
@@ -250,29 +309,24 @@ export function createPaymentService(deps: {
 
     async payout(eventId: string): Promise<void> {
       const payment = await payments.findLatestPayment(eventId);
-      if (payment?.status === "PAGO" && payment.repasseStatus === "PROCESSANDO" && payment.asaasTransferId) {
-        const transferStatus = await asaas.getTransferStatus(payment.asaasTransferId).catch(() => null);
-        if (transferStatus) await settlePayout(payment, transferStatus);
+      if (payment?.status === "PAGO" && payment.repasseStatus === "PROCESSANDO") {
+        await reconcilePayout(payment);
         return;
       }
       if (payment?.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return;
       if (await events.findOpenDispute(eventId)) return;
       if (!(await payments.claimPayout(payment.id))) return;
 
+      let transferRequested = false;
       try {
         const event = await events.findEvent(eventId);
         const musician = event?.musicoContratadoId ? await accounts.findAccount(event.musicoContratadoId) : null;
         if (!musician?.chavePix || !musician.chavePixTipo) throw new Error("músico sem chave Pix cadastrada");
 
-        const multas: string[] = [];
-        let desconto = 0;
-        for (const fine of await payments.openFines(musician.id)) {
-          if (desconto + fine.multa >= payment.valorCache) break;
-          desconto = Math.round((desconto + fine.multa) * 100) / 100;
-          multas.push(fine.id);
-        }
+        const { multas, desconto } = await finesToDiscount(musician.id, payment.valorCache);
         await payments.setPayoutDiscount(payment.id, desconto);
 
+        transferRequested = true;
         const transfer = await asaas.transferPix({
           value: Math.round((payment.valorCache - desconto) * 100) / 100,
           pixAddressKey: musician.chavePix,
@@ -283,10 +337,28 @@ export function createPaymentService(deps: {
         await payments.setPayout(payment.id, { status: transfer.status === "DONE" ? "REPASSADO" : "PROCESSANDO", asaasTransferId: transfer.id });
         await payments.settleFines(multas, payment.id);
       } catch (error) {
-        console.error("Falha no repasse do pagamento", payment.id, error);
+        console.error("Falha no repasse do pagamento", payment.id, error instanceof AppError ? error.code : error);
+        if (transferRequested && transferMayExist(error)) return;
         await payments.setPayout(payment.id, { status: "FALHOU" }).catch(() => {});
         await warnPayoutFailed(payment).catch(() => {});
       }
+    },
+
+    async releaseStuckPayout(paymentId: string): Promise<"REENVIADO" | "VINCULADO"> {
+      const payment = await payments.findPaymentById(paymentId);
+      if (!payment?.eventId) throw new AppError(404, "PAGAMENTO_NAO_ENCONTRADO", "Pagamento não encontrado.");
+      if (payment.repasseStatus !== "PROCESSANDO" || payment.asaasTransferId) {
+        throw new AppError(409, "REPASSE_NAO_INCERTO", "Este repasse não está aguardando conferência.");
+      }
+      const active = await activeTransfers(payment);
+      if (active.length > 1) throw new AppError(409, "REPASSE_DUPLICADO", "Existe mais de uma transferência para este pagamento. Resolva no painel da Asaas.");
+      if (active.length === 1) {
+        await applyTransfer(active[0]);
+        return "VINCULADO";
+      }
+      await payments.setPayout(payment.id, { status: "FALHOU" });
+      await this.payout(payment.eventId);
+      return "REENVIADO";
     },
 
     async refundHiring(eventId: string, action: RefundAction): Promise<"PROCESSANDO" | "ESTORNADO"> {
@@ -357,8 +429,8 @@ export function createPaymentService(deps: {
       if (await payments.webhookEventExists(notification.id)) return;
 
       if (notification.transfer) {
-        const payment = await payments.findPaymentByTransferId(notification.transfer.id);
-        if (payment?.repasseStatus === "PROCESSANDO") await settlePayout(payment, notification.event.replace("TRANSFER_", ""));
+        const transfer = await asaas.getTransfer(notification.transfer.id);
+        if (transfer) await applyTransfer(transfer);
       }
 
       const asaasPaymentId = notification.payment?.id;

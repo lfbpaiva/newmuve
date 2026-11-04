@@ -300,6 +300,11 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.body(null, 204);
   });
 
+  app.post("/admin/repasses/:id/liberacao", async (c) => {
+    if (!sameToken(c.req.header("x-admin-token"), adminToken)) throw new AppError(401, "NAO_AUTORIZADO", "Acesso restrito ao suporte.");
+    return c.json({ resultado: await payments.releaseStuckPayout(c.req.param("id")) });
+  });
+
   app.post("/events/:id/nao-comparecimento", async (c) => {
     return c.json(await events.reportNoShow(c.get("user"), c.req.param("id")));
   });

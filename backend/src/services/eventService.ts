@@ -333,6 +333,14 @@ export function createEventService(deps: {
       await events.deleteCandidate(candidate.id);
     },
 
+    async settleDueHiring(eventId: string, now = new Date()): Promise<void> {
+      const event = await events.findEvent(eventId);
+      if (event?.status !== "CONTRATADO" || !prazoEncerrado(event, now)) return;
+      if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO" || (await events.findOpenDispute(eventId))) return;
+      await events.concludeEvent(eventId);
+      await payments.payout(eventId);
+    },
+
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
       await findEventAsParty(user, eventId);
       await payments.refreshRefund(eventId).catch((error: unknown) => {

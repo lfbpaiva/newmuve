@@ -1,6 +1,17 @@
 import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import { AppError } from "../domain/errors.ts";
-import type { AsaasGateway, AsaasPayment } from "../services/ports.ts";
+import type { AsaasGateway, AsaasPayment, AsaasTransfer } from "../services/ports.ts";
+
+const TRANSFER_SEARCH_PAGES = 5;
+
+type RemoteTransfer = { id: string; status: string; externalReference?: string | null; value: number };
+
+const toTransfer = (transfer: RemoteTransfer): AsaasTransfer => ({
+  id: transfer.id,
+  status: transfer.status,
+  externalReference: transfer.externalReference ?? null,
+  value: transfer.value,
+});
 
 const indisponivel = () =>
   new AppError(502, "PAGAMENTO_INDISPONIVEL", "Não foi possível falar com o serviço de pagamentos. Tente novamente em instantes.");
@@ -27,7 +38,7 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
     if (response.status === 404 && options.allowNotFound) return null;
     if (!response.ok) {
       const detail = await response.json().catch(() => null) as { errors?: Array<{ code?: string; description?: string }> } | null;
-      console.error(`Asaas ${method} ${path}: HTTP ${response.status}`, detail?.errors?.map((item) => `${item.code}: ${item.description}`) ?? []);
+      console.error(`Asaas ${method} ${path}: HTTP ${response.status}`, detail?.errors?.map((item) => item.code) ?? []);
       if (path.endsWith("/pixQrCode") && response.status === 400 && detail?.errors?.some((item) => item.code === "invalid_action")) {
         throw new AppError(503, "PAGAMENTO_QR_INDISPONIVEL", "O QR Code Pix ainda não está disponível. Tente novamente em instantes.");
       }
@@ -50,6 +61,9 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
       if (response.status === 400 || response.status === 422) {
         if (method === "GET" && path.startsWith("/payments/")) {
           throw new AppError(502, "PAGAMENTO_CONSULTA_RECUSADA", "Não foi possível verificar a cobrança no Asaas. Tente novamente em instantes.");
+        }
+        if (method === "POST" && path === "/payments" && detail?.errors?.some((item) => item.code === "invalid_customer")) {
+          throw new AppError(502, "PAGAMENTO_CLIENTE_INVALIDO", "O cadastro de pagamento não foi aceito. Tente novamente em instantes.");
         }
         throw new AppError(422, "PAGAMENTO_DADOS_INVALIDOS", "O serviço de pagamentos recusou os dados da cobrança. Revise seu perfil e tente novamente.");
       }
@@ -134,9 +148,22 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
       await request("DELETE", `/subscriptions/${encodeURIComponent(subscriptionId)}`, undefined, { allowNotFound: true });
     },
 
-    async getTransferStatus(transferId) {
-      const transfer = await request<{ status: string }>("GET", `/transfers/${encodeURIComponent(transferId)}`, undefined, { allowNotFound: true });
-      return transfer?.status ?? null;
+    async getTransfer(transferId) {
+      const transfer = await request<RemoteTransfer>("GET", `/transfers/${encodeURIComponent(transferId)}`, undefined, { allowNotFound: true });
+      return transfer && toTransfer(transfer);
+    },
+
+    async findTransfersByReference(reference, createdSince) {
+      const since = new Date(createdSince.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const matches: AsaasTransfer[] = [];
+      for (let page = 0; page < TRANSFER_SEARCH_PAGES; page++) {
+        const query = new URLSearchParams({ "dateCreated[ge]": since, offset: String(page * 100), limit: "100" });
+        const result = await request<{ data: RemoteTransfer[]; hasMore: boolean }>("GET", `/transfers?${query}`);
+        if (!result || !Array.isArray(result.data)) throw respostaInvalida();
+        matches.push(...result.data.filter((transfer) => transfer.externalReference === reference).map(toTransfer));
+        if (!result.hasMore) break;
+      }
+      return matches;
     },
   };
 }
