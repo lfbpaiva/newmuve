@@ -102,6 +102,7 @@ export function Field({ label, error, hint, trailing, style, ...input }: TextInp
         placeholderTextColor={colors.ink3}
         selectionColor={colors.accentText}
         cursorColor={colors.accentText}
+        accessibilityLabel={label}
         {...input}
         onFocus={(e) => { setFocused(true); input.onFocus?.(e); }}
         onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
@@ -177,7 +178,7 @@ export function Select({ label, value, options, placeholder = "Selecionar", disa
 export function Chips({ options, selected, onToggle, labels, scroll }: { options: readonly string[]; selected: string[]; onToggle: (value: string) => void; labels?: (value: string) => string; scroll?: boolean }) {
   const items = options.map((option) => {
     const on = selected.includes(option);
-    return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => onToggle(option)} style={({ pressed }) => ({ minHeight: 38, borderRadius: radius.sm, paddingHorizontal: 14, justifyContent: "center", backgroundColor: on ? colors.ink : pressed ? colors.surface2 : "transparent", borderWidth: 1, borderColor: on ? colors.ink : colors.line })}>
+    return <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => onToggle(option)} style={({ pressed }) => ({ minHeight: 44, borderRadius: radius.sm, paddingHorizontal: 14, justifyContent: "center", backgroundColor: on ? colors.ink : pressed ? colors.surface2 : "transparent", borderWidth: 1, borderColor: on ? colors.ink : colors.line })}>
       <Text style={[type.label, { color: on ? colors.bg : colors.ink2 }]}>{labels ? labels(option) : option}</Text>
     </Pressable>;
   });

@@ -122,6 +122,7 @@ export default function HiringScreen() {
           <Icon name="location-outline" size={20} color={colors.accentText}/>
           <View style={{ flex: 1 }}><Text style={type.titleSmall}>{evento.endereco ?? "Endereço não informado"}</Text><Text style={type.bodySmall}>{evento.cidade}, {evento.uf}</Text></View>
         </View>
+        {evento.endereco && <Button title="Abrir no mapa" variant="outlined" icon="map-outline" onPress={() => void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${evento.endereco}, ${evento.cidade}, ${evento.uf}`)}`)}/>}
         {other && <>
           <View style={styles.divider}/>
           <View style={[styles.row, { gap: 12 }]}>
