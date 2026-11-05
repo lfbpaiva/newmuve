@@ -83,7 +83,7 @@ A tela "Contratos" do protótipo foi substituída pelo **comprovante da contrata
 - Split de pagamento com Conta Escrow da Asaas, o modelo regulado para produção (desenho em `docs/conta-escrow.md`).
 - Validação de CPF junto à Receita Federal.
 - Trilha de auditoria completa.
-- Publicação nas lojas, com login pela Apple.
+- Publicação nas lojas, com login pela Apple, bloqueio de usuários e política de privacidade própria.
 - Filtro por público-alvo e agenda pública de shows.
 
 ## 5 Considerações finais (complemento)

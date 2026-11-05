@@ -260,6 +260,8 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 2. **Ativar o login com Google** no Supabase e no Google Cloud (passo a passo no README).
 3. **Gerar o app pelo EAS** para as notificações com o app fechado funcionarem (o Expo Go no Android não recebe push).
 4. **Hospedagem da API e SMTP** (passo a passo no README).
-5. **Autorização de transferências na Asaas** no modelo atual (manual no sandbox).
+5. **Autorização de transferências na Asaas**: cada repasse pede um código por SMS no painel (ver [continuidade.md](continuidade.md)).
 6. **Público geral** (agenda de shows abertos ao público): ideia registrada, sem implementação.
 7. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.
+8. **Bloquear usuário**: hoje só existe denúncia, por e-mail ao suporte.
+9. **Política de privacidade com link próprio**, separada dos Termos, para publicar nas lojas.

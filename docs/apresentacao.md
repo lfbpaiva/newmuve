@@ -13,6 +13,8 @@ Demonstração de 10 a 12 minutos, com dois aparelhos (ou duas abas do navegador
 - [ ] Painel do sandbox da Asaas aberto em outra aba, na conta sandbox da Muve (a mesma da chave no `backend/.env`), para confirmar o Pix de teste.
 - [ ] Ter uma foto de evento no aparelho do contratante.
 - [ ] Não criar conta nova ao vivo se o SMTP não estiver configurado: o e-mail de confirmação pode não chegar.
+- [ ] Ter por perto o celular cadastrado na conta Asaas: cada repasse pede um código por SMS.
+- [ ] Conferir se há um evento aberto com data futura para a demonstração.
 
 ## Roteiro
 
@@ -43,7 +45,7 @@ Contratar músico independente é informal: o músico arrisca calote, o contrata
 
 ### 6. Depois do show (1 min)
 Usar o evento já concluído "Noite acústica no terraço" para mostrar:
-1. A confirmação das duas partes e o repasse do cachê por Pix.
+1. A confirmação das duas partes e o repasse do cachê por Pix. Para mostrar um repasse ao vivo, use **Meu Dinheiro → Transferências → Enviar código** no painel da Asaas: no sandbox, a saída do dinheiro exige autorização por SMS.
 2. A avaliação mútua.
 3. Explicar a regra: sem confirmação e sem reclamação, o show é dado como realizado em 7 dias.
 

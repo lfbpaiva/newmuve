@@ -2,7 +2,7 @@
 
 Aplicativo que conecta **músicos** a **contratantes** de eventos. O contratante publica um evento, músicos da região e do estilo se inscrevem (aceitando o cachê ou propondo outro valor) e as partes conversam pelo app. O contratante aprova um deles pagando via Pix o cachê mais a taxa de serviço de 10%. O valor fica retido até o show acontecer; então o cachê é repassado ao músico e os dois se avaliam.
 
-Projeto de TCC. O produto, as regras completas e o que mudou em relação à monografia estão em [docs/produto.md](docs/produto.md); as decisões técnicas, em [docs/arquitetura.md](docs/arquitetura.md); as especificações de origem, em [docs/especificacao/](docs/especificacao/). Para a apresentação, veja [docs/apresentacao.md](docs/apresentacao.md); para atualizar a monografia, [docs/monografia.md](docs/monografia.md).
+Projeto de TCC. O produto, as regras completas e o que mudou em relação à monografia estão em [docs/produto.md](docs/produto.md); as decisões técnicas, em [docs/arquitetura.md](docs/arquitetura.md); as especificações de origem, em [docs/especificacao/](docs/especificacao/). Para a apresentação, veja [docs/apresentacao.md](docs/apresentacao.md); para atualizar a monografia, [docs/monografia.md](docs/monografia.md). **Para dar continuidade ao projeto, comece por [docs/continuidade.md](docs/continuidade.md).**
 
 ## Visão geral
 
@@ -24,7 +24,7 @@ cd mobile && npm install
 ```
 
 1. Copie `backend/.env.example` para `backend/.env` e preencha as chaves do Supabase e da Asaas. A chave `SUPABASE_SERVICE_ROLE_KEY` só existe neste arquivo.
-2. Copie `mobile/.env.example` para `mobile/.env` e preencha a URL e a chave pública do Supabase. Para usar no celular, `EXPO_PUBLIC_API_URL` deve apontar para o IP do computador que roda a API, na mesma rede Wi-Fi.
+2. Copie `mobile/.env.example` para `mobile/.env` e preencha a URL e a chave pública do Supabase. Em desenvolvimento, o app descobre sozinho o endereço da API, com celular e computador na mesma rede Wi-Fi; `EXPO_PUBLIC_API_URL` só é necessária para apontar para outro endereço.
 3. Suba a API e o app, cada um em um terminal:
 
 ```bash
@@ -39,7 +39,7 @@ Leia o QR Code com o Expo Go. No terminal do Expo, a tecla `w` abre o app no nav
 
 Os Termos de Uso ficam em `mobile/app/terms.tsx`; ao mudar as regras, atualize o texto e `TERMOS_VERSAO` em `shared/dominio.ts`.
 
-Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). O script `node scripts/contas-demo.mjs` recria as duas do zero, com fotos do Unsplash (uso livre).
+Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). Para usar as duas no mesmo navegador, abra uma em `http://localhost:8081` e outra em `http://127.0.0.1:8081`. O script `node scripts/contas-demo.mjs` recria as duas do zero, com fotos do Unsplash (uso livre).
 
 ### Banco
 
@@ -72,7 +72,7 @@ O GitHub Actions roda `typecheck`, `lint` e `test` a cada pull request e a cada 
 
 **Asaas (sandbox):** a conta precisa de uma chave Pix cadastrada para gerar QR Code. Preencha `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` em `backend/.env`. O webhook (`/api/webhooks/asaas`) só funciona com a API publicada na internet, mas não é obrigatório: a tela de pagamento consulta a Asaas a cada poucos segundos. Para confirmar um pagamento de teste, abra a cobrança no painel do sandbox e use *Confirmar pagamento*.
 
-No repasse ao músico, o sandbox só aceita as [chaves Pix fictícias do Banco Central](https://docs.asaas.com/docs/testando-transferências), como `cliente-a00001@pix.bcb.gov.br`, que a conta de demonstração já usa. Transferências feitas pela API ficam aguardando autorização no painel da Asaas (*Transferências*), a menos que essa exigência seja desativada nas configurações de segurança da conta. Sem webhook, o app consulta a situação da transferência sempre que o comprovante é aberto.
+No repasse ao músico, o sandbox só aceita as [chaves Pix fictícias do Banco Central](https://docs.asaas.com/docs/testando-transferências), como `cliente-a00001@pix.bcb.gov.br`, que a conta de demonstração já usa. A chave de API precisa da opção *Permitir que esta chave execute operações de saque via API*. Transferências feitas pela API ficam aguardando autorização por SMS no painel da Asaas (*Meu Dinheiro → Transferências → Enviar código*). Sem webhook, o app consulta a situação da transferência sempre que o comprovante é aberto.
 
 **Publicação da API (opcional, mas libera o webhook da Asaas e o uso fora do Wi-Fi de casa):**
 

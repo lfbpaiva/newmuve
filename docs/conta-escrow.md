@@ -13,7 +13,7 @@ Com subcontas e Conta Escrow, **o dinheiro nunca passa pela conta da plataforma*
 
 ## Pré-requisito (depende do grupo)
 
-A Asaas só permite subcontas em contas de **pessoa jurídica (CNPJ)**. A conta sandbox usada hoje (do Cleiton) é de pessoa física, então é preciso criar uma conta sandbox como empresa em <https://sandbox.asaas.com> e gerar uma chave de API com permissão de saque.
+A Asaas só permite subcontas em contas de **pessoa jurídica (CNPJ)**. A conta sandbox usada hoje (`muveapp.contato@gmail.com`) é de pessoa física, então é preciso criar uma conta sandbox como empresa em <https://sandbox.asaas.com> e gerar uma chave de API com permissão de saque.
 
 ## Fluxo proposto
 
