@@ -1,0 +1,132 @@
+===================================================================
+APP MUVE — ARQUITETURA DE PRODUÇÃO, SEGURANÇA E REGRAS DE NEGÓCIO
+===================================================================
+
+1. STACK E TRÍADE DE SEGURANÇA (BACKEND & INFRA)
+-------------------------------------------------------------------
+- FRONTEND: Flutter (App) / React (Protótipo Figma Make)
+- BACKEND: Node.js (API REST com TypeScript)
+- DATABASE: Supabase (PostgreSQL com Row Level Security - RLS)
+- ORM: Prisma ORM (Mapeamento de entidades e migrações)
+- SEGURANÇA & AUTENTICAÇÃO:
+  * JWT (JSON Web Token): Access Token de curta duração (15 min) + Refresh Token em cookie HttpOnly/Secure. Payload contém `sub` (userID), `email` e `role` ('MUSICIAN' | 'CONTRACTOR').
+  * RATE LIMITING: Bloqueio no backend para prevenir Brute Force na rota de autenticação (/api/v1/auth/login). Máximo de 5 tentativas por minuto por IP.
+  * SANITIZAÇÃO & DTOs: Validação estrita de input no backend via Zod/Yup impedindo SQL Injection e XSS.
+
+2. DIRETRIZES DE UI/UX — REMOÇÃO DE ATALHOS DE TESTE
+-------------------------------------------------------------------
+- SEM DADOS DEMO NA TELA: Proibida a exibição de banners, textos explicativos ou botões de preenchimento automático com credenciais de teste (ex: "Demo - Músico: ...").
+- PROIBIDO BYPASS DE LOGIN: O botão "Entrar" só executa ação se a combinação de e-mail e senha passar pela validação de sintaxe e autenticação do banco de dados. Digitar apenas o e-mail sem senha ou credencial inexistente retorna erro visível de credenciais inválidas.
+- BOTÃO DE RETORNO: Todas as sub-telas (Cadastros, Detalhes, Criar Evento, Checkout, Painel) exigem o botão `<- Voltar` no topo do cabeçalho.
+
+3. MÁSCARAS E VALIDAÇÕES DE ENTRADA (FRONTEND)
+-------------------------------------------------------------------
+- CPF: `000.000.000-00` (Apenas dígitos numéricos, máximo 11 caracteres base).
+- CNPJ: `00.000.000/0000-00` (Apenas dígitos numéricos, máximo 14 caracteres base).
+- TELEFONE: `(00) 00000-0000` ou `(00) 0000-0000` (Apenas dígitos numéricos, 10 ou 11 dígitos).
+- E-MAIL (DOMÍNIO EXCLUSIVO): Aceita exclusivamente o domínio `@gmail.com`. Exemplo de validação Regex: `^[a-zA-Z0-9._%+-]+@gmail\.com$`. Sanitização ativa para remover espaços, acentos e cedilhas no input.
+- CACHÊ MÍNIMO: R$ 100,00. O campo de valor aceita digitação monetária e impede envio de valores inferiores a 100.
+- DATA DO EVENTO: Trava no componente de calendário permitindo estritamente `Data >= Data Atual`.
+
+4. SCHEMA PRISMA (MODELAGEM DO BANCO DE DADOS - SUPABASE)
+-------------------------------------------------------------------
+enum Role {
+  MUSICIAN
+  CONTRACTOR
+}
+
+enum EventStatus {
+  ABERTO
+  CONTRATADO
+  CONCLUIDO
+  CANCELADO
+}
+
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  passwordHash     String
+  role             Role
+  uf               String
+  cidade           String
+  createdAt        DateTime          @default(now())
+  musicianProfile  MusicianProfile?
+  contractorProfile ContractorProfile?
+}
+
+model MusicianProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nomeCompleto    String
+  cpf             String   @unique
+  telefone        String
+  bio             String?
+  estilosMusicais String[] // Array de gêneros
+  avaliacaoMedia  Float    @default(0.0)
+  totalAvaliacoes Int      @default(0)
+}
+
+model ContractorProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nomeFantasia String
+  cnpj         String   @unique
+  telefone     String
+}
+
+model Event {
+  id                     String      @id @default(uuid())
+  contractorId           String
+  titulo                 String
+  cache                  Float
+  data                   DateTime
+  uf                     String
+  cidade                 String
+  estiloMusical          String
+  descricao              String?
+  status                 EventStatus @default(ABERTO)
+  musicoContratadoId     String?
+  confirmacaoMusico      Boolean     @default(false)
+  confirmacaoContratante Boolean     @default(false)
+  createdAt              DateTime    @default(now())
+}
+
+5. FLUXO TELA A TELA DO PROTÓTIPO DEFINITIVO
+-------------------------------------------------------------------
+[TELA 01: LOGIN]
+- Inputs: E-mail (@gmail.com) e Senha.
+- Ação do Botão "Entrar": Autentica a credencial via API Node/Prisma. Lê o payload JWT e redireciona reativamente:
+  * Se Role == 'MUSICIAN' -> Direciona para a Home do Músico.
+  * Se Role == 'CONTRACTOR' -> Direciona para o Painel do Contratante.
+- Erro: Exibe aviso em vermelho se e-mail não for cadastrado, senha estiver errada ou e-mail não for @gmail.com.
+
+[TELA 02: SELEÇÃO DE PERFIL / CADASTRO]
+- Opção inicial: "Sou Músico" ou "Sou Contratante".
+- Formulário Músico: Nome Completo, Gmail, Senha, CPF (mascarado), Telefone (mascarado), Estado (UF), Cidade, Bio e Estilos Musicais (Chips).
+- Formulário Contratante: Nome Fantasia, Gmail, Senha, CNPJ (mascarado), Telefone (mascarado), Estado (UF), Cidade.
+- Validação Reativa: O aviso de erro de seleção de estilo musical desaparece instantaneamente ao marcar um chip.
+
+[TELA 03: HOME / FEED DO MÚSICO]
+- Cabeçalho: Exibe nome do músico logado e badge com estilo musical principal.
+- Regra de Filtro RLS/Prisma: Retorna apenas eventos do banco onde `Event.uf == Musico.uf AND Event.cidade == Musico.cidade AND Event.estiloMusical IN Musico.estilosMusicais`.
+- Empty State: Caso o músico crie uma conta em uma cidade/estilo sem shows cadastrados, exibe aviso: "Nenhum evento disponível na sua região para o seu estilo no momento."
+- Ação: Clique no card abre detalhes do evento com botão "Inscrever-se".
+
+[TELA 04: PAINEL DO CONTRATANTE & CRIAR EVENTO]
+- Tela Inicial do Contratante: Exibe o botão "+ Criar novo evento" e a lista "Meus eventos".
+- Formulário Criar Evento: Título, Data (futura), Cachê (mínimo R$ 100), Estado (UF), Cidade, Estilo Musical e Descrição.
+- Painel do Evento Criado: Lista os músicos que se candidataram. Permite ao contratante clicar no perfil do músico para visualizar sua nota (1 a 5 estrelas) e histórico de avaliações.
+- Botão "Aprovar Músico": Redireciona o contratante para a tela de pagamento.
+
+[TELA 05: CHECKOUT PIX ASAAS]
+- Exclusivo para o Contratante após aprovar um candidato.
+- Exibe o resumo da contratação (Nome do Músico, Evento, Data, Valor do Cachê).
+- Exibe o QR Code Pix simulado e o botão "Copiar Chave Pix".
+- Transição de Status: Após a confirmação do pagamento no webhook Asaas, o evento muda o status no banco para `CONTRATADO`.
+
+[TELA 06: PÓS-EVENTO & DUPLO OK]
+- Acessível na data ou após a realização do evento.
+- Interface possui dois botões independentes de confirmação de conclusão: "Músico Confirmou" e "Contratante Confirmou". Nenhum status vem pré-marcado.
+- Somente quando ambos os botões receberem o clique (Duplo OK), o evento passa para `CONCLUIDO` e libera a tela de avaliação mútua (1 a 5 estrelas e comentário).

@@ -1,0 +1,215 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { TERMOS_VERSAO } from "../../../shared/dominio.ts";
+import type { Account, Role, SignupInput } from "../domain/account.ts";
+import { AppError } from "../domain/errors.ts";
+import { assertProfileComplete, createAccountService, type AccountStore, type AuthGateway, type ImageStore } from "./accountService.ts";
+
+function fakes() {
+  const accounts = new Map<string, Account>();
+  const users = new Map<string, { email: string; password: string; termosVersao: string }>();
+  const images = new Set<string>();
+  const state = { failCreateProfile: false, ongoingHiring: false, semSenha: false, customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
+  let nextId = 1;
+
+  const store: AccountStore = {
+    documentExists: async (documento, exceptUserId) => [...accounts.values()].some((a) => a.documento === documento && a.id !== exceptUserId),
+    createProfile: async (userId, { role, nome }) => {
+      if (state.failCreateProfile) throw new Error("falha simulada no banco");
+      accounts.set(userId, { id: userId, role, nome, documento: null, telefone: null, uf: null, cidade: null, fotoPerfilUrl: null, avaliacaoMedia: 0, totalAvaliacoes: 0 });
+    },
+    findAccount: async (userId) => accounts.get(userId) ?? null,
+    findEmail: async (userId) => users.get(userId)?.email ?? null,
+    resetPaymentCustomer: async (userId) => void state.customerResets.push(userId),
+    reduceVisibility: async () => {},
+    updateProfile: async (userId, _role: Role, changes) => {
+      const current = accounts.get(userId)!;
+      const next = { ...current };
+      for (const [key, value] of Object.entries(changes)) if (value !== undefined) (next as Record<string, unknown>)[key] = value;
+      accounts.set(userId, next);
+    },
+  };
+
+  const auth: AuthGateway = {
+    signUp: async (email, password, termosVersao) => {
+      if ([...users.values()].some((u) => u.email === email)) return { emailTaken: true };
+      const userId = `user-${nextId++}`;
+      users.set(userId, { email, password, termosVersao });
+      return { userId };
+    },
+    hasPassword: async () => !state.semSenha,
+    verifyPassword: async (email, password) => [...users.values()].some((u) => u.email === email && u.password === password),
+    recordTermsAcceptance: async (userId, termosVersao) => {
+      const existing = users.get(userId);
+      if (existing) existing.termosVersao = termosVersao;
+    },
+    deleteUser: async (userId) => {
+      users.delete(userId);
+      accounts.delete(userId);
+    },
+  };
+
+  const imageStore: ImageStore = {
+    upload: async (bucket, ownerId, file) => {
+      const url = `https://cdn.test/storage/v1/object/public/${bucket}/${ownerId}/${file.name}`;
+      images.add(url);
+      return url;
+    },
+    removeByUrl: async (_bucket, url) => void images.delete(url),
+    removeAllOf: async (bucket, ownerId) => {
+      for (const url of images) if (url.includes(`/${bucket}/${ownerId}/`)) images.delete(url);
+    },
+  };
+
+  return {
+    accounts,
+    users,
+    images,
+    state,
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} }, releaseAccount: async () => {}, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
+  };
+}
+
+const png = (name = "foto.png") => new File(["x"], name, { type: "image/png" });
+const musico: SignupInput = { role: "MUSICIAN", nome: "Ana Souza", email: "ana@empresa.com.br", password: "segredo1", aceiteTermos: true };
+const user = { id: "user-1", email: "ana@empresa.com.br" };
+
+describe("cadastro mínimo", () => {
+  let t: ReturnType<typeof fakes>;
+  beforeEach(() => {
+    t = fakes();
+  });
+
+  it("cria usuário e perfil só com tipo de conta e nome", async () => {
+    await t.service.signup(musico);
+
+    expect(t.accounts.get("user-1")).toMatchObject({ role: "MUSICIAN", nome: "Ana Souza", documento: null });
+  });
+
+  it("registra a versão dos Termos de Uso aceita no cadastro", async () => {
+    await t.service.signup(musico);
+
+    expect(t.users.get("user-1")).toMatchObject({ termosVersao: TERMOS_VERSAO });
+  });
+
+  it("recusa e-mail já vinculado a uma conta", async () => {
+    await t.service.signup(musico);
+
+    await expect(t.service.signup({ ...musico, nome: "Outra" })).rejects.toMatchObject({ status: 409, code: "EMAIL_EM_USO" });
+  });
+
+  it("desfaz o usuário se o perfil não puder ser gravado", async () => {
+    t.state.failCreateProfile = true;
+
+    await expect(t.service.signup(musico)).rejects.toThrow("falha simulada");
+    expect(t.users.size).toBe(0);
+  });
+});
+
+describe("perfil progressivo", () => {
+  let t: ReturnType<typeof fakes>;
+  beforeEach(async () => {
+    t = fakes();
+    await t.service.signup(musico);
+  });
+
+  it("completa o perfil aos poucos, sem apagar o que já foi preenchido", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", uf: "PR", cidade: "Cascavel", estilosMusicais: ["MPB"] }, null);
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", telefone: "45999990000", documento: "52998224725", chavePixTipo: "CPF", chavePix: "52998224725" }, png());
+
+    expect(t.accounts.get(user.id)).toMatchObject({ cidade: "Cascavel", estilosMusicais: ["MPB"], documento: "52998224725", chavePix: "52998224725" });
+    expect(t.accounts.get(user.id)?.fotoPerfilUrl).toContain("foto.png");
+  });
+
+  it("apaga a bio e o link do trabalho quando o músico limpa os campos", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: "Voz e violão", portfolioUrl: "https://youtube.com/ana" }, null);
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", bio: null, portfolioUrl: null }, null);
+
+    expect(t.accounts.get("user-1")).toMatchObject({ bio: null, portfolioUrl: null });
+  });
+
+  it("confere o CNPJ na Receita: recusa inexistente ou inativo e aceita quando a consulta está fora do ar", async () => {
+    t.state.cnpjs = { "11444777000161": "INEXISTENTE", "11222333000181": "INATIVA", "45997418000153": null };
+
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "11444777000161" }, null)).rejects.toMatchObject({ code: "CNPJ_INEXISTENTE" });
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "11222333000181" }, null)).rejects.toMatchObject({ code: "CNPJ_INATIVO" });
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", documento: "45997418000153" }, null);
+
+    expect(t.accounts.get("user-1")?.documento).toBe("45997418000153");
+  });
+
+  it("recusa documento já usado por outra conta", async () => {
+    await t.service.signup({ ...musico, email: "beto@exemplo.com" });
+    await t.service.updateProfile({ id: "user-2", email: "beto@exemplo.com" }, "MUSICIAN", { nome: "Beto", documento: "52998224725" }, null);
+
+    await expect(t.service.updateProfile(user, "MUSICIAN", { nome: "Ana", documento: "52998224725" }, null)).rejects.toMatchObject({ code: "DOCUMENTO_EM_USO" });
+  });
+
+  it("substitui a foto antiga ao enviar uma nova", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana" }, png("a.png"));
+    const antiga = t.accounts.get(user.id)!.fotoPerfilUrl!;
+
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana" }, png("b.png"));
+
+    expect(t.images.has(antiga)).toBe(false);
+    expect(t.accounts.get(user.id)?.fotoPerfilUrl).toContain("b.png");
+  });
+
+  it("exige só o que cada ação precisa, na ordem em que deve ser pedido", () => {
+    const account = t.accounts.get(user.id)!;
+    expect(() => assertProfileComplete(account, "feed")).toThrow(/estado e cidade, estilos musicais/);
+    expect(() => assertProfileComplete(account, "candidatar")).toThrow(/estado e cidade, estilos musicais, foto de perfil, CPF ou CNPJ, telefone, chave Pix/);
+
+    const completo: Account = { ...account, uf: "PR", cidade: "Cascavel", estilosMusicais: ["Rock"], fotoPerfilUrl: "x", documento: "1", telefone: "1", chavePix: "k" };
+    expect(() => assertProfileComplete(completo, "candidatar")).not.toThrow();
+    expect(() => assertProfileComplete({ ...completo, role: "CONTRACTOR", estilosMusicais: null, chavePix: null }, "criarEvento")).not.toThrow();
+  });
+});
+
+describe("exclusão de conta", () => {
+  let t: ReturnType<typeof fakes>;
+  beforeEach(async () => {
+    t = fakes();
+    await t.service.signup(musico);
+  });
+
+  it("responde 404 quando não há perfil", async () => {
+    await expect(t.service.getMe({ id: "desconhecido", email: "x@exemplo.com" })).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("não exclui se o e-mail ou a senha não conferirem, nem com contratação em andamento", async () => {
+    await expect(t.service.deleteAccount(user, { email: user.email, password: "errada" })).rejects.toMatchObject({ code: "CREDENCIAIS_NAO_CONFEREM" });
+    t.state.ongoingHiring = true;
+    await expect(t.service.deleteAccount(user, { email: user.email, password: "segredo1" })).rejects.toMatchObject({ code: "CONTRATACAO_EM_ANDAMENTO" });
+    expect(t.accounts.size).toBe(1);
+  });
+
+  it("quem entra pelo Google exclui a conta confirmando só o e-mail", async () => {
+    t.state.semSenha = true;
+
+    await expect(t.service.deleteAccount(user, { email: "outro@exemplo.com", password: "" })).rejects.toMatchObject({ code: "CREDENCIAIS_NAO_CONFEREM" });
+    await t.service.deleteAccount(user, { email: user.email, password: "" });
+
+    expect(t.accounts.size).toBe(0);
+  });
+
+  it("exclui a conta e libera o e-mail para novo cadastro", async () => {
+    await t.service.deleteAccount(user, { email: user.email, password: "segredo1" });
+
+    expect(t.accounts.size).toBe(0);
+    await expect(t.service.signup(musico)).resolves.toBeUndefined();
+  });
+});
+
+describe("cadastro pelo Google", () => {
+  it("cria o perfil de quem entrou sem cadastro e registra o aceite dos Termos", async () => {
+    const t = fakes();
+    t.users.set("google-1", { email: "ana@gmail.com", password: "", termosVersao: "" });
+    const google = { id: "google-1", email: "ana@gmail.com" };
+
+    await t.service.completeProfile(google, { role: "CONTRACTOR", nome: "Ana Eventos", aceiteTermos: true });
+
+    expect(t.accounts.get("google-1")).toMatchObject({ role: "CONTRACTOR", nome: "Ana Eventos" });
+    expect(t.users.get("google-1")?.termosVersao).toBe(TERMOS_VERSAO);
+    await expect(t.service.completeProfile(google, { role: "MUSICIAN", nome: "Outro", aceiteTermos: true })).rejects.toMatchObject({ code: "PERFIL_EXISTENTE" });
+  });
+});

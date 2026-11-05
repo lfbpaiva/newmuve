@@ -1,0 +1,46 @@
+.env*
+*.env
+!.env.example
+
+# Dependências
+node_modules/
+.pnpm-store/
+
+# Compilação e Builds
+dist/
+dist-ssr/
+build/
+.cache/
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+
+# Logs e Ficheiros Temporários
+logs/
+*.log
+*-debug.log*
+.tmp-*
+.claude-replay.*
+
+# Ficheiros do Sistema Operativo e Editores
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Caches do Figma e Ferramentas
+/.figma/
+/.plugins/
+/.opencode-skills/
+
+supabase/.temp/
+# Configuração local do Claude Code
+.claude/
+
+# Skills instaladas localmente (npx skills add)
+.agents/
+skills-lock.json
+
+# Lockfile de outro gerenciador (web e backend usam pnpm; mobile usa npm de proposito)
+yarn.lock

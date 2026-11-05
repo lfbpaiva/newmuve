@@ -1,0 +1,197 @@
+===================================================================
+APP MUVE (v2.0) — ESPECIFICAÇÃO DE PRODUÇÃO, REGRAS DE NEGÓCIO E UX
+===================================================================
+
+1. AUTENTICAÇÃO, SEGURANÇA E RECUPERAÇÃO DE ACESSO
+-------------------------------------------------------------------
+- INPUT DE SENHA: Exige botão com ícone de olho (toggle) para alternar entre tipo 'password' e 'text' (Visualizar/Ocultar Senha).
+- ESQUECI MINHA SENHA: Botão funcional que redireciona para a modal/tela de recuperação de senha via e-mail (envio de token de redefinição via backend Node/Nodemailer).
+- VALIDAÇÃO EM TEMPO REAL (INLINE BLUR): 
+  * O campo de e-mail deve disparar o aviso de erro IMEDIATAMENTE após desfocar o campo (blur) ou ao digitar um formato fora do padrão `^[a-zA-Z0-9._%+-]+@gmail\.com$`.
+  * Impedir o avanço do formulário se o e-mail não terminar estritamente com `@gmail.com`.
+- UNICIDADE GLOBAL DE E-MAIL: O e-mail é a chave primária de acesso. Não é permitido reutilizar o mesmo e-mail entre perfis diferentes (ex: Músico cadastrado não pode criar conta de Contratante com o mesmo e-mail).
+- LIMPEZA DE ESTADO DA SESSÃO DE CADASTRO:
+  * Ao clicar em "Criar nova conta" ou trocar de tipo de perfil (Músico <-> Contratante), todos os estados dos inputs (useState/FormState) DEVEM ser resetados para string vazia `""` ou array vazio `[]`. Proibido reaproveitar dados da tentativa anterior.
+
+2. LOCALIZAÇÃO E SELEÇÃO DE ESTILOS
+-------------------------------------------------------------------
+- ESTADOS E CIDADES (IBGE): O dropdown de Estado (UF) deve listar todos os 27 estados brasileiros. O dropdown de Cidade deve ser populado dinamicamente com base no Estado selecionado, cobrindo a totalidade dos municípios nacionais (base completa IBGE).
+- ESTILOS MUSICAIS (MÚSICO):
+  * Nenhum chip pode vir pré-selecionado por padrão.
+  * O array inicial de estilos do formulário deve ser `[]`.
+  * Validação obrigatória: O botão "Criar minha conta" permanece bloqueado/dispara alerta caso o array de estilos selecionados seja menor que 1.
+
+3. ISOLAMENTO DE DADOS E NORMAS DE PRIVACIDADE ENTRE PERFIS (RLS)
+-------------------------------------------------------------------
+- ISOLAMENTO MÚSICO-MÚSICO: Músicos NUNCA podem visualizar, buscar ou acessar o perfil de outros Músicos. A busca de Músicos é restrita a Eventos.
+- BUSCA EXCLUSIVA DO CONTRATANTE: Apenas perfis de Contratantes possuem autorização para visualizar perfis de Músicos, e isso ocorre exclusivamente dentro da lista de candidatos inscritos em seus próprios eventos.
+- DINAMISMO ABSOLUTO (SEM MOCKS):
+  * Fica proibida a renderização de nomes fixos ("Lucas", "João Ribeiro"), fotos genéricas estáticas de amostra ou contagens fictícias de candidatos ("8 candidatos").
+  * O cabeçalho, perfil e estatísticas DEVEM refletir exclusivamente a entidade autenticada via JWT do Supabase/Prisma.
+  * Se o usuário recém-cadastrado não possui avaliações, exibir o estado zero: "Novo na plataforma (0 avaliações)" sem estrelas preenchidas incorretamente.
+
+4. GESTÃO DE EVENTOS E INSCRIÇÕES DO MÚSICO
+-------------------------------------------------------------------
+- NAVEGAÇÃO DE DETALHES DO EVENTO: O clique em "Ver detalhes" deve ler dinamicamente o `eventId` específico do card selecionado. Proibido redirecionar para IDs estáticos.
+- ABA "MEUS EVENTOS" (MÚSICO):
+  * Exibe unicamente a lista de eventos nos quais o Músico logado efetuou candidatura.
+  * CANCELAMENTO DE INSCRIÇÃO (REGRA 24H):
+    - Se `(DataDoEvento - DataAtual) > 24 horas`: O botão "Cancelar Inscrição" fica ativo e funcional.
+    - Se `(DataDoEvento - DataAtual) <= 24 horas`: O botão de cancelamento fica desabilitado com o status "Cancelamento indisponível (menos de 24h para o evento)".
+
+5. PAINEL DO CONTRATANTE & MEU PERFIL
+-------------------------------------------------------------------
+- SEGREGAÇÃO DE TELAS DO CONTRATANTE:
+  * A aba **"Meu Perfil"** do Contratante deve exibir EXCLUSIVAMENTE os dados do Contratante (Nome Fantasia, CNPJ, Razão Social, Telefone, UF, Cidade, Histórico de Eventos Criados).
+  * A aprovação de candidatos ocorre EXCLUSIVAMENTE na aba **"Meus Eventos" -> "Gerenciar Candidatos"**.
+- RELAÇÃO DADOS/CANDIDATOS: A contagem do badge de candidatos inscritos (ex: "2 candidatos") deve corresponder exatamente ao número de registros vinculados na tabela `EventCandidates`.
+
+6. CHECKOUT ASAAS (PIX REAL E TIMER DEDICADO)
+-------------------------------------------------------------------
+- INTEGRAÇÃO ASAAS PIX:
+  * O código Copia e Cola e o QR Code devem ser gerados via API do Asaas (`POST /v3/payments`).
+  * O botão "Copiar código Pix" deve invocar nativamente `navigator.clipboard.writeText(pixPayload)` e disparar notificação Toast de confirmação ao usuário.
+- TEMPORIZADOR DE EXPIRAÇÃO FUNCIONAL:
+  * Implementar contador regressivo dinâmico em tempo real (ex: 15:00 -> 00:00) via `useEffect` / `setInterval`.
+  * Ao zerar o temporizador, invalidar o QR Code e solicitar nova geração de cobrança.
+- STATUS DE PAGAMENTO: O sistema deve monitorar o pagamento via WebSocket ou Polling na API do Asaas. Remover quaisquer botões ou textos explicativos contendo "Simular pagamento".
+
+
+===================================================================
+APP MUVE (v3.0) — ESPECIFICAÇÃO DE PRODUÇÃO, MÍDIAS E REGRAS DE NEGÓCIO
+===================================================================
+
+1. AUTENTICAÇÃO, SEGURANÇA E RECUPERAÇÃO DE ACESSO
+-------------------------------------------------------------------
+- INPUT DE SENHA: Exige botão com ícone de olho (toggle) para alternar entre tipo 'password' e 'text' (Visualizar/Ocultar Senha).
+- ESQUECI MINHA SENHA: Botão funcional que redireciona para a modal de recuperação de senha via e-mail (envio de token via Node/Nodemailer).
+- VALIDAÇÃO EM TEMPO REAL (INLINE BLUR): 
+  * O campo de e-mail deve disparar a validação IMEDIATAMENTE após desfocar o campo (blur) ou ao digitar formato fora do padrão `^[a-zA-Z0-9._%+-]+@gmail\.com$`.
+  * Impedir o avanço do formulário se o e-mail não terminar com `@gmail.com`.
+- UNICIDADE GLOBAL DE E-MAIL: O e-mail é a chave primária. Proibido reutilizar o mesmo e-mail entre perfis diferentes (ex: Músico não pode criar conta de Contratante com e-mail já existente).
+- LIMPEZA DE ESTADO DA SESSÃO DE CADASTRO:
+  * Ao clicar em "Criar nova conta" ou alternar entre perfil Músico/Contratante, todos os estados dos inputs DEVEM ser resetados para string vazia `""` ou array vazio `[]`.
+
+2. UPLOAD DE FOTO DE PERFIL (CADASTRO DE MÚSICO E CONTRATANTE)
+-------------------------------------------------------------------
+- CAMPO OBRIGATÓRIO DE AVATAR:
+  * Tanto o formulário de cadastro de Músico quanto o de Contratante incluem um seletor de arquivo de imagem (`<input type="file" accept="image/png, image/jpeg, image/webp">`).
+  * Exibe visualização prévia (preview) em formato circular imediatamente após a seleção do arquivo.
+  * O arquivo é enviado diretamente para o bucket `avatars` no Supabase Storage, armazenando unicamente a URL pública gerada no banco de dados.
+  * Proibido utilizar foto de perfil genérica ou padrão de amostra.
+
+3. LOCALIZAÇÃO E SELEÇÃO DE ESTILOS
+-------------------------------------------------------------------
+- ESTADOS E CIDADES (IBGE): Dropdown de Estado (UF) lista as 27 unidades federativas. O dropdown de Cidade é populado dinamicamente via API IBGE com base no Estado selecionado.
+- ESTILOS MUSICAIS (MÚSICO):
+  * Array inicial de estilos deve ser `[]` (nenhum chip pré-selecionado).
+  * Validação obrigatória: Botão de cadastro só é liberado ao selecionar no mínimo 1 estilo musical.
+
+4. CRIAÇÃO DE EVENTOS & IMAGEM ILUSTRATIVA (CONTRATANTE)
+-------------------------------------------------------------------
+- FORMULÁRIO DE NOVO EVENTO:
+  * Campos: Título, Data (futura), Cachê (mínimo R$ 100,00), Estado (UF), Cidade, Estilo Musical, Descrição e **Foto Ilustrativa do Evento**.
+- UPLOAD DE IMAGEM DO EVENTO:
+  * O Contratante é OBRIGADO a carregar uma foto referente ao evento (`accept="image/*"`).
+  * Imagem enviada para o bucket `event-banners` do Supabase Storage.
+  * PROIBIDO usar imagens estáticas ou pré-definidas no card do evento; a imagem do feed DEVE ser a URL enviada pelo criador do evento.
+
+5. SCHEMA PRISMA ATUALIZADO (SUPABASE STORAGE + POSTGRESQL)
+-------------------------------------------------------------------
+enum Role {
+  MUSICIAN
+  CONTRACTOR
+}
+
+enum EventStatus {
+  ABERTO
+  CONTRATADO
+  CONCLUIDO
+  CANCELADO
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String
+  role              Role
+  uf                String
+  cidade            String
+  createdAt         DateTime           @default(now())
+  musicianProfile   MusicianProfile?
+  contractorProfile ContractorProfile?
+}
+
+model MusicianProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nomeCompleto    String
+  cpf             String   @unique
+  telefone        String
+  fotoPerfilUrl   String   // URL do Supabase Storage (Obrigatório)
+  bio             String?
+  estilosMusicais String[]
+  avaliacaoMedia  Float    @default(0.0)
+  totalAvaliacoes Int      @default(0)
+}
+
+model ContractorProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nomeFantasia String
+  cnpj         String   @unique
+  telefone     String
+  fotoPerfilUrl String  // URL do Supabase Storage (Obrigatório)
+}
+
+model Event {
+  id                     String      @id @default(uuid())
+  contractorId           String
+  titulo                 String
+  cache                  Float
+  data                   DateTime
+  uf                     String
+  cidade                 String
+  estiloMusical          String
+  descricao              String?
+  imagemUrl              String      // URL da imagem do evento enviada no upload (Obrigatório)
+  status                 EventStatus @default(ABERTO)
+  musicoContratadoId     String?
+  confirmacaoMusico      Boolean     @default(false)
+  confirmacaoContratante Boolean     @default(false)
+  createdAt              DateTime    @default(now())
+}
+
+6. ISOLAMENTO DE DADOS E NORMAS DE PRIVACIDADE (RLS)
+-------------------------------------------------------------------
+- RESTRIÇÃO MÚSICO-MÚSICO: Músicos são estritamente impedidos de buscar, visualizar ou acessar o perfil de outros Músicos.
+- BUSCA RESTREITA DO CONTRATANTE: Contratantes visualizam dados e avaliações de Músicos unicamente na aba de candidatos inscritos em seus próprios eventos.
+- DINAMISMO ABSOLUTO (SEM MOCKS):
+  * Proibida a exibição de nomes genéricos, fotos fixas ou números fictícios.
+  * O perfil logado exibe unicamente a foto (`fotoPerfilUrl`), nome e dados cadastrados no banco.
+  * Se o usuário recém-cadastrado não tem avaliações, exibir "Novo na plataforma (0 avaliações)".
+
+7. GESTÃO DE EVENTOS E INSCRIÇÕES DO MÚSICO
+-------------------------------------------------------------------
+- NAVEGAÇÃO POR ID: O botão "Ver detalhes" carrega o `eventId` específico.
+- MEUS EVENTOS & CANCELAMENTO (REGRA 24H):
+  * Se `(DataDoEvento - DataAtual) > 24 horas`: Botão "Cancelar Inscrição" ativo.
+  * Se `(DataDoEvento - DataAtual) <= 24 horas`: Botão desabilitado informando "Cancelamento indisponível (menos de 24h para o evento)".
+
+8. PAINEL DO CONTRATANTE & MEU PERFIL
+-------------------------------------------------------------------
+- SEGREGAÇÃO DE TELAS:
+  * Aba **"Meu Perfil"** do Contratante exibe exclusivamente seus dados (Nome Fantasia, Foto de Perfil, CNPJ, UF, Cidade, Histórico de Eventos).
+  * Aprovação de candidatos ocorre unicamente em **"Meus Eventos" -> "Gerenciar Candidatos"**.
+- CONTAGEM REAL DE CANDIDATOS: O número exibido no card de candidatos deve refletir exatamente o `COUNT()` de registros na tabela de candidaturas do evento.
+
+9. CHECKOUT ASAAS (PIX REAL E TIMER DEDICADO)
+-------------------------------------------------------------------
+- INTEGRAÇÃO ASAAS PIX:
+  * QR Code e chave Copia e Cola gerados em tempo real via API do Asaas (`POST /v3/payments`).
+  * Botão "Copiar código Pix" utiliza `navigator.clipboard.writeText()` e exibe Toast de confirmação.
+- TEMPORIZADOR EM TEMPO REAL:
+  * Contador regressivo de 15 minutos rodando via `setInterval`. Ao expirar, invalida a cobrança e solicita novo QR Code.
+- CONFIRMAÇÃO DE PAGAMENTO: Alteração do status do evento para `CONTRATADO` realizada exclusivamente por Webhook/Polling real da API do Asaas.

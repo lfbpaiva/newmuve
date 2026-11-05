@@ -1,0 +1,34 @@
+# Dependências locais
+node_modules/
+
+# Expo, Metro Bundler & Builds
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.metro-health-check*
+
+# Nativos (Android e iOS - para o futuro)
+android/
+ios/
+
+# Caches e Logs de instalação
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Variáveis de Ambiente locais
+.env
+.env.*
+!.env.example
+
+# Arquivos de backup e conflitos de mesclagem
+*.orig
+*.orig.*
+*.rej
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db

@@ -1,0 +1,478 @@
+import { calcularCobranca, COBRANCA_VALIDADE_MS, comissaoPercentual, EMAIL_SUPORTE, hasCancellationNotice, MULTA_AUSENCIA_PERCENTUAL, VISIBILIDADE_REDUZIDA_DIAS } from "../../../shared/dominio.ts";
+import type { AsaasWebhook, EventRecord, PaymentRecord, RefundAction } from "../domain/event.ts";
+import { AppError } from "../domain/errors.ts";
+import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
+import type { Notifier } from "./notifications.ts";
+import type { AsaasGateway, AsaasPayment, AsaasTransfer, EventStore, PaymentStore } from "./ports.ts";
+
+const ASAAS_PAID = ["RECEIVED", "CONFIRMED"];
+const REFUND_REQUEST_GRACE_MS = 60_000;
+const TRANSFER_DEAD = ["FAILED", "CANCELLED"];
+
+const transferMayExist = (error: unknown) => !(error instanceof AppError) || error.status === 502;
+
+type RefundState = Pick<PaymentRecord, "refundStatus" | "refundAction">;
+
+const dueDateInSaoPaulo = (date: Date) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(date);
+
+export function createPaymentService(deps: {
+  events: EventStore;
+  payments: PaymentStore;
+  accounts: AccountStore;
+  asaas: AsaasGateway;
+  notifier: Pick<Notifier, "hiringConfirmed" | "hiringCancelled" | "noShowReported" | "payoutDone" | "payoutFailed" | "latePayment" | "refundDenied" | "penaltyApplied">;
+}) {
+  const { events, payments, accounts, asaas, notifier } = deps;
+
+  async function settlePayout(payment: PaymentRecord, transferStatus: string): Promise<void> {
+    if (transferStatus === "DONE") {
+      await payments.setPayout(payment.id, { status: "REPASSADO" });
+      const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+      if (event) void notifier.payoutDone(event);
+    }
+    if (transferStatus === "FAILED" || transferStatus === "CANCELLED") {
+      await payments.setPayout(payment.id, { status: "FALHOU" });
+      await warnPayoutFailed(payment);
+    }
+  }
+
+  async function finesToDiscount(musicianId: string, valorCache: number) {
+    const multas: string[] = [];
+    let desconto = 0;
+    for (const fine of await payments.openFines(musicianId)) {
+      if (desconto + fine.multa >= valorCache) break;
+      desconto = Math.round((desconto + fine.multa) * 100) / 100;
+      multas.push(fine.id);
+    }
+    return { multas, desconto };
+  }
+
+  async function settleDiscountedFines(payment: PaymentRecord): Promise<void> {
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    if (!event?.musicoContratadoId) return;
+    const { multas, desconto } = await finesToDiscount(event.musicoContratadoId, payment.valorCache);
+    if (desconto === payment.multaDescontada) await payments.settleFines(multas, payment.id);
+  }
+
+  async function applyTransfer(transfer: AsaasTransfer): Promise<void> {
+    const reference = transfer.externalReference;
+    const payment = (await payments.findPaymentByTransferId(transfer.id)) ?? (reference ? await payments.findPaymentById(reference) : null);
+    if (payment?.repasseStatus !== "PROCESSANDO") return;
+    if (payment.asaasTransferId && payment.asaasTransferId !== transfer.id) return;
+    if (!payment.asaasTransferId) {
+      if (TRANSFER_DEAD.includes(transfer.status)) return;
+      await payments.setPayout(payment.id, { status: "PROCESSANDO", asaasTransferId: transfer.id });
+      await settleDiscountedFines(payment);
+    }
+    await settlePayout(payment, transfer.status);
+  }
+
+  async function activeTransfers(payment: PaymentRecord): Promise<AsaasTransfer[]> {
+    const found = await asaas.findTransfersByReference(payment.id, payment.expiraEm);
+    return found.filter((transfer) => !TRANSFER_DEAD.includes(transfer.status));
+  }
+
+  async function reconcilePayout(payment: PaymentRecord): Promise<void> {
+    if (payment.asaasTransferId) {
+      const transfer = await asaas.getTransfer(payment.asaasTransferId).catch(() => null);
+      if (transfer) await applyTransfer(transfer);
+      return;
+    }
+    const active = await activeTransfers(payment).catch(() => []);
+    if (active.length === 1) await applyTransfer(active[0]);
+    if (active.length > 1) console.error("Mais de uma transferência para o mesmo pagamento; requer conciliação manual", payment.id);
+  }
+
+  async function warnPayoutFailed(payment: PaymentRecord): Promise<void> {
+    if (payment.repasseStatus === "FALHOU") return;
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    if (event) void notifier.payoutFailed(event);
+  }
+
+  async function markRefundDenied(payment: PaymentRecord): Promise<void> {
+    await payments.setRefundStatus(payment.id, "NEGADO");
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    if (!event) return;
+    if (payment.refundAction === "NENHUMA") void notifier.latePayment(event, true);
+    else void notifier.refundDenied(event, payment.refundAction === "REABRIR" ? "musico" : "contratante");
+  }
+
+  async function penalize(event: EventRecord, musicianId: string | null, payment: PaymentRecord): Promise<void> {
+    if (!musicianId) return;
+    const ausencia = payment.refundAction === "NAO_COMPARECIMENTO";
+    const desistenciaTardia = payment.refundAction === "REABRIR" && payment.refundRequestedAt !== null && !hasCancellationNotice(event.inicio, payment.refundRequestedAt);
+    if (!ausencia && !desistenciaTardia) return;
+    const multa = ausencia ? Math.round(payment.valorCache * MULTA_AUSENCIA_PERCENTUAL) / 100 : 0;
+    const ate = new Date(Date.now() + VISIBILIDADE_REDUZIDA_DIAS * 24 * 60 * 60 * 1000);
+    await payments.addPenalty({ musicianId, eventId: event.id, tipo: ausencia ? "AUSENCIA" : "DESISTENCIA_TARDIA", multa });
+    await accounts.reduceVisibility(musicianId, ate);
+    void notifier.penaltyApplied(event, musicianId, multa, ate);
+  }
+
+  async function completeRefund(payment: PaymentRecord): Promise<void> {
+    const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+    const musicianId = event?.musicoContratadoId ?? null;
+    const result = await payments.finalizeRefund(payment.id);
+    if (result === "REPASSE_CONFLITANTE") {
+      console.error("Estorno confirmado depois do início do repasse; requer conciliação manual", payment.id);
+    }
+    if (result !== "CONFIRMADO" || !event) return;
+    if (payment.refundAction === "REABRIR") void notifier.hiringCancelled(event, "musico", true);
+    if (payment.refundAction === "CANCELAR") void notifier.hiringCancelled(event, "contratante", true);
+    if (payment.refundAction === "NAO_COMPARECIMENTO") void notifier.noShowReported(event);
+    await penalize(event, musicianId, payment).catch((error: unknown) => console.error("Falha ao registrar penalidade", payment.id, error));
+  }
+
+  const reload = async (payment: PaymentRecord) => (await payments.findPaymentByAsaasId(payment.asaasPaymentId)) ?? payment;
+
+  const isIdleAtAsaas = (remote: AsaasPayment | null) =>
+    remote !== null && ASAAS_PAID.includes(remote.status) && !remote.refunds?.some((refund) => refund.status !== "CANCELLED");
+
+  async function refreshRefund(payment: PaymentRecord): Promise<PaymentRecord> {
+    if (payment.refundStatus !== "PROCESSANDO") return payment;
+    const remote = await asaas.getPayment(payment.asaasPaymentId);
+    const requestSettled = !payment.refundRequestedAt || Date.now() - payment.refundRequestedAt.getTime() >= REFUND_REQUEST_GRACE_MS;
+    if (remote?.status === "REFUNDED" && remote.value >= payment.valor) {
+      await completeRefund(payment);
+    } else if (remote?.refunds?.length && remote.refunds.every((refund) => refund.status === "CANCELLED")) {
+      await markRefundDenied(payment);
+    } else if (requestSettled && isIdleAtAsaas(remote)) {
+      await payments.releaseRefund(payment.id, { refundStatus: null, refundAction: null });
+    }
+    return reload(payment);
+  }
+
+  async function undoFailedRefund(claimed: PaymentRecord, previous: RefundState, error: unknown): Promise<PaymentRecord> {
+    if (error instanceof AppError && error.code.startsWith("ESTORNO_")) {
+      await markRefundDenied(claimed);
+      return reload(claimed);
+    }
+    const remote = await asaas.getPayment(claimed.asaasPaymentId).catch(() => null);
+    if (remote && !isIdleAtAsaas(remote)) return refreshRefund(claimed);
+    await payments.releaseRefund(claimed.id, previous);
+    return reload(claimed);
+  }
+
+  async function refundLatePayment(payment: PaymentRecord): Promise<void> {
+    const current = await refreshRefund(payment);
+    if (current.refundStatus === "PROCESSANDO" || current.refundStatus === "CONFIRMADO") return;
+    const previous: RefundState = { refundStatus: current.refundStatus, refundAction: "NENHUMA" };
+    if (!(await payments.claimRefund(current.id, "NENHUMA"))) return;
+    const claimed: PaymentRecord = { ...current, refundStatus: "PROCESSANDO", refundAction: "NENHUMA", refundRequestedAt: new Date() };
+    try {
+      await asaas.refundPayment(current.asaasPaymentId);
+    } catch (error) {
+      console.error("Falha ao solicitar o estorno de um pagamento sem evento disponível:", current.id, error instanceof AppError ? error.code : "falha inesperada");
+      await undoFailedRefund(claimed, previous, error);
+      return;
+    }
+    await refreshRefund(claimed).catch(() => {});
+  }
+
+  async function confirm(asaasPaymentId: string): Promise<void> {
+    const result = await payments.confirmPayment(asaasPaymentId);
+    const payment = await payments.findPaymentByAsaasId(asaasPaymentId);
+    if (!payment) return;
+
+    if (result === "EVENTO_INDISPONIVEL") {
+      if (payment.status === "PENDENTE" && payment.refundStatus === null) {
+        await payments.setPaymentStatus(payment.id, "CANCELADO");
+        const event = payment.eventId ? await events.findEvent(payment.eventId) : null;
+        if (event) void notifier.latePayment(event, false);
+      }
+      await refundLatePayment(await reload(payment));
+      return;
+    }
+    if (result !== "CONTRATADO" || !payment.eventId) return;
+    void notifier.hiringConfirmed(payment.eventId, payment.valorCache);
+
+    const leftover = await payments.findPendingPayment(payment.eventId);
+    if (leftover) {
+      await asaas.cancelCharge(leftover.asaasPaymentId).catch((error) => console.error("Falha ao cancelar cobrança", error));
+      await payments.setPaymentStatus(leftover.id, "CANCELADO");
+    }
+  }
+
+  async function release(pending: PaymentRecord, now: Date): Promise<void> {
+    const remote = await asaas.getPayment(pending.asaasPaymentId);
+    if (remote && ASAAS_PAID.includes(remote.status)) {
+      await confirm(pending.asaasPaymentId);
+      throw new AppError(409, "PAGAMENTO_JA_RECEBIDO", "O pagamento deste evento já foi recebido.");
+    }
+    await asaas.cancelCharge(pending.asaasPaymentId);
+    await payments.setPaymentStatus(pending.id, pending.expiraEm <= now ? "EXPIRADO" : "CANCELADO");
+  }
+
+  async function ensureCustomer(user: AuthUser, recreate = false): Promise<string> {
+    const existing = recreate ? null : await payments.getAsaasCustomerId(user.id);
+    if (existing) return existing;
+
+    const account = await accounts.findAccount(user.id);
+    if (!account) throw new AppError(404, "CONTA_NAO_ENCONTRADA", "Conta não encontrada.");
+    assertProfileComplete(account, "pagar");
+    const customerId = await asaas.createCustomer({
+      name: account.nome,
+      cpfCnpj: account.documento!,
+      email: user.email,
+      externalReference: user.id,
+    });
+    await payments.setAsaasCustomerId(user.id, customerId);
+    return customerId;
+  }
+
+  async function findOwnedEvent(user: AuthUser, eventId: string) {
+    const event = await events.findEvent(eventId);
+    if (!event || event.contractorId !== user.id) throw new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
+    return event;
+  }
+
+  async function syncPending(eventId: string, now = new Date()): Promise<PaymentRecord | null> {
+    const latest = await payments.findLatestPayment(eventId);
+    if (latest?.status !== "PENDENTE") return latest;
+
+    const remote = await asaas.getPayment(latest.asaasPaymentId);
+    if (remote && ASAAS_PAID.includes(remote.status) && remote.value >= latest.valor) {
+      await confirm(latest.asaasPaymentId);
+    } else if (latest.expiraEm <= now) {
+      await asaas.cancelCharge(latest.asaasPaymentId);
+      await payments.setPaymentStatus(latest.id, "EXPIRADO");
+    }
+    return payments.findLatestPayment(eventId);
+  }
+
+  return {
+    async startCheckout(user: AuthUser, eventId: string, candidateId: string, now = new Date()): Promise<PaymentRecord> {
+      const event = await findOwnedEvent(user, eventId);
+      if (event.status !== "ABERTO") throw new AppError(409, "EVENTO_INDISPONIVEL", "Este evento não está mais aberto para contratação.");
+      if (event.inicio <= now) throw new AppError(409, "EVENTO_JA_INICIADO", "Este evento já começou e não pode mais receber contratações.");
+
+      const candidate = await events.findCandidateById(candidateId);
+      if (!candidate || candidate.eventId !== eventId) throw new AppError(404, "CANDIDATURA_NAO_ENCONTRADA", "Candidatura não encontrada.");
+      if (candidate.status !== "PENDENTE") throw new AppError(409, "CANDIDATURA_INDISPONIVEL", "Esta candidatura não está mais disponível.");
+      if (await events.musicianHasConflict(candidate.musicianId, eventId)) {
+        throw new AppError(409, "MUSICO_OCUPADO", "Este músico já tem um show contratado nesse horário.");
+      }
+
+      const pending = await payments.findPendingPayment(eventId);
+      if (pending) {
+        if (pending.candidateId === candidateId && pending.expiraEm > now) return pending;
+        await release(pending, now);
+      }
+
+      const contratante = await accounts.findAccount(user.id);
+      const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache, comissaoPercentual(contratante?.casaAte, now));
+      const charge = (customer: string) => asaas.createPixCharge({
+        customer,
+        value: cobranca.total,
+        dueDate: dueDateInSaoPaulo(now),
+        description: `Muve — contratação de músico para "${event.titulo}"`,
+        externalReference: event.id,
+      });
+      const asaasPaymentId = await charge(await ensureCustomer(user)).catch(async (error: unknown) => {
+        if (!(error instanceof AppError) || error.code !== "PAGAMENTO_CLIENTE_INVALIDO") throw error;
+        return charge(await ensureCustomer(user, true));
+      });
+      try {
+        const qrCode = await asaas.getPixQrCode(asaasPaymentId);
+        return await payments.insertPayment({
+          eventId,
+          candidateId,
+          contractorId: user.id,
+          asaasPaymentId,
+          valor: cobranca.total,
+          valorComissao: cobranca.comissao,
+          pixCopiaCola: qrCode.payload,
+          pixQrCode: qrCode.encodedImage,
+          expiraEm: new Date(now.getTime() + COBRANCA_VALIDADE_MS),
+        });
+      } catch (error) {
+        await asaas.cancelCharge(asaasPaymentId).catch((cleanupError) => console.error("Falha ao cancelar cobrança órfã", cleanupError));
+        throw error;
+      }
+    },
+
+    async syncCheckout(user: AuthUser, eventId: string, now = new Date()): Promise<PaymentRecord | null> {
+      await findOwnedEvent(user, eventId);
+      for (const late of await payments.findLateRefundsToRetry(eventId)) await refundLatePayment(late).catch(() => {});
+      return syncPending(eventId, now);
+    },
+
+    syncPending,
+
+    async ensureNoActiveCheckout(eventId: string, now = new Date()): Promise<void> {
+      const pending = await payments.findPendingPayment(eventId);
+      if (!pending) return;
+      if (pending.expiraEm > now) throw new AppError(409, "PAGAMENTO_EM_ANDAMENTO", "Há um pagamento em andamento para este evento.");
+      await release(pending, now);
+    },
+
+    async payout(eventId: string): Promise<void> {
+      const payment = await payments.findLatestPayment(eventId);
+      if (payment?.status === "PAGO" && payment.repasseStatus === "PROCESSANDO") {
+        await reconcilePayout(payment);
+        return;
+      }
+      if (payment?.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return;
+      if (await events.findOpenDispute(eventId)) return;
+      if (!(await payments.claimPayout(payment.id))) return;
+
+      let transferRequested = false;
+      try {
+        const event = await events.findEvent(eventId);
+        const musician = event?.musicoContratadoId ? await accounts.findAccount(event.musicoContratadoId) : null;
+        if (!musician?.chavePix || !musician.chavePixTipo) throw new Error("músico sem chave Pix cadastrada");
+
+        const { multas, desconto } = await finesToDiscount(musician.id, payment.valorCache);
+        await payments.setPayoutDiscount(payment.id, desconto);
+
+        transferRequested = true;
+        const transfer = await asaas.transferPix({
+          value: Math.round((payment.valorCache - desconto) * 100) / 100,
+          pixAddressKey: musician.chavePix,
+          pixAddressKeyType: musician.chavePixTipo,
+          description: `Muve — cachê de "${event!.titulo}"`,
+          externalReference: payment.id,
+        });
+        await payments.setPayout(payment.id, { status: transfer.status === "DONE" ? "REPASSADO" : "PROCESSANDO", asaasTransferId: transfer.id });
+        await payments.settleFines(multas, payment.id);
+      } catch (error) {
+        console.error("Falha no repasse do pagamento", payment.id, error instanceof AppError ? error.code : error);
+        if (transferRequested && transferMayExist(error)) return;
+        await payments.setPayout(payment.id, { status: "FALHOU" }).catch(() => {});
+        await warnPayoutFailed(payment).catch(() => {});
+      }
+    },
+
+    async releaseStuckPayout(paymentId: string): Promise<"REENVIADO" | "VINCULADO"> {
+      const payment = await payments.findPaymentById(paymentId);
+      if (!payment?.eventId) throw new AppError(404, "PAGAMENTO_NAO_ENCONTRADO", "Pagamento não encontrado.");
+      if (payment.repasseStatus !== "PROCESSANDO" || payment.asaasTransferId) {
+        throw new AppError(409, "REPASSE_NAO_INCERTO", "Este repasse não está aguardando conferência.");
+      }
+      const active = await activeTransfers(payment);
+      if (active.length > 1) throw new AppError(409, "REPASSE_DUPLICADO", "Existe mais de uma transferência para este pagamento. Resolva no painel da Asaas.");
+      if (active.length === 1) {
+        await applyTransfer(active[0]);
+        return "VINCULADO";
+      }
+      await payments.setPayout(payment.id, { status: "FALHOU" });
+      await this.payout(payment.eventId);
+      return "REENVIADO";
+    },
+
+    async refundHiring(eventId: string, action: RefundAction): Promise<"PROCESSANDO" | "ESTORNADO"> {
+      const payment = await payments.findLatestPayment(eventId);
+      if (payment?.status !== "PAGO") throw new AppError(409, "PAGAMENTO_NAO_CONFIRMADO", "Não há pagamento confirmado para estornar nesta contratação.");
+      if (payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO") {
+        throw new AppError(409, "REPASSE_JA_REALIZADO", "O cachê deste evento já foi repassado ao músico.");
+      }
+      const remote = await asaas.getPayment(payment.asaasPaymentId);
+      if (!remote || remote.value < payment.valor) throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", `A cobrança no Asaas não corresponde ao pagamento registrado. Escreva para ${EMAIL_SUPORTE}.`);
+      let current = payment;
+      if (current.refundStatus === "PROCESSANDO") {
+        current = await refreshRefund(current);
+        if (current.status === "ESTORNADO") return "ESTORNADO";
+        if (current.refundStatus === "PROCESSANDO") return "PROCESSANDO";
+      }
+      if (remote.status !== "RECEIVED" && remote.status !== "CONFIRMED" && remote.status !== "REFUNDED") {
+        throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", "A cobrança não está confirmada no Asaas. Atualize a contratação e tente novamente.");
+      }
+      const previous: RefundState = { refundStatus: current.refundStatus, refundAction: current.refundAction };
+      if (!(await payments.claimRefund(current.id, action))) return "PROCESSANDO";
+      const claimed: PaymentRecord = { ...current, refundStatus: "PROCESSANDO", refundAction: action, refundRequestedAt: new Date() };
+      if (remote.status === "REFUNDED") {
+        await completeRefund(claimed);
+        return "ESTORNADO";
+      }
+      if (remote.refunds?.some((refund) => refund.status === "PENDING")) return "PROCESSANDO";
+      try {
+        await asaas.refundPayment(current.asaasPaymentId);
+      } catch (error) {
+        const latest = await undoFailedRefund(claimed, previous, error);
+        if (latest.status === "ESTORNADO") return "ESTORNADO";
+        if (latest.refundStatus === "PROCESSANDO") return "PROCESSANDO";
+        throw error instanceof AppError
+          ? error
+          : new AppError(503, "ESTORNO_INDISPONIVEL", "Não foi possível solicitar o estorno agora. A contratação continua ativa; tente novamente em instantes.");
+      }
+      const latest = await refreshRefund(claimed).catch(() => claimed);
+      return latest.status === "ESTORNADO" ? "ESTORNADO" : "PROCESSANDO";
+    },
+
+    async refreshRefund(eventId: string): Promise<PaymentRecord | null> {
+      const payment = await payments.findLatestPayment(eventId);
+      if (!payment) return null;
+      return refreshRefund(payment);
+    },
+
+    async ensurePaidForNoRefund(eventId: string): Promise<void> {
+      const payment = await payments.findLatestPayment(eventId);
+      if (payment?.status !== "PAGO" || payment.refundStatus === "PROCESSANDO") throw new AppError(409, "PAGAMENTO_INDISPONIVEL", "O pagamento deste evento não está disponível para cancelamento sem estorno.");
+      const remote = await asaas.getPayment(payment.asaasPaymentId);
+      if (!remote || !ASAAS_PAID.includes(remote.status) || remote.value < payment.valor) {
+        throw new AppError(409, "PAGAMENTO_DIVERGENTE", `O pagamento no Asaas não corresponde ao registro do evento. Escreva para ${EMAIL_SUPORTE}.`);
+      }
+    },
+
+    async cancelPendingCheckout(user: AuthUser, eventId: string, now = new Date()): Promise<void> {
+      const event = await findOwnedEvent(user, eventId);
+      if (event.status !== "ABERTO") throw new AppError(409, "EVENTO_INDISPONIVEL", "Este evento já não está aberto para cancelar a cobrança.");
+      const pending = await payments.findPendingPayment(eventId);
+      if (!pending) throw new AppError(409, "COBRANCA_NAO_PENDENTE", "Não existe cobrança pendente para cancelar.");
+      await release(pending, now);
+    },
+
+    findPayment: (eventId: string) => payments.findLatestPayment(eventId),
+
+    async handleWebhook(notification: AsaasWebhook): Promise<void> {
+      if (await payments.webhookEventExists(notification.id)) return;
+
+      if (notification.transfer) {
+        const transfer = await asaas.getTransfer(notification.transfer.id);
+        if (transfer) await applyTransfer(transfer);
+      }
+
+      const asaasPaymentId = notification.payment?.id;
+      const local = asaasPaymentId ? await payments.findPaymentByAsaasId(asaasPaymentId) : null;
+      if (asaasPaymentId && local) {
+        switch (notification.event) {
+          case "PAYMENT_RECEIVED":
+          case "PAYMENT_CONFIRMED": {
+            const remote = await asaas.getPayment(asaasPaymentId);
+            if (!remote || !ASAAS_PAID.includes(remote.status) || remote.value < local.valor) {
+              console.warn("Notificação de pagamento não confirmada na Asaas:", asaasPaymentId);
+              return;
+            }
+            await confirm(asaasPaymentId);
+            break;
+          }
+          case "PAYMENT_OVERDUE":
+            if (local.status === "PENDENTE") await payments.setPaymentStatus(local.id, "EXPIRADO");
+            break;
+          case "PAYMENT_DELETED":
+            if (local.status === "PENDENTE") await payments.setPaymentStatus(local.id, "CANCELADO");
+            break;
+          case "PAYMENT_REFUNDED": {
+            const remote = await asaas.getPayment(asaasPaymentId);
+            if (!remote || remote.status !== "REFUNDED" || remote.value < local.valor) return;
+            if (local.status === "PAGO" || local.refundStatus !== null) await completeRefund(local);
+            else if (local.status === "PENDENTE") await payments.setPaymentStatus(local.id, "CANCELADO");
+            break;
+          }
+          case "PAYMENT_REFUND_DENIED":
+            if (local.refundStatus === "PROCESSANDO") {
+              const remote = await asaas.getPayment(asaasPaymentId);
+              if (remote?.status === "REFUNDED" && remote.value >= local.valor) await completeRefund(local);
+              else if (!remote?.refunds?.some((refund) => refund.status === "PENDING")) await payments.setRefundStatus(local.id, "NEGADO");
+            }
+            break;
+        }
+      }
+
+      await payments.recordWebhookEvent({ id: notification.id, tipo: notification.event, asaasPaymentId, payload: notification });
+    },
+  };
+}
+
+export type PaymentService = ReturnType<typeof createPaymentService>;

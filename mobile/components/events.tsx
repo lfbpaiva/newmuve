@@ -1,0 +1,88 @@
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import type { ReactNode } from "react";
+import { Image, Pressable, Text, View } from "react-native";
+import { fetchReviewsOf, type EventItem, type EventStatus } from "../../shared/client/events.ts";
+import { eventDateParts, formatCurrency } from "../../shared/client/format.ts";
+import { useAsync } from "../../shared/client/useAsync.ts";
+import { colors, radius, space, styles, type } from "../lib/theme";
+import { ErrorState, Icon, Pill, Section, Stars, Tag } from "./ui";
+
+const statusLabels: Record<EventStatus, string> = {
+  ABERTO: "Inscrições abertas",
+  CONTRATADO: "Músico contratado",
+  CONCLUIDO: "Concluído",
+  CANCELADO: "Cancelado",
+};
+
+export const withEncerrado = (event: EventItem, now = Date.now()) => ({ ...event, encerrado: event.status === "ABERTO" && new Date(event.inicio).getTime() <= now });
+
+export function EventStatusPill({ status, encerrado, inscricoesEncerradas }: { status: EventStatus; encerrado?: boolean; inscricoesEncerradas?: boolean }) {
+  if (status === "ABERTO" && encerrado) return <Pill text="Encerrado" tone="muted"/>;
+  if (status === "ABERTO" && inscricoesEncerradas) return <Pill text="Inscrições encerradas" tone="muted"/>;
+  if (status === "CANCELADO") return <Pill text={statusLabels[status]} tone="muted"/>;
+  if (status === "ABERTO") return <Pill text={statusLabels[status]} tone="accent"/>;
+  return <Pill text={statusLabels[status]} tone="success"/>;
+}
+
+
+export function EventCard({ event, antecipado = false }: { event: EventItem; antecipado?: boolean }) {
+  const router = useRouter();
+  const { day, month, time } = eventDateParts(event.inicio, event.uf);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${event.titulo}, ${formatCurrency(event.cache)}`} onPress={() => router.push(`/event/${event.id}`)} style={({ pressed }) => ({ gap: space.md, opacity: pressed ? 0.85 : 1 })}>
+    <View style={{ height: 240, borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surface }}>
+      <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }}/>
+      <LinearGradient colors={["#0a0a0c66", "transparent", "#0a0a0ce6"]} locations={[0, 0.4, 1]} style={{ position: "absolute", inset: 0 }}/>
+      <View style={{ position: "absolute", top: 12, left: 12, flexDirection: "row", gap: 6 }}><Tag text={event.estilosMusicais.length > 1 ? `${event.estilosMusicais[0]} +${event.estilosMusicais.length - 1}` : event.estilosMusicais[0]} onImage/>{event.distanciaKm ? <Tag text={`${event.distanciaKm} km`} onImage/> : <Tag text="Sua cidade" onImage/>}{antecipado ? <Tag text="Pro · 24h antes" onImage/> : null}</View>
+      <View style={{ position: "absolute", right: 12, top: 12, alignItems: "flex-end" }}>
+        <Text style={[type.stat, { fontSize: 34, lineHeight: 34 }]}>{day}</Text>
+        <Text style={[type.labelSmall, { color: colors.ink }]}>{month} · {time}</Text>
+      </View>
+      <View style={{ position: "absolute", left: 14, right: 14, bottom: 14 }}>
+        <Text style={type.headline} numberOfLines={2}>{event.titulo}</Text>
+      </View>
+    </View>
+    <View style={styles.between}>
+      <View>
+        <Text style={type.labelSmall}>{event.cidade}, {event.uf} · {event.tipoEvento}</Text>
+        <Text style={type.price}>{formatCurrency(event.cache)}</Text>
+      </View>
+      <View style={[styles.row, { gap: 6 }]}>
+        {event.formacao !== "Indiferente" && <Tag text={event.formacao}/>}
+        {event.somDisponivel && <Tag text="Som no local"/>}
+        <Icon name="arrow-forward" size={20} color={colors.accentText}/>
+      </View>
+    </View>
+    <View style={styles.divider}/>
+  </Pressable>;
+}
+
+export function EventRow({ event, trailing, detail, onPress }: { event: EventItem; trailing: ReactNode; detail?: string; onPress: () => void }) {
+  const { day, month, time } = eventDateParts(event.inicio, event.uf);
+  return <Pressable accessibilityRole="button" onPress={onPress} android_ripple={{ color: colors.surface2 }} style={({ pressed }) => [styles.row, { gap: 14, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line, opacity: pressed ? 0.7 : 1 }]}>
+    <View style={{ width: 56, alignItems: "center" }}>
+      <Text style={[type.stat, { fontSize: 32, lineHeight: 32 }]}>{day}</Text>
+      <Text style={type.labelSmall}>{month}</Text>
+    </View>
+    <Image source={{ uri: event.imagemUrl }} style={{ width: 56, height: 56, borderRadius: radius.sm, backgroundColor: colors.surface2 }}/>
+    <View style={{ flex: 1, gap: 4 }}>
+      <Text style={type.titleSmall} numberOfLines={2}>{event.titulo}</Text>
+      <Text style={type.bodySmall} numberOfLines={1}>{time} · {event.cidade}{detail ? ` · ${detail}` : ""}</Text>
+      <View style={[styles.row, { marginTop: 2 }]}>{trailing}</View>
+    </View>
+    <Icon name="arrow-forward" size={18} color={colors.ink3}/>
+  </Pressable>;
+}
+
+export function ReviewsSection({ userId, empty }: { userId: string; empty: string }) {
+  const reviews = useAsync(`reviews:${userId}`, () => fetchReviewsOf(userId));
+  return <Section title="Avaliações recebidas">
+    {reviews.error && <ErrorState message={reviews.error} onRetry={reviews.reload}/>}
+    {!reviews.error && !reviews.data && <Text style={type.bodySmall}>Carregando avaliações...</Text>}
+    {reviews.data?.length === 0 && <Text style={type.bodySmall}>{empty}</Text>}
+    {reviews.data?.map((review) => <View key={review.id} style={styles.card}>
+      <View style={styles.between}><Stars rating={review.rating}/><Text style={type.bodySmall}>{new Date(review.createdAt).toLocaleDateString("pt-BR")}</Text></View>
+      {review.comment ? <Text style={type.body}>{review.comment}</Text> : null}
+    </View>)}
+  </Section>;
+}

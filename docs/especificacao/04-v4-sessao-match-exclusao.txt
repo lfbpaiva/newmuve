@@ -1,0 +1,107 @@
+===================================================================
+APP MUVE (v4.0) — ESPECIFICAÇÃO TÉCNICA E REGRAS DE NEGÓCIO (MOBILE)
+===================================================================
+
+1. AUTENTICAÇÃO, NORMALIZAÇÃO DE SESSÃO E LOGOFF
+-------------------------------------------------------------------
+- SANITIZAÇÃO DE E-MAIL: Todo e-mail inserido (cadastro ou login) DEVE passar por `.trim().toLowerCase()` antes de qualquer consulta ou inserção no banco de dados para evitar inconsistência de Case Sensitivity.
+- CORREÇÃO DO BUG DE LOGIN: O token de autenticação e a checagem no backend devem consultar a tabela unificada de `User` antes do perfil específico.
+- LIMPEZA TOTAL NO LOGOFF: 
+  * Ao realizar logout, limpe integralmente o estado global (Zustand/Redux), `SharedPreferences`/`Keychain` e formulários de input.
+  * O e-mail NUNCA deve permanecer salvo no campo de login ao deslogar, a menos que a opção "Lembrar de mim" tenha sido explicitamente checada.
+
+2. MAPEAMENTO DINÂMICO UF/CIDADE (IBGE)
+-------------------------------------------------------------------
+- CORREÇÃO DE VÍNCULO UF/CIDADE: O campo de Cidade deve ser re-populado via requisição dinâmica à API de Localidades do IBGE (`/api/v1/localidades/estados/{UF}/municipios`) no momento exato em que o Estado (UF) for alterado.
+- INDEPENDÊNCIA DE PERFIL: O componente de localização é genérico e reutilizável por Músicos, Contratantes e Eventos, cobrindo todos os 5.570 municípios brasileiros (incluindo Cascavel - PR).
+
+3. EDIÇÃO DE PERFIL E EXCLUSÃO DEFINITIVA COM BLOQUEIO DE CPF/CNPJ
+-------------------------------------------------------------------
+- TELA DE CONFIGURAÇÕES (EDIÇÃO DE DADOS):
+  * Permitir alteração de Nome/Razão Social, Telefone, Foto (upload Supabase Storage), UF, Cidade, Bio e Estilos Musicais.
+- EXCLUSÃO DEFINITIVA DE CONTA (DESTAQUE MÁXIMO):
+  * Card com bordas vermelhas e aviso em caixa alta: "ATENÇÃO: A EXCLUSÃO DA CONTA É PERMANENTE. SEU CPF/CNPJ SERÁ BLOQUEADO E VOCÊ NÃO PODERÁ VOLTAR A SE CADASTRAR NA PLATAFORMA."
+  * Exige confirmação por digitação do e-mail da conta e senha do usuário.
+- TRAVA DE BLOQUEIO NO BANCO DE DADOS:
+  * Ao confirmar a exclusão, a conta é desativada e o registro do CPF (Músico) ou CNPJ (Contratante) é gravado na tabela `BlockedDocuments`.
+  * Validação no cadastro: Se o CPF ou CNPJ informado constar na tabela `BlockedDocuments` ou já existir na tabela `User`, o cadastro é IMEDIATAMENTE interrompido com a mensagem: "Documento impossibilitado de criar nova conta na plataforma."
+
+4. CRIAÇÃO DE EVENTOS & RELÓGIO DE DURAÇÃO
+-------------------------------------------------------------------
+- SELETOR DE HORÁRIO DE DURAÇÃO: O campo "Duração estimada" deve utilizar um componente nativo de relógio (`TimePicker` HH:mm), exatamente com o mesmo padrão visual do horário de início.
+- BANNER ILUSTRATIVO DO EVENTO: Upload obrigatório de foto representativa do evento gravado no bucket `event-banners` do Supabase Storage.
+
+5. ALGORITMO DE MATCH E FEED DO MÚSICO
+-------------------------------------------------------------------
+- REGRAS DE EXIBIÇÃO NO FEED (FILTRAGEM ESTRITA):
+  Um evento só será exibido no feed do Músico se atender simultaneamente às 4 condições:
+  1. `Event.uf == MusicianProfile.uf`
+  2. `LOWER(Event.cidade) == LOWER(MusicianProfile.cidade)` (Ex: "Cascavel" == "Cascavel")
+  3. `Event.estiloMusical` estiver contido no array `MusicianProfile.estilosMusicais[]` (case-insensitive)
+  4. `Event.status == 'ABERTO'`
+- CORREÇÃO DO BUG DE MATCH: Garantir tratamento de strings em caixa baixa/acentuação na Query (`WHERE LOWER(cidade) = LOWER(...)`) para evitar incompatibilidade entre Cascavel-PR cadastrado pelo contratante e pelo artista.
+
+6. SCHEMA PRISMA ATUALIZADO
+-------------------------------------------------------------------
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique // Armazenado em lowercase
+  passwordHash      String
+  role              Role
+  uf                String
+  cidade            String
+  createdAt         DateTime           @default(now())
+  musicianProfile   MusicianProfile?
+  contractorProfile ContractorProfile?
+}
+
+model MusicianProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nomeCompleto    String
+  cpf             String   @unique
+  telefone        String
+  fotoPerfilUrl   String
+  bio             String?
+  estilosMusicais String[]
+  uf              String
+  cidade          String
+}
+
+model ContractorProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nomeFantasia  String
+  cnpj          String   @unique
+  telefone      String
+  fotoPerfilUrl String
+  uf            String
+  cidade        String
+}
+
+model BlockedDocument {
+  id         String   @id @default(uuid())
+  documento  String   @unique // CPF ou CNPJ formatado/limpo
+  tipo       Role
+  blockedAt  DateTime @default(now())
+}
+
+model Event {
+  id            String      @id @default(uuid())
+  contractorId  String
+  titulo        String
+  tipoEvento    String
+  data          DateTime
+  horarioInicio String      // Ex: "20:00"
+  duracao       String      // Ex: "03:00" (TimePicker HH:mm)
+  uf            String
+  cidade        String
+  estiloMusical String
+  cache         Float
+  imagemUrl     String
+  descricao     String?
+  status        EventStatus @default(ABERTO)
+  createdAt     DateTime    @default(now())
+}

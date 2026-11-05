@@ -1,0 +1,137 @@
+"Construa o protótipo interativo completo do App Muve com UI dark mode moderna e as seguintes especificações rigorosas de validação, UX e fluxo:
+
+1. Autenticação e Regras Globais
+
+E-mail Único Gmail: O campo de e-mail aceita estritamente o domínio @gmail.com com sanitização automática (sem acentos/cedilhas). O login autentica o e-mail único e redireciona automaticamente para o perfil correto (Músico ou Contratante).
+
+Máscaras Automáticas em Inputs Numéricos:
+
+CPF: 000.000.000-00
+
+CNPJ: 00.000.000/0000-00
+
+Telefone: (00) 00000-0000
+
+Localização Obrigatória: Formulários de perfil e evento exigem a seleção sequencial de Estado (UF) e Cidade via Dropdown/Select.
+
+Navegação de Retorno: Todas as sub-telas possuem botão visível <- Voltar no topo.
+
+2. Jornada do Músico
+
+Cadastro de Perfil: Seleção de Estilos Musicais por chips reativos (limpa a mensagem de erro vermelha no instante do clique).
+
+Feed de Eventos: Exibe apenas vagas da mesma UF/Cidade do músico que coincidam com seus estilos. Exibe aviso amigável caso não existam shows disponíveis.
+
+Inscrição: Botão direto de candidatura sem cobrança de taxas.
+
+3. Jornada do Contratante
+
+Criar Evento: Trava de Cachê Mínimo de R$ 100,00 e seletor aceitando apenas datas futuras.
+
+Gestão de Candidatos: Exibe os músicos inscritos no evento e permite abrir o perfil do candidato para ver avaliações e estrelas (1 a 5).
+
+Checkout Pix (Asaas): Ao aprovar o músico, abre a tela de pagamento exclusivo do contratante com QR Code Pix simulado do Asaas.
+
+4. Pós-Evento
+
+Duplo OK Independente: Botões de confirmação para ambas as partes sem estados pré-marcados.
+
+Avaliação Mutua: Liberação do formulário de notas e comentários após a conclusão.
+
+Nota de Performance: Utilize no máximo 2 itens fictícios por lista para otimizar o uso do layout e evitar acúmulo de dados desnecessários."
+
+------------------------------------------------------------------------------------------------------------------
+
+===================================================================
+PROJETO: APP MUVE — REGRAS DE NEGÓCIO, MÁSCARAS E ARQUITETURA
+===================================================================
+
+1. UTILITÁRIOS DE VALIDAÇÃO E MÁSCARAS (src/utils/validators.ts)
+-------------------------------------------------------------------
+- MÁSCARA CPF: 
+  const maskCPF = (v: string) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').slice(0, 14);
+
+- MÁSCARA CNPJ: 
+  const maskCNPJ = (v: string) => v.replace(/\D/g, '').replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2').slice(0, 18);
+
+- MÁSCARA TELEFONE: 
+  const maskPhone = (v: string) => v.replace(/\D/g, '').replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').slice(0, 15);
+
+- SANITIZAÇÃO DE E-MAIL (APENAS GMAIL):
+  const isValidGmail = (email: string) => /^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email.toLowerCase().trim());
+
+- VALIDAÇÃO DE CACHÊ MÍNIMO:
+  const isValidCache = (valor: number) => valor >= 100.00;
+
+2. MODELAGEM DE DADOS (src/types/index.ts)
+-------------------------------------------------------------------
+export type Role = 'MUSICIAN' | 'CONTRACTOR';
+
+export interface UserBase {
+  id: string;
+  email: string; // Exclusivo @gmail.com e único
+  role: Role;
+  uf: string; // Seleção via Dropdown
+  cidade: string; // Seleção via Dropdown
+}
+
+export interface MusicianProfile extends UserBase {
+  nomeCompleto: string;
+  cpf: string; // Mascarado
+  telefone: string; // Mascarado
+  bio?: string;
+  estilosMusicais: string[]; // Exige ao menos 1
+  avaliacaoMedia: number; // 1.0 a 5.0
+}
+
+export interface ContractorProfile extends UserBase {
+  nomeFantasia: string;
+  cnpj: string; // Mascarado
+  telefone: string; // Mascarado
+}
+
+export interface Event {
+  id: string;
+  contractorId: string;
+  titulo: string;
+  cache: number; // >= R$ 100,00
+  data: string; // Requer data >= data_atual
+  uf: string;
+  cidade: string;
+  estiloMusical: string;
+  descricao?: string;
+  status: 'ABERTO' | 'CONTRATADO' | 'CONCLUIDO';
+  candidatosIds: string[];
+  musicoContratadoId?: string;
+  confirmacaoMusico: boolean;
+  confirmacaoContratante: boolean;
+}
+
+3. ESPECIFICAÇÃO DE FLUXO E UX TELA A TELA
+-------------------------------------------------------------------
+[TELA 01: LOGIN]
+- Inputs: E-mail (@gmail.com obrigatorio) e Senha.
+- Regra: Ao validar o e-mail único, identifica a 'role' do usuário e redireciona automaticamente para a Home do Músico ou do Contratante.
+
+[TELA 02: CADASTRO DE PERFIL (MÚSICO / CONTRATANTE)]
+- Campos Músico: Nome Completo, Gmail, Senha, CPF (mascarado), Telefone (mascarado), Estado (UF), Cidade, Bio e Estilos Musicais (Chips).
+- Campos Contratante: Nome Fantasia, Gmail, Senha, CNPJ (mascarado), Telefone (mascarado), Estado (UF), Cidade.
+- Regra de UI: O aviso de erro de "Selecione um estilo" deve sumir Reativamente no clique do chip.
+
+[TELA 03: FEED DO MÚSICO]
+- Filtro Automático: Exibe apenas eventos onde (Evento.uf === Musico.uf AND Evento.cidade === Musico.cidade AND Evento.estilo IN Musico.estilosMusicais).
+- Empty State: Se não houver correspondências, exibe card amigável com mensagem 'Nenhum evento no seu perfil no momento'.
+
+[TELA 04: CRIAR EVENTO (CONTRATANTE)]
+- Inputs: Título, Data (bloquear datas passadas), Cachê (R$) (bloquear valores < R$ 100,00), Estado (UF), Cidade, Estilo Musical e Descrição.
+
+[TELA 05: PAINEL DE EVENTO & AVALIAÇÃO DE CANDIDATOS]
+- Lista os músicos inscritos. Permite clicar no perfil do candidato para visualizar a nota (1 a 5 estrelas) e histórico de avaliações.
+- Botão "Aprovar Candidato": Redireciona para o Checkout Pix do Asaas.
+
+[TELA 06: CHECKOUT PIX (ASAAS)]
+- Exclusivo do Contratante: Exibe resumo do evento, valor do cachê, QR Code Pix simulado e chave "Copia e Cola".
+
+[TELA 07: PÓS-EVENTO & DUPLO OK]
+- Apenas botões de confirmação independentes ("Confirmar Conclusão"). Nenhum status marcado previamente.
+- Libera formulário de avaliação por estrelas (1 a 5) somente após o aceite de ambas as partes.
