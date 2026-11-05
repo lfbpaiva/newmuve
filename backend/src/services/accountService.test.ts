@@ -8,7 +8,7 @@ function fakes() {
   const accounts = new Map<string, Account>();
   const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
-  const state = { failCreateProfile: false, ongoingHiring: false, customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
+  const state = { failCreateProfile: false, ongoingHiring: false, semSenha: false, customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
   let nextId = 1;
 
   const store: AccountStore = {
@@ -36,6 +36,7 @@ function fakes() {
       users.set(userId, { email, password, termosVersao });
       return { userId };
     },
+    hasPassword: async () => !state.semSenha,
     verifyPassword: async (email, password) => [...users.values()].some((u) => u.email === email && u.password === password),
     recordTermsAcceptance: async (userId, termosVersao) => {
       const existing = users.get(userId);
@@ -180,6 +181,15 @@ describe("exclusão de conta", () => {
     t.state.ongoingHiring = true;
     await expect(t.service.deleteAccount(user, { email: user.email, password: "segredo1" })).rejects.toMatchObject({ code: "CONTRATACAO_EM_ANDAMENTO" });
     expect(t.accounts.size).toBe(1);
+  });
+
+  it("quem entra pelo Google exclui a conta confirmando só o e-mail", async () => {
+    t.state.semSenha = true;
+
+    await expect(t.service.deleteAccount(user, { email: "outro@exemplo.com", password: "" })).rejects.toMatchObject({ code: "CREDENCIAIS_NAO_CONFEREM" });
+    await t.service.deleteAccount(user, { email: user.email, password: "" });
+
+    expect(t.accounts.size).toBe(0);
   });
 
   it("exclui a conta e libera o e-mail para novo cadastro", async () => {

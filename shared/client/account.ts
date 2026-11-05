@@ -107,6 +107,12 @@ export function updateProfile(dados: ProfileData, avatar: UploadFile | null): Pr
   return apiRequest<Me>("/me", { method: "PATCH", body: withFile(dados, avatar) });
 }
 
+export async function hasPasswordLogin(): Promise<boolean> {
+  const { data } = await supabase().auth.getSession();
+  const metadata = data.session?.user.app_metadata;
+  return (metadata?.providers ?? [metadata?.provider]).includes("email");
+}
+
 export async function deleteAccount(email: string, password: string): Promise<void> {
   await apiRequest("/me", { method: "DELETE", body: { email, password } });
   await forgetEmail();

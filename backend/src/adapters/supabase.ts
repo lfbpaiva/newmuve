@@ -142,6 +142,12 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       return { userId: data.user.id };
     },
 
+    async hasPassword(userId) {
+      const { data, error } = await admin.auth.admin.getUserById(userId);
+      if (error) throw error;
+      return (data.user.identities ?? []).some((identity) => identity.provider === "email");
+    },
+
     async verifyPassword(email, password) {
       const { error } = await publicClient().auth.signInWithPassword({ email, password });
       if (!error) return true;

@@ -342,17 +342,18 @@ export function createEventService(deps: {
     },
 
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
-      await findEventAsParty(user, eventId);
-      await payments.refreshRefund(eventId).catch((error: unknown) => {
+      const first = await findEventAsParty(user, eventId);
+      const refund = await payments.refreshRefund(eventId).catch((error: unknown) => {
         console.error("Falha ao consultar estorno da contratação", error instanceof AppError ? error.code : "falha inesperada");
+        return undefined;
       });
-      const found = await findEventAsParty(user, eventId);
+      const found = refund === undefined || refund?.refundStatus ? await findEventAsParty(user, eventId) : first;
       const { party } = found;
       let { event } = found;
       if (event.status === "ABERTO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento ainda não tem um músico contratado.");
 
-      const estornoPendente = (await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO";
-      const contestacao = await events.findOpenDispute(eventId);
+      const [atual, contestacao] = await Promise.all([refund === undefined ? payments.findPayment(eventId) : refund, events.findOpenDispute(eventId)]);
+      const estornoPendente = atual?.refundStatus === "PROCESSANDO";
       if (event.status === "CONTRATADO" && !estornoPendente && !contestacao && prazoEncerrado(event, now)) {
         event = await events.concludeEvent(eventId);
       }

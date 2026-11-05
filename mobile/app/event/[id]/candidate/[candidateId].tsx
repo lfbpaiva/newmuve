@@ -6,6 +6,7 @@ import { isPro, isValidUrl } from "../../../../../shared/dominio.ts";
 import { ReviewsSection } from "../../../../components/events";
 import { Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Section, Tag } from "../../../../components/ui";
 import { space, styles, type } from "../../../../lib/theme";
+import { denunciar } from "../../../../lib/suporte";
 import { useMe } from "../../../../lib/useMe";
 
 const statusPill: Record<CandidateStatus, { text: string; tone: "accent" | "success" | "muted" }> = {
@@ -45,6 +46,7 @@ export default function CandidateProfileScreen() {
         ? <Button title="Nos favoritos" variant="tonal" icon="heart" onPress={() => void setFavorite(musician.id, false).then(favoritos.reload)}/>
         : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" onPress={() => void setFavorite(musician.id, true).then(favoritos.reload)}/>)}
     </View>
+    <Button title={`Denunciar ${musician.nome}`} variant="text" icon="flag-outline" onPress={() => denunciar(musician.nome, "perfil de candidato", me.email)}/>
     <Section title="Apresentação">
       <Text style={musician.bio ? type.body : type.bodySmall}>{musician.bio || "Descrição não informada."}</Text>
       {musician.estilosMusicais.length > 0 && <View style={[styles.row, { flexWrap: "wrap" }]}>{musician.estilosMusicais.map((estilo) => <Tag key={estilo} text={estilo}/>)}</View>}

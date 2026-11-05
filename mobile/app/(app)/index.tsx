@@ -100,7 +100,7 @@ function Feed() {
 
   return <View style={styles.screen}>
     <TopBar title="Oportunidades" subtitle={me.cidade ? `${me.cidade}, ${me.uf} · ${(me.estilosMusicais ?? []).join(", ")}` : `Olá, ${me.nome}`}/>
-    <Screen>
+    <Screen onRefresh={feed.reload}>
       {setupPending && <EmptyState title={"Monte\nseu feed"} action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
@@ -140,7 +140,7 @@ function Dashboard() {
 
   return <View style={styles.screen}>
     <TopBar title="Seu painel" subtitle={me.nome}/>
-    <Screen>
+    <Screen onRefresh={events.reload}>
       {events.data && all.length > 0 && <View style={{ flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line, paddingVertical: space.md }}>
         {[[active.length, "ativos"], [candidaturas, "candidaturas"], [concluidos.length, "shows"]].map(([value, label], i) => <View key={String(label)} style={{ flex: 1, borderLeftWidth: i ? 1 : 0, borderLeftColor: colors.line, paddingLeft: i ? space.md : 0 }}>
           <Text style={type.stat}>{String(value).padStart(2, "0")}</Text><Text style={type.labelSmall}>{label}</Text>

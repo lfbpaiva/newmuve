@@ -97,7 +97,7 @@ function Opportunity({ eventId }: { eventId: string }) {
   const faltando = camposFaltantes(me, "candidatar");
   const conversar = application ? () => router.push(`/conversa/${application.id}`) : null;
 
-  return <Screen>
+  return <Screen onRefresh={details.reload}>
     <Hero event={event}><View style={[styles.row, { flexWrap: "wrap" }]}>{event.estilosMusicais.slice(0, 2).map((estilo) => <Tag key={estilo} text={estilo} onImage/>)}{event.distanciaKm ? <Tag text={`a ${event.distanciaKm} km`} onImage/> : null}</View></Hero>
     <View style={[styles.between, styles.cardRaised]}>
       <View><Text style={type.labelSmall}>CACHÊ</Text><Text style={type.price}>{formatCurrency(event.cache)}</Text></View>
@@ -178,7 +178,7 @@ function Manage({ eventId }: { eventId: string }) {
     confirmAction({ title: "Excluir evento", message: `Excluir "${event.titulo}"? As candidaturas recebidas serão perdidas.`, confirmLabel: "Excluir", cancelLabel: "Manter", onConfirm: () => void run(() => deleteEvent(event.id)) });
   }
 
-  return <Screen>
+  return <Screen onRefresh={details.reload}>
     <Hero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></Hero>
     <View style={[styles.cardRaised, { gap: 4 }]}>
       <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(event.cache)}</Text></View>

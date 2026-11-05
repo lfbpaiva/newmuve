@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { Text, View } from "react-native";
 import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import { Button, Heading, Icon, Screen, type IconName } from "../../components/ui";
+import { pedirCopiaDosDados } from "../../lib/suporte";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
@@ -23,6 +24,11 @@ export default function PrivacyScreen() {
         <Icon name={item.icon} size={20} color={colors.accentText}/>
         <View style={{ flex: 1, gap: 2 }}><Text style={type.titleSmall}>{item.title}</Text><Text style={type.bodySmall}>{item.text}</Text></View>
       </View>)}
+    </View>
+    <View style={{ gap: space.sm, marginTop: space.xl }}>
+      <Text style={type.title}>Seus direitos</Text>
+      <Text style={type.bodySmall}>Pela LGPD, você pode pedir uma cópia ou a correção dos seus dados.</Text>
+      <Button title="Pedir uma cópia dos meus dados" variant="text" block={false} onPress={() => pedirCopiaDosDados(me.email)}/>
     </View>
     <View style={{ gap: space.sm, marginTop: space.xl }}>
       <Text style={type.title}>Encerrar a conta</Text>

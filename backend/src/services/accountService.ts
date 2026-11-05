@@ -16,6 +16,7 @@ export interface AccountStore {
 export interface AuthGateway {
   signUp(email: string, password: string, termosVersao: string, redirectTo?: string): Promise<{ userId: string } | { emailTaken: true }>;
   verifyPassword(email: string, password: string): Promise<boolean>;
+  hasPassword(userId: string): Promise<boolean>;
   deleteUser(userId: string): Promise<void>;
   recordTermsAcceptance(userId: string, termosVersao: string): Promise<void>;
 }
@@ -133,7 +134,7 @@ export function createAccountService(deps: {
     async deleteAccount(user: AuthUser, input: DeleteAccountInput): Promise<void> {
       const naoConfere = new AppError(400, "CREDENCIAIS_NAO_CONFEREM", "E-mail ou senha não correspondem à conta atual.");
       if (input.email !== user.email.toLowerCase()) throw naoConfere;
-      if (!(await auth.verifyPassword(user.email, input.password))) throw naoConfere;
+      if ((await auth.hasPassword(user.id)) && !(await auth.verifyPassword(user.email, input.password))) throw naoConfere;
 
       if (await deps.hasOngoingHiring(user.id)) {
         throw new AppError(

@@ -22,7 +22,7 @@ export default function NotificationsScreen() {
     <EmptyState title="Nada por aqui ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Inscrições, mensagens, contratações e repasses aparecem aqui.</Text></EmptyState>
   </Screen>;
 
-  return <Screen>
+  return <Screen onRefresh={notifications.reload}>
     <View style={{ gap: space.sm }}>
       {notifications.data.map((notification) => <NotificationItem key={notification.id} notification={notification}/>)}
     </View>

@@ -8,6 +8,7 @@ import {
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -24,11 +25,12 @@ export function Icon({ name, size = 20, color = colors.ink }: { name: IconName; 
   return <Ionicons name={name} size={size} color={color}/>;
 }
 
-export function Screen({ children, scroll = true, padded = true }: { children: ReactNode; scroll?: boolean; padded?: boolean }) {
+export function Screen({ children, scroll = true, padded = true, onRefresh }: { children: ReactNode; scroll?: boolean; padded?: boolean; onRefresh?: () => void }) {
   const content = padded ? styles.content : { paddingBottom: 110, gap: space.xl };
+  const refreshControl = onRefresh ? <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accentText} colors={[colors.accent]}/> : undefined;
   return <SafeAreaView style={styles.screen} edges={["left", "right"]}>
     {scroll
-      ? <ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic">{children}</ScrollView>
+      ? <ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" refreshControl={refreshControl}>{children}</ScrollView>
       : <View style={[content, { flex: 1 }]}>{children}</View>}
   </SafeAreaView>;
 }

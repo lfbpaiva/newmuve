@@ -27,7 +27,7 @@ function MyApplications() {
   const applications = useAsync(`applications:${me.id}`, () => fetchMyApplications(me.id));
   useRefreshOnFocus(applications.reload);
 
-  return <Screen>
+  return <Screen onRefresh={applications.reload}>
     <Heading title="Minhas inscrições" subtitle="Os eventos em que você se candidatou e a resposta de cada um."/>
     {applications.error && <ErrorState message={applications.error} onRetry={applications.reload}/>}
     {!applications.error && !applications.data && <Loading cards={1}/>}
@@ -45,7 +45,7 @@ function MyEvents() {
   const events = useAsync(`all-events:${me.id}`, async () => (await fetchMyEvents(me.id)).map((event) => withEncerrado(event)));
   useRefreshOnFocus(events.reload);
 
-  return <Screen>
+  return <Screen onRefresh={events.reload}>
     <Heading title="Meus eventos" subtitle="Todos os eventos que você publicou, dos abertos aos concluídos."/>
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
     {!events.error && !events.data && <Loading cards={1}/>}

@@ -10,6 +10,8 @@ import { EventStatusPill } from "../../../components/events";
 import { Alert, Avatar, Button, ErrorState, Field, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, space, styles, type } from "../../../lib/theme";
+import { denunciar } from "../../../lib/suporte";
+import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
 
 const payoutLabels: Record<string, string> = {
@@ -28,6 +30,7 @@ const finishedMessages: Record<Exclude<CancellationResult["situacao"], "ESTORNO_
 
 export default function HiringScreen() {
   const { id: eventId } = useLocalSearchParams<{ id: string }>();
+  const me = useMe();
   const router = useRouter();
   const hiring = useAsync(`hiring:${eventId}`, () => fetchHiring(eventId));
   useRefreshOnFocus(hiring.reload);
@@ -110,7 +113,7 @@ export default function HiringScreen() {
   }
 
   return <View style={styles.screen}>
-    <Screen>
+    <Screen onRefresh={hiring.reload}>
       <View style={{ gap: space.sm }}>
         <EventStatusPill status={evento.status}/>
         <Text style={type.headline}>{evento.titulo}</Text>
@@ -132,6 +135,7 @@ export default function HiringScreen() {
               <Icon name="logo-whatsapp" size={18} color={colors.success}/><Text style={[type.label, { color: colors.success }]}>{maskPhone(other.telefone)}</Text>
             </Pressable>
           </View>
+          <Button title={`Denunciar ${other.nome}`} variant="text" icon="flag-outline" onPress={() => denunciar(other.nome, `evento "${evento.titulo}"`, me.email)}/>
         </>}
       </View>
 

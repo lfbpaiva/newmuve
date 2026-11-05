@@ -9,6 +9,7 @@ import { isValidCache } from "../../../shared/dominio.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { Alert, Avatar, Button, ErrorState, Icon, Loading, Screen } from "../../components/ui";
 import { colors, radius, space, styles, type } from "../../lib/theme";
+import { denunciar } from "../../lib/suporte";
 import { useMe } from "../../lib/useMe";
 import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
 
@@ -107,6 +108,9 @@ export default function ConversationScreen() {
             <Text style={type.titleSmall}>{other.nome}</Text>
             <Text style={type.bodySmall} numberOfLines={1}>{event.titulo}</Text>
           </View>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Denunciar ${other.nome}`} onPress={() => denunciar(other.nome, `conversa sobre "${event.titulo}"`, me.email)} style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+            <Icon name="flag-outline" size={20} color={colors.ink2}/>
+          </Pressable>
         </View>
         <Text style={type.bodySmall}>
           Cachê oferecido {formatCurrency(event.cache)} · valor da inscrição {formatCurrency(valorProposto ?? event.cache)}

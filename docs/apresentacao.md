@@ -62,7 +62,7 @@ Usar o evento já concluído "Noite acústica no terraço" para mostrar:
 | E se alguém tentar mudar o valor pelo aplicativo? | O app só manda IDs; a API lê o valor do banco e a RLS impede escrita direta. |
 | Como a plataforma ganha dinheiro além da taxa? | Dois planos por Pix recorrente na Asaas: Muve Pro para o músico (R$ 19,90) e Muve Casa para o contratante (R$ 49,90, taxa cai para 6%). Nenhum plano muda garantia, cancelamento ou multa. |
 | Por que não tem notificação com o app fechado? | Exige gerar o app pelo EAS; as notificações dentro do app funcionam em tempo real. |
-| Como testaram? | 264 testes de regras e da API (Vitest) e 124 testes do banco (pgTAP), além de testes de ponta a ponta no navegador. O GitHub Actions roda os testes da API a cada alteração. |
+| Como testaram? | 266 testes de regras e da API (Vitest) e 124 testes do banco (pgTAP), além de testes de ponta a ponta no navegador. O GitHub Actions roda os testes da API a cada alteração. |
 | E se ninguém abrir o app depois do show? | Uma rotina na API conclui o show em 7 dias e faz o repasse, a menos que haja contestação ou estorno em andamento. |
 | E se a Asaas não responder ao pedido de repasse? | O repasse não é repetido às cegas, para não pagar em dobro. A API procura a transferência pela referência do pagamento e, sem encontrar, o suporte confere e libera. |
 | O repasse aparece como em andamento. Por quê? | No sandbox, a transferência pela API aguarda autorização manual no painel da Asaas. |

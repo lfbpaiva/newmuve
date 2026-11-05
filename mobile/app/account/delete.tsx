@@ -1,8 +1,9 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
-import { deleteAccount } from "../../../shared/client/account.ts";
+import { deleteAccount, hasPasswordLogin } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
+import { useAsync } from "../../../shared/client/useAsync.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
 import { Alert, Button, Field, Heading, Icon, PasswordField, Screen } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
@@ -15,9 +16,11 @@ export default function DeleteAccountScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const login = useAsync("login-com-senha", hasPasswordLogin);
+  const pedeSenha = login.data !== false;
 
   async function confirm() {
-    if (email !== me.email || !password) return setError("E-mail ou senha não correspondem à conta atual.");
+    if (email !== me.email || (pedeSenha && !password)) return setError("E-mail ou senha não correspondem à conta atual.");
     setSubmitting(true);
     try {
       await deleteAccount(email, password);
@@ -36,11 +39,11 @@ export default function DeleteAccountScreen() {
         "Você poderá criar uma nova conta com o mesmo CPF/CNPJ no futuro.",
       ].map((text) => <View key={text} style={[styles.row, { alignItems: "flex-start", gap: 10 }]}><Icon name="remove-circle-outline" size={18} color={colors.error}/><Text style={[type.bodySmall, { flex: 1 }]}>{text}</Text></View>)}
     </View>
-    <Text style={type.body}>Para confirmar, digite o e-mail e a senha da conta.</Text>
+    <Text style={type.body}>{pedeSenha ? "Para confirmar, digite o e-mail e a senha da conta." : "Para confirmar, digite o e-mail da conta."}</Text>
     <Field label="E-mail da conta" value={email} onChangeText={(v) => { setEmail(sanitizeEmail(v)); setError(""); }} autoCapitalize="none" keyboardType="email-address"/>
-    <PasswordField label="Senha" value={password} onChangeText={(v) => { setPassword(v); setError(""); }}/>
+    {pedeSenha && <PasswordField label="Senha" value={password} onChangeText={(v) => { setPassword(v); setError(""); }}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
-    <Button variant="danger" title="Excluir minha conta definitivamente" icon="trash-outline" onPress={confirm} loading={submitting} disabled={!email || !password}/>
+    <Button variant="danger" title="Excluir minha conta definitivamente" icon="trash-outline" onPress={confirm} loading={submitting} disabled={!email || (pedeSenha && !password)}/>
     <Button variant="text" title="Manter minha conta" onPress={() => router.back()} disabled={submitting}/>
   </Screen>;
 }
