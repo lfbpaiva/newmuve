@@ -189,7 +189,7 @@ function Dashboard() {
     <TopBar title="Seu painel" role="Contratante" subtitle={me.nome}/>
     <Screen onRefresh={events.reload}>
       <View style={[styles.card, { backgroundColor: colors.surface2, borderTopWidth: 2, borderTopColor: colors.accent, gap: space.md }]}>
-        <View style={{ gap: space.xs }}><Text style={type.titleSmall}>Seu próximo evento começa aqui</Text><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Publique um show e acompanhe as candidaturas em um só lugar.</Text></View>
+        <View style={{ gap: space.xs }}><Text style={type.titleSmall}>{events.data && all.length > 0 ? "Seus eventos em um só lugar" : "Seu próximo evento começa aqui"}</Text><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>{events.data && all.length > 0 ? "Acompanhe os eventos publicados e prepare o próximo show." : "Publique um show e acompanhe as candidaturas em um só lugar."}</Text></View>
         <Button title={faltando.length ? "Completar perfil para criar" : "Criar novo evento"} icon="add" onPress={create}/>
       </View>
       {faltando.length > 0 && <Alert tone="info">Antes de publicar seu primeiro evento, complete o perfil: {descreverFaltantes(faltando)}.</Alert>}

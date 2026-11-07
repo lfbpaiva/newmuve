@@ -57,13 +57,18 @@ function useAction(onDone: () => void) {
 }
 
 function Hero({ event, children }: { event: EventItem; children?: ReactNode }) {
-  return <View style={{ height: 260, borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.surface }}>
-    <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }} accessibilityLabel={`Foto do evento ${event.titulo}`}/>
-    <LinearGradient colors={["transparent", "#0a0a0cf5"]} locations={[0.25, 1]} style={{ position: "absolute", inset: 0 }}/>
-    <View style={{ position: "absolute", left: 16, right: 16, bottom: 16, gap: 8 }}>
+  return <View style={{ borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
+    <View style={{ height: 190, backgroundColor: colors.surface2 }}>
+      <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }} accessibilityLabel={`Foto do evento ${event.titulo}`}/>
+      <LinearGradient colors={["#24194344", "transparent", "#0a0a0caa"]} locations={[0, 0.55, 1]} style={{ position: "absolute", inset: 0 }}/>
+    </View>
+    <View style={{ padding: space.lg, gap: space.md }}>
       {children}
-      <Text style={type.headline}>{event.titulo}</Text>
-      <Text style={[type.bodySmall, { color: "#d9d6e4" }]}>{formatEventDateTime(event.inicio, event.uf)} · {formatDuration(event.duracaoMinutos)} · {event.cidade}, {event.uf}</Text>
+      <Text style={[type.headline, { textTransform: "none", fontSize: 28, lineHeight: 33 }]} accessibilityRole="header">{event.titulo}</Text>
+      <View style={{ gap: space.sm }}>
+        <View style={[styles.row, { alignItems: "flex-start", gap: space.sm }]}><Icon name="calendar-outline" size={18} color={colors.accentText}/><Text style={[type.bodySmall, { flex: 1, fontSize: 14, lineHeight: 21 }]}>{formatEventDateTime(event.inicio, event.uf)} · {formatDuration(event.duracaoMinutos)}</Text></View>
+        <View style={[styles.row, { alignItems: "flex-start", gap: space.sm }]}><Icon name="location-outline" size={18} color={colors.accentText}/><Text style={[type.bodySmall, { flex: 1, fontSize: 14, lineHeight: 21 }]}>{event.cidade}, {event.uf}</Text></View>
+      </View>
     </View>
   </View>;
 }
@@ -74,7 +79,7 @@ function Facts({ event }: { event: EventItem }) {
     { icon: "musical-notes-outline", text: `${event.estilosMusicais.join(", ")} · ${event.formacao}` },
     { icon: "volume-high-outline", text: event.somDisponivel ? "Som disponível no local" : "Leve seu equipamento de som" },
   ];
-  return <View style={{ gap: 8 }}>{facts.map((f) => <View key={f.text} style={[styles.row, { gap: 10 }]}><Icon name={f.icon} size={18} color={colors.ink2}/><Text style={type.body}>{f.text}</Text></View>)}</View>;
+  return <View style={[styles.card, { borderWidth: 1, borderColor: colors.line, gap: space.md }]}>{facts.map((f) => <View key={f.text} style={[styles.row, { alignItems: "flex-start", gap: space.md }]}><Icon name={f.icon} size={18} color={colors.accentText}/><Text style={[type.body, { flex: 1 }]}>{f.text}</Text></View>)}</View>;
 }
 
 function Opportunity({ eventId }: { eventId: string }) {
@@ -99,22 +104,13 @@ function Opportunity({ eventId }: { eventId: string }) {
 
   return <Screen onRefresh={details.reload}>
     <Hero event={event}><View style={[styles.row, { flexWrap: "wrap" }]}>{event.estilosMusicais.slice(0, 2).map((estilo) => <Tag key={estilo} text={estilo} onImage/>)}{event.distanciaKm ? <Tag text={`a ${event.distanciaKm} km`} onImage/> : null}</View></Hero>
-    <View style={[styles.between, styles.cardRaised]}>
-      <View><Text style={type.labelSmall}>CACHÊ</Text><Text style={type.price}>{formatCurrency(event.cache)}</Text></View>
-      <Text style={[type.bodySmall, { flex: 1, textAlign: "right" }]}>Pago a você após o show, sem taxa de candidatura.</Text>
+    <View style={[styles.cardRaised, { borderTopWidth: 2, borderTopColor: colors.accent, gap: space.sm }]}>
+      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Cachê oferecido</Text>
+      <Text style={type.price}>{formatCurrency(event.cache)}</Text>
+      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Pago a você após o show, sem taxa de candidatura.</Text>
     </View>
     <Facts event={event}/>
-    {event.descricao ? <Section title="Sobre o evento"><Text style={type.body}>{event.descricao}</Text></Section> : null}
-    <Section title="Quem está contratando">
-      {contractor
-        ? <View style={[styles.card, styles.row, { gap: 12 }]}>
-          <Avatar uri={contractor.fotoPerfilUrl} name={contractor.nome}/>
-          <View style={{ flex: 1 }}><Text style={type.titleSmall}>{contractor.nome}</Text><RatingSummary media={contractor.avaliacaoMedia} total={contractor.totalAvaliacoes}/></View>
-        </View>
-        : <Text style={type.bodySmall}>O contratante excluiu a conta.</Text>}
-      <Text style={type.bodySmall}>Endereço completo e telefone são liberados após a contratação.</Text>
-    </Section>
-    <View style={{ gap: space.md }}>
+    <Section title="Sua participação"><View style={{ gap: space.md }}>
       {hired && <>
         {event.status === "CANCELADO"
           ? <Alert tone="info">Esta contratação foi cancelada. O comprovante mostra a situação do pagamento.</Alert>
@@ -134,7 +130,7 @@ function Opportunity({ eventId }: { eventId: string }) {
       {!hired && application && <>
         <Alert tone={application.status === "RECUSADO" ? "info" : "success"}>{application.status === "RECUSADO" ? "Sua inscrição não foi selecionada para este evento." : "Inscrição enviada. Você recebe uma notificação quando o contratante responder."}</Alert>
         {application.status === "PENDENTE" && <>
-          <View style={[styles.card, styles.between]}>
+          <View style={[styles.card, { borderWidth: 1, borderColor: colors.line, gap: space.xs }]}>
             <Text style={type.bodySmall}>{application.valorProposto === null ? "Você aceitou o cachê oferecido" : "Sua proposta"}</Text>
             <Text style={type.titleSmall}>{formatCurrency(application.valorProposto ?? event.cache)}</Text>
           </View>
@@ -146,7 +142,17 @@ function Opportunity({ eventId }: { eventId: string }) {
         </>}
       </>}
       {error ? <Alert tone="error">{error}</Alert> : null}
-    </View>
+    </View></Section>
+    {event.descricao ? <Section title="Sobre o evento"><View style={[styles.card, { borderWidth: 1, borderColor: colors.line }]}><Text style={type.body}>{event.descricao}</Text></View></Section> : null}
+    <Section title="Quem está contratando">
+      {contractor
+        ? <View style={[styles.card, styles.row, { gap: 12, borderWidth: 1, borderColor: colors.line }]}>
+          <Avatar uri={contractor.fotoPerfilUrl} name={contractor.nome}/>
+          <View style={{ flex: 1, minWidth: 0 }}><Text style={type.titleSmall}>{contractor.nome}</Text><RatingSummary media={contractor.avaliacaoMedia} total={contractor.totalAvaliacoes}/></View>
+        </View>
+        : <Text style={type.bodySmall}>O contratante excluiu a conta.</Text>}
+      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Endereço completo e telefone são liberados após a contratação.</Text>
+    </Section>
   </Screen>;
 }
 
@@ -180,17 +186,20 @@ function Manage({ eventId }: { eventId: string }) {
 
   return <Screen onRefresh={details.reload}>
     <Hero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></Hero>
-    <View style={[styles.cardRaised, { gap: 4 }]}>
-      <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(event.cache)}</Text></View>
-      <View style={styles.between}><Text style={type.bodySmall}>Total com a taxa de {comissaoPercentual(me.casaAte)}%</Text><Text style={type.price}>{formatCurrency(calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total)}</Text></View>
+    <View style={[styles.cardRaised, { borderTopWidth: 2, borderTopColor: colors.accent, gap: space.sm }]}>
+      <View style={[styles.between, { flexWrap: "wrap" }]}><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(event.cache)}</Text></View>
+      <View style={{ height: 1, backgroundColor: colors.line }}/>
+      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Total com a taxa de {comissaoPercentual(me.casaAte)}%</Text>
+      <Text style={type.price}>{formatCurrency(calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total)}</Text>
     </View>
     <Facts event={event}/>
     {event.status === "CONTRATADO" && <Alert tone="success">Músico contratado: os dados do evento não podem mais ser alterados.</Alert>}
     {paymentInProgress && <Alert tone="info">Há um pagamento em andamento; conclua-o ou aguarde a cobrança expirar para editar.</Alert>}
     {event.status === "ABERTO" && event.encerrado && <Alert tone="info">A data do evento passou sem contratação. Você pode excluí-lo para limpar a lista.</Alert>}
-    {deletable && <View style={{ flexDirection: "row", gap: space.md }}>
-      {!locked && <View style={{ flex: 1 }}><Button variant="tonal" icon="create-outline" title="Editar" disabled={paymentInProgress || busy} onPress={() => router.push(`/event/${event.id}/edit`)}/></View>}
-      <View style={{ flex: 1 }}><Button variant="danger" icon="trash-outline" title="Excluir" disabled={paymentInProgress} loading={busy} onPress={remove}/></View>
+    <Section title="Gerenciar evento">
+    {deletable && <View style={{ gap: space.sm }}>
+      {!locked && <Button variant="tonal" icon="create-outline" title="Editar" disabled={paymentInProgress || busy} onPress={() => router.push(`/event/${event.id}/edit`)}/>}
+      <Button variant="danger" icon="trash-outline" title="Excluir" disabled={paymentInProgress} loading={busy} onPress={remove}/>
     </View>}
     {!locked && <Button
       variant="outlined"
@@ -204,6 +213,7 @@ function Manage({ eventId }: { eventId: string }) {
     {event.status !== "ABERTO" && <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     {decline.error ? <Alert tone="error">{decline.error}</Alert> : null}
+    </Section>
 
     <Section title={candidates.length === 0 ? "Candidatos" : `${candidates.length} ${candidates.length === 1 ? "candidato" : "candidatos"}`}>
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
@@ -216,23 +226,21 @@ function Manage({ eventId }: { eventId: string }) {
 
 function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheOferecido, favorito, onFavorite, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; canDecline: boolean; approveLabel: string; cacheOferecido: number; favorito: boolean | null; onFavorite: (on: boolean) => void; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
   const { musician } = candidate;
-  return <View style={[styles.card, { gap: space.md }]}>
+  return <View style={[styles.card, { gap: space.md, borderWidth: 1, borderColor: colors.line }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
       <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={56}/>
-      <View style={{ flex: 1 }}><View style={[styles.row, { gap: 6 }]}><Text style={type.titleSmall}>{musician.nome}</Text>{musician.pro ? <Pill text="Pro" tone="accent"/> : null}</View><Text style={type.bodySmall}>{musician.cidade}, {musician.uf} · {musician.estilosMusicais.join(", ")}</Text><RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/></View>
+      <View style={{ flex: 1, minWidth: 0, gap: space.xs }}><View style={[styles.row, { flexWrap: "wrap", gap: 6 }]}><Text style={[type.titleSmall, { flexShrink: 1 }]}>{musician.nome}</Text>{musician.pro ? <Pill text="Pro" tone="accent"/> : null}</View><Text style={type.bodySmall}>{musician.cidade}, {musician.uf} · {musician.estilosMusicais.join(", ")}</Text><RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/></View>
       {favorito !== null && <Pressable accessibilityRole="button" accessibilityLabel={favorito ? `Remover ${musician.nome} dos favoritos` : `Salvar ${musician.nome} nos favoritos`} onPress={() => onFavorite(!favorito)} hitSlop={8} style={{ padding: 6 }}><Icon name={favorito ? "heart" : "heart-outline"} size={22} color={favorito ? colors.accentText : colors.ink2}/></Pressable>}
       <Icon name="chevron-forward" size={18} color={colors.ink3}/>
     </Pressable>
     {musician.bio ? <Text style={type.bodySmall}>{musician.bio}</Text> : null}
-    <View style={styles.between}>
+    <View style={{ gap: space.xs }}>
       <Text style={type.bodySmall}>{candidate.valorProposto === null ? "Aceita o cachê oferecido" : `Pede outro cachê (você ofereceu ${formatCurrency(cacheOferecido)})`}</Text>
       <Text style={type.titleSmall}>{formatCurrency(candidate.valorProposto ?? cacheOferecido)}</Text>
     </View>
+    {candidate.status === "PENDENTE" && canApprove && <Button icon="checkmark" title={approveLabel} onPress={onApprove}/>}
     {candidate.status !== "RECUSADO" && <Button variant="outlined" icon="chatbubbles-outline" title="Conversar" onPress={onChat}/>}
-    <View style={{ flexDirection: "row", gap: space.sm }}>
-      {musician.portfolioUrl ? <View style={{ flex: 1 }}><Button variant="outlined" icon="play-circle-outline" title="Ver trabalho" onPress={() => Linking.openURL(musician.portfolioUrl!)}/></View> : null}
-      {candidate.status === "PENDENTE" && canApprove && <View style={{ flex: 1 }}><Button icon="checkmark" title={approveLabel} onPress={onApprove}/></View>}
-    </View>
+    {musician.portfolioUrl ? <Button variant="outlined" icon="play-circle-outline" title="Ver trabalho" onPress={() => Linking.openURL(musician.portfolioUrl!)}/> : null}
     {candidate.status === "APROVADO" && <Alert tone="success">Contratado</Alert>}
     {candidate.status === "PENDENTE" && canDecline && <Button variant="text" title="Recusar inscrição" onPress={onDecline}/>}
     {candidate.status === "RECUSADO" && <Alert tone="info">Não selecionado</Alert>}
