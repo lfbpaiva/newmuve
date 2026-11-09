@@ -146,7 +146,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.post("/me/perfil", async (c) => {
     await accounts.completeProfile(c.get("user"), completarPerfilSchema.parse(await readJson(c)));
-    return c.body(null, 201);
+    return c.body(null, 204);
   });
 
   app.get("/me/plano", async (c) => c.json(await requirePlans().status(c.get("user"))));

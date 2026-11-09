@@ -12,6 +12,7 @@ const CANDIDATE_ID = "7b0d3c0e-5f0a-4a52-9d5b-2f1f6c1f9a10";
 function setup() {
   const accounts = {
     signup: vi.fn(async () => {}),
+    completeProfile: vi.fn(async () => {}),
     getMe: vi.fn(async () => ({ id: "u1", role: "CONTRACTOR" as const, email: "bar@exemplo.com" })),
     updateProfile: vi.fn(async () => {}),
     deleteAccount: vi.fn(async () => {}),
@@ -158,6 +159,31 @@ describe("rotas autenticadas", () => {
 
     expect(response.status).toBe(200);
     expect(accounts.getMe).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" });
+  });
+
+  it("POST /api/me/perfil retorna 204 sem conteudo", async () => {
+    const { app, accounts } = setup();
+
+    const response = await app.request("/api/me/perfil", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer token-valido",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        role: "MUSICIAN",
+        nome: "Musico Teste",
+        aceiteTermos: true,
+      }),
+    });
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(accounts.completeProfile).toHaveBeenCalledWith(
+      { id: "u1", email: "bar@exemplo.com" },
+      { role: "MUSICIAN", nome: "Musico Teste", aceiteTermos: true },
+    );
+    expect(accounts.completeProfile).toHaveBeenCalledOnce();
   });
 
   it("DELETE /api/me exige e-mail e senha no corpo", async () => {

@@ -84,8 +84,15 @@ const app = createApp({
 const rotina = createRotinaFinanceira({ paymentStore, eventStore, payments, events });
 const executarRotina = () => void rotina.run().catch((error: unknown) => console.error("Falha na rotina financeira", error));
 
-serve({ fetch: app.fetch, port: config.port }, () => {
-  console.log(`API do Muve em http://localhost:${config.port}/api`);
-  executarRotina();
-  setInterval(executarRotina, ROTINA_FINANCEIRA_INTERVALO_MS);
-});
+serve(
+  {
+    fetch: app.fetch,
+    port: config.port,
+    hostname: "0.0.0.0",
+  },
+  (info) => {
+    console.log(`API do Muve rodando na porta ${info.port} (escutando em 0.0.0.0)`);
+    executarRotina();
+    setInterval(executarRotina, ROTINA_FINANCEIRA_INTERVALO_MS);
+  }
+);
