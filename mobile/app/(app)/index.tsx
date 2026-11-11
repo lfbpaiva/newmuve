@@ -103,32 +103,37 @@ function HomeLoading({ label }: { label: string }) {
 }
 
 const RADIUS_KEY = "muve.feedRadiusKm";
+const RAIO_PADRAO_KM = 50;
+const aguardarRaioSalvo = () => new Promise<never>(() => {});
+const lerRaioSalvo = (salvo: string | null) => (salvo !== null && /^\d+$/.test(salvo) ? Number(salvo) : RAIO_PADRAO_KM);
 const radiusLabel = (km: string) => (km === "0" ? "Minha cidade" : km === "400" ? "400 km · Pro" : `${km} km`);
 
 function Feed() {
   const me = useMe();
   const router = useRouter();
-  const [radius, setRadius] = useState(50);
+  const [raioEscolhido, setRaioEscolhido] = useState<number | null>(null);
   const [filtros, setFiltros] = useState<FeedFilters>(FILTROS_VAZIOS);
   const reduzida = Boolean(me.visibilidadeReduzidaAte && new Date(me.visibilidadeReduzidaAte) > new Date());
   const pro = isPro(me.proAte);
   const raios: readonly number[] = pro ? RAIOS_FEED_PRO_KM : RAIOS_FEED_KM;
+  const raioCarregado = raioEscolhido !== null;
+  const radius = raioEscolhido !== null && raios.includes(raioEscolhido) ? raioEscolhido : RAIO_PADRAO_KM;
   const multas = useAsync(`multas:${me.id}`, fetchOpenFines);
   const setupPending = camposFaltantes(me, "feed").length > 0;
-  const feed = useAsync(`feed:${radius}:${setupPending}`, () => (setupPending ? Promise.resolve([]) : fetchFeed(radius)));
+  const feed = useAsync(`feed:${raioCarregado ? radius : "pendente"}:${setupPending}`, () => (setupPending ? Promise.resolve([]) : raioCarregado ? fetchFeed(radius) : aguardarRaioSalvo()));
   useRefreshOnFocus(feed.reload);
 
   useEffect(() => {
-    AsyncStorage.getItem(RADIUS_KEY).then((saved) => {
-      const value = Number(saved);
-      if ((RAIOS_FEED_PRO_KM as readonly number[]).includes(value)) setRadius(value);
-    });
+    AsyncStorage.getItem(RADIUS_KEY).then(
+      (saved) => setRaioEscolhido((atual) => atual ?? lerRaioSalvo(saved)),
+      () => setRaioEscolhido((atual) => atual ?? RAIO_PADRAO_KM),
+    );
   }, []);
 
   const visiveis = filterFeed(feed.data ?? [], filtros);
 
   function changeRadius(value: string) {
-    setRadius(Number(value));
+    setRaioEscolhido(Number(value));
     AsyncStorage.setItem(RADIUS_KEY, value).catch(() => {});
   }
 

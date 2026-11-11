@@ -1,7 +1,8 @@
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { Text, View } from "react-native";
 import { EMAIL_SUPORTE } from "../../../shared/dominio.ts";
-import { Button, Heading, Icon, Screen, type IconName } from "../../components/ui";
+import { Alert, Button, Heading, Icon, Screen, type IconName } from "../../components/ui";
 import { pedirCopiaDosDados } from "../../lib/suporte";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
@@ -9,6 +10,7 @@ import { useMe } from "../../lib/useMe";
 export default function PrivacyScreen() {
   const me = useMe();
   const router = useRouter();
+  const [linkError, setLinkError] = useState("");
 
   const items: { icon: IconName; title: string; text: string }[] = [
     { icon: "mail-outline", title: "E-mail de acesso", text: `${me.email}. Para trocar, escreva para ${EMAIL_SUPORTE}.` },
@@ -28,7 +30,8 @@ export default function PrivacyScreen() {
     <View style={{ gap: space.sm, marginTop: space.xl }}>
       <Text style={type.title}>Seus direitos</Text>
       <Text style={type.bodySmall}>Pela LGPD, você pode pedir uma cópia ou a correção dos seus dados.</Text>
-      <Button title="Pedir uma cópia dos meus dados" variant="text" block={false} onPress={() => pedirCopiaDosDados(me.email)}/>
+      <Button title="Pedir uma cópia dos meus dados" variant="text" block={false} onPress={() => { setLinkError(""); pedirCopiaDosDados(me.email, setLinkError); }}/>
+      {linkError ? <Alert tone="error">{linkError}</Alert> : null}
     </View>
     <View style={{ gap: space.sm, marginTop: space.xl }}>
       <Text style={type.title}>Encerrar a conta</Text>
