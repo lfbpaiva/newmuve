@@ -1,12 +1,12 @@
 import { useRouter } from "expo-router";
-import { Linking } from "react-native";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { EMAIL_SUPORTE, isPro } from "../../../shared/dominio.ts";
-import { Heading, ListItem, Screen } from "../../components/ui";
+import { Alert, Heading, ListItem, Screen } from "../../components/ui";
 import { confirmAction } from "../../lib/confirm";
 import { forgetPushToken } from "../../lib/push";
+import { escreverParaSuporte } from "../../lib/suporte";
 import { colors, space, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
@@ -14,6 +14,7 @@ export default function SettingsScreen() {
   const me = useMe();
   const { signOut } = useAuth();
   const router = useRouter();
+  const [linkError, setLinkError] = useState("");
 
   function confirmSignOut() {
     confirmAction({ title: "Sair da conta", message: "Você precisará entrar de novo para usar o app.", confirmLabel: "Sair", cancelLabel: "Ficar", destructive: false, onConfirm: () => void forgetPushToken().finally(() => signOut()) });
@@ -29,10 +30,11 @@ export default function SettingsScreen() {
     </Group>
     <Group title="Conta">
       <ListItem icon="shield-checkmark-outline" title="Conta e privacidade" subtitle="Seus dados, e-mail de acesso e encerramento da conta" onPress={() => router.push("/account/privacy")}/>
-      <ListItem icon="help-circle-outline" title="Ajuda e suporte" subtitle={EMAIL_SUPORTE} onPress={() => void Linking.openURL(`mailto:${EMAIL_SUPORTE}?subject=${encodeURIComponent(`Muve: ajuda (${me.email})`)}`)}/>
+      <ListItem icon="help-circle-outline" title="Ajuda e suporte" subtitle={EMAIL_SUPORTE} onPress={() => { setLinkError(""); escreverParaSuporte(`Muve: ajuda (${me.email})`, setLinkError); }}/>
       <ListItem icon="document-text-outline" title="Termos de Uso" subtitle="Taxa, pagamento, cancelamentos e seus dados" onPress={() => router.push("/terms")}/>
       <ListItem icon="log-out-outline" title="Sair da conta" subtitle={me.email} onPress={confirmSignOut} trailing={null}/>
     </Group>
+    {linkError ? <Alert tone="error">{linkError}</Alert> : null}
     <Text style={[type.bodySmall, { textAlign: "center" }]}>Muve · versão 1.0</Text>
   </Screen>;
 }

@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { Image, Linking, Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
 import {
   applyToEvent,
@@ -28,6 +28,7 @@ import { EventStatusPill, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
+import { abrirLink } from "../../../lib/links";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
 import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
@@ -53,7 +54,7 @@ function useAction(onDone: () => void) {
       setBusy(false);
     }
   }
-  return { busy, error, run };
+  return { busy, error, run, fail: setError };
 }
 
 function Hero({ event, children }: { event: EventItem; children?: ReactNode }) {
@@ -219,12 +220,12 @@ function Manage({ eventId }: { eventId: string }) {
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
       {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. As inscrições aparecem aqui.</Text></EmptyState>}
       {payingFor && <Alert tone="info">Há um Pix em andamento para um dos candidatos. Conclua ou cancele esse pagamento antes de escolher outro.</Alert>}
-      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked && (!payingFor || payingFor === candidate.id)} canDecline={!locked && !payingFor} approveLabel={payingFor === candidate.id ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} favorito={casa ? (favoritos.data ?? []).includes(candidate.musician.id) : null} onFavorite={(on) => void runDecline(() => setFavorite(candidate.musician.id, on).then(favoritos.reload))} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
+      {candidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} canApprove={!locked && (!payingFor || payingFor === candidate.id)} canDecline={!locked && !payingFor} approveLabel={payingFor === candidate.id ? "Continuar pagamento" : "Aprovar e pagar"} cacheOferecido={event.cache} favorito={casa ? (favoritos.data ?? []).includes(candidate.musician.id) : null} onFavorite={(on) => void runDecline(() => setFavorite(candidate.musician.id, on).then(favoritos.reload))} onProfile={() => router.push(`/event/${event.id}/candidate/${candidate.id}`)} onChat={() => router.push(`/conversa/${candidate.id}`)} onPortfolio={(url) => { decline.fail(""); abrirLink(url, decline.fail); }} onDecline={() => confirmAction({ title: "Recusar inscrição", message: `Recusar ${candidate.musician.nome}? O músico será avisado e a conversa será encerrada.`, confirmLabel: "Recusar", cancelLabel: "Voltar", onConfirm: () => void runDecline(() => declineCandidate(event.id, candidate.id)) })} onApprove={() => router.push({ pathname: `/event/${event.id}/checkout`, params: { candidateId: candidate.id } })}/>)}
     </Section>
   </Screen>;
 }
 
-function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheOferecido, favorito, onFavorite, onProfile, onChat, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; canDecline: boolean; approveLabel: string; cacheOferecido: number; favorito: boolean | null; onFavorite: (on: boolean) => void; onProfile: () => void; onChat: () => void; onDecline: () => void; onApprove: () => void }) {
+function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheOferecido, favorito, onFavorite, onProfile, onChat, onPortfolio, onDecline, onApprove }: { candidate: Candidate; canApprove: boolean; canDecline: boolean; approveLabel: string; cacheOferecido: number; favorito: boolean | null; onFavorite: (on: boolean) => void; onProfile: () => void; onChat: () => void; onPortfolio: (url: string) => void; onDecline: () => void; onApprove: () => void }) {
   const { musician } = candidate;
   return <View style={[styles.card, { gap: space.md, borderWidth: 1, borderColor: colors.line }]}>
     <Pressable accessibilityRole="button" accessibilityLabel={`Ver perfil de ${musician.nome}`} onPress={onProfile} style={({ pressed }) => [styles.row, { gap: 12, opacity: pressed ? 0.7 : 1 }]}>
@@ -240,7 +241,7 @@ function CandidateCard({ candidate, canApprove, canDecline, approveLabel, cacheO
     </View>
     {candidate.status === "PENDENTE" && canApprove && <Button icon="checkmark" title={approveLabel} onPress={onApprove}/>}
     {candidate.status !== "RECUSADO" && <Button variant="outlined" icon="chatbubbles-outline" title="Conversar" onPress={onChat}/>}
-    {musician.portfolioUrl ? <Button variant="outlined" icon="play-circle-outline" title="Ver trabalho" onPress={() => Linking.openURL(musician.portfolioUrl!)}/> : null}
+    {musician.portfolioUrl ? <Button variant="outlined" icon="play-circle-outline" title="Ver trabalho" onPress={() => onPortfolio(musician.portfolioUrl!)}/> : null}
     {candidate.status === "APROVADO" && <Alert tone="success">Contratado</Alert>}
     {candidate.status === "PENDENTE" && canDecline && <Button variant="text" title="Recusar inscrição" onPress={onDecline}/>}
     {candidate.status === "RECUSADO" && <Alert tone="info">Não selecionado</Alert>}

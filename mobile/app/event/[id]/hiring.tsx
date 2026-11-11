@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
 import { cancelHiring, confirmCompletion, fetchHiring, openDispute, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
 import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
@@ -10,6 +10,7 @@ import { EventStatusPill } from "../../../components/events";
 import { Alert, Avatar, Button, ErrorState, Field, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, space, styles, type } from "../../../lib/theme";
+import { abrirLink } from "../../../lib/links";
 import { denunciar } from "../../../lib/suporte";
 import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
@@ -125,17 +126,17 @@ export default function HiringScreen() {
           <Icon name="location-outline" size={20} color={colors.accentText}/>
           <View style={{ flex: 1 }}><Text style={type.titleSmall}>{evento.endereco ?? "Endereço não informado"}</Text><Text style={type.bodySmall}>{evento.cidade}, {evento.uf}</Text></View>
         </View>
-        {evento.endereco && <Button title="Abrir no mapa" variant="outlined" icon="map-outline" onPress={() => void Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${evento.endereco}, ${evento.cidade}, ${evento.uf}`)}`)}/>}
+        {evento.endereco && <Button title="Abrir no mapa" variant="outlined" icon="map-outline" onPress={() => { setError(""); abrirLink(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${evento.endereco}, ${evento.cidade}, ${evento.uf}`)}`, setError); }}/>}
         {other && <>
           <View style={styles.divider}/>
           <View style={[styles.row, { gap: 12 }]}>
             <Avatar uri={other.fotoPerfilUrl} name={other.nome}/>
             <View style={{ flex: 1 }}><Text style={type.bodySmall}>{isContractor ? "Músico contratado" : "Contratante"}</Text><Text style={type.titleSmall}>{other.nome}</Text></View>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Conversar com ${other.nome} no WhatsApp`} onPress={() => Linking.openURL(`https://wa.me/55${other.telefone}`)} style={({ pressed }) => [styles.row, { minHeight: 44, paddingHorizontal: 14, borderRadius: 999, backgroundColor: pressed ? "#1f3d26" : colors.successBg, gap: 6 }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Conversar com ${other.nome} no WhatsApp`} onPress={() => { setError(""); abrirLink(`https://wa.me/55${other.telefone}`, setError); }} style={({ pressed }) => [styles.row, { minHeight: 44, paddingHorizontal: 14, borderRadius: 999, backgroundColor: pressed ? "#1f3d26" : colors.successBg, gap: 6 }]}>
               <Icon name="logo-whatsapp" size={18} color={colors.success}/><Text style={[type.label, { color: colors.success }]}>{maskPhone(other.telefone)}</Text>
             </Pressable>
           </View>
-          <Button title={`Denunciar ${other.nome}`} variant="text" icon="flag-outline" onPress={() => denunciar(other.nome, `evento "${evento.titulo}"`, me.email)}/>
+          <Button title={`Denunciar ${other.nome}`} variant="text" icon="flag-outline" onPress={() => { setError(""); denunciar(other.nome, `evento "${evento.titulo}"`, me.email, setError); }}/>
         </>}
       </View>
 

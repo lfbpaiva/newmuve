@@ -1,5 +1,5 @@
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import { useAuth } from "../../shared/client/AuthContext.tsx";
@@ -24,6 +24,7 @@ export function PlanScreen({ nome, preco, beneficios, observacao }: { nome: stri
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState("");
+  const hideSnack = useCallback(() => setSnack(""), []);
   const faltando = camposFaltantes(me, "pagar");
   const ativoNoPerfil = me.role === "MUSICIAN" ? me.proAte : me.casaAte;
   const aguardando = status?.assinatura?.status === "AGUARDANDO_PAGAMENTO";
@@ -102,6 +103,6 @@ export function PlanScreen({ nome, preco, beneficios, observacao }: { nome: stri
       {(!assinatura || assinatura.status === "CANCELADA") && <Button title={ativo ? "Voltar a renovar" : `Assinar por ${formatCurrency(preco)}/mês`} icon="flash" loading={busy} disabled={faltando.length > 0} onPress={() => void run(subscribePlan)}/>}
       {assinatura && assinatura.status !== "CANCELADA" && <Button title="Cancelar renovação" variant="text" loading={busy} onPress={cancelar}/>}
     </Screen>
-    {snack ? <Snackbar message={snack} onHide={() => setSnack("")}/> : null}
+    {snack ? <Snackbar message={snack} onHide={hideSnack}/> : null}
   </View>;
 }

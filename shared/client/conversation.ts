@@ -89,12 +89,17 @@ export const proposeValue = (candidateId: string, valor: number) =>
 export const answerProposal = (candidateId: string, messageId: string, aceitar: boolean) =>
   apiRequest<Message>(`/candidaturas/${candidateId}/propostas/${messageId}/resposta`, { method: "POST", body: { aceitar } });
 
-export function subscribeToMessages(candidateId: string, onMessage: (message: Message) => void): () => void {
+export function subscribeToMessages(
+  candidateId: string,
+  handlers: { onMessage(message: Message): void; onSubscribed(): void },
+): () => void {
   const channel = supabase()
-    .channel(`conversa:${candidateId}`)
+    .channel(`conversa:${candidateId}:${Math.random().toString(36).slice(2)}`)
     .on("postgres_changes", { event: "*", schema: "public", table: "candidate_messages", filter: `candidate_id=eq.${candidateId}` }, (payload) => {
-      if (payload.new && "id" in payload.new) onMessage(toMessage(payload.new as MessageRow));
+      if (payload.new && "id" in payload.new) handlers.onMessage(toMessage(payload.new as MessageRow));
     })
-    .subscribe();
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") handlers.onSubscribed();
+    });
   return () => void supabase().removeChannel(channel);
 }

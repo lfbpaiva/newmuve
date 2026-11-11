@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0a0a0c",
-    "newArchEnabled": true,
     "android": {
       "package": "br.com.muve.app",
       "adaptiveIcon": {

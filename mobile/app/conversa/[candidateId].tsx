@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, type ScrollViewInstance } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { answerProposal, fetchConversation, fetchMessages, proposeValue, sendMessage, subscribeToMessages, type Message } from "../../../shared/client/conversation.ts";
@@ -19,38 +19,91 @@ export default function ConversationScreen() {
   const me = useMe();
   const { candidateId } = useLocalSearchParams<{ candidateId: string }>();
   const conversation = useAsync(`conversa:${candidateId}`, () => fetchConversation(candidateId));
-  useRefreshOnFocus(conversation.reload);
   const reloadConversation = conversation.reload;
+  const reloadMessages = useRef<() => void>(() => {});
+  useRefreshOnFocus(useCallback(() => {
+    reloadConversation();
+    reloadMessages.current();
+  }, [reloadConversation]));
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadError, setLoadError] = useState("");
+  const [linkError, setLinkError] = useState("");
   const [texto, setTexto] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [proposing, setProposing] = useState(false);
   const [valorProposta, setValorProposta] = useState("");
   const scroll = useRef<ScrollViewInstance>(null);
+  const recebidasDuranteBusca = useRef<Map<string, Message> | null>(null);
+
+  const aplicarMensagens = useCallback((incoming: Message[]) => {
+    const recebidas = recebidasDuranteBusca.current;
+    if (recebidas) for (const message of incoming) recebidas.set(message.id, message);
+    setMessages((current) => mergeMessages(current, incoming));
+  }, []);
 
   useEffect(() => {
     let active = true;
-    const merge = (incoming: Message[]) => setMessages((current) => mergeMessages(current, incoming));
-    fetchMessages(candidateId).then((loaded) => active && merge(loaded), (error: unknown) => active && setLoadError(errorMessage(error)));
-    const unsubscribe = subscribeToMessages(candidateId, (message) => {
-      if (!active) return;
-      merge([message]);
-      if (message.statusProposta === "ACEITA") reloadConversation();
+    let buscando = false;
+    let buscarDeNovo = false;
+    const refresh = () => {
+      if (buscando) {
+        buscarDeNovo = true;
+        return;
+      }
+      buscando = true;
+      const recebidas = new Map<string, Message>();
+      recebidasDuranteBusca.current = recebidas;
+      fetchMessages(candidateId)
+        .then(
+          (loaded) => {
+            if (!active) return;
+            setMessages((current) => mergeMessages(mergeMessages(current, loaded), [...recebidas.values()]));
+            setLoadError("");
+          },
+          (error: unknown) => {
+            if (active) setLoadError(errorMessage(error));
+          },
+        )
+        .finally(() => {
+          if (recebidasDuranteBusca.current === recebidas) recebidasDuranteBusca.current = null;
+          buscando = false;
+          if (active && buscarDeNovo) {
+            buscarDeNovo = false;
+            refresh();
+          }
+        });
+    };
+    reloadMessages.current = refresh;
+    refresh();
+    const unsubscribe = subscribeToMessages(candidateId, {
+      onMessage: (message) => {
+        if (!active) return;
+        aplicarMensagens([message]);
+        if (message.statusProposta === "ACEITA") reloadConversation();
+      },
+      onSubscribed: () => {
+        if (active) refresh();
+      },
+    });
+    const appState = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
     });
     return () => {
       active = false;
+      reloadMessages.current = () => {};
+      recebidasDuranteBusca.current = null;
       unsubscribe();
+      appState.remove();
     };
-  }, [candidateId, reloadConversation]);
+  }, [candidateId, reloadConversation, aplicarMensagens]);
 
   async function run(action: () => Promise<Message>) {
     setSending(true);
     setSendError("");
     try {
       const message = await action();
-      setMessages((current) => mergeMessages(current, [message]));
+      aplicarMensagens([message]);
       return true;
     } catch (error) {
       setSendError(errorMessage(error));
@@ -71,7 +124,7 @@ export default function ConversationScreen() {
 
   async function answer(message: Message, aceitar: boolean) {
     if (await run(() => answerProposal(candidateId, message.id, aceitar))) {
-      setMessages((current) => mergeMessages(current, [{ ...message, statusProposta: aceitar ? "ACEITA" : "RECUSADA" }]));
+      aplicarMensagens([{ ...message, statusProposta: aceitar ? "ACEITA" : "RECUSADA" }]);
       conversation.reload();
     }
   }
@@ -83,7 +136,7 @@ export default function ConversationScreen() {
     setSendError("");
     try {
       const message = await sendMessage(candidateId, conteudo);
-      setMessages((current) => (current.some((m) => m.id === message.id) ? current : [...current, message]));
+      aplicarMensagens([message]);
       setTexto("");
     } catch (error) {
       setSendError(errorMessage(error));
@@ -108,7 +161,7 @@ export default function ConversationScreen() {
             <Text style={type.titleSmall}>{other.nome}</Text>
             <Text style={type.bodySmall} numberOfLines={1}>{event.titulo}</Text>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Denunciar ${other.nome}`} onPress={() => denunciar(other.nome, `conversa sobre "${event.titulo}"`, me.email)} style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Denunciar ${other.nome}`} onPress={() => { setLinkError(""); denunciar(other.nome, `conversa sobre "${event.titulo}"`, me.email, setLinkError); }} style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}>
             <Icon name="flag-outline" size={20} color={colors.ink2}/>
           </Pressable>
         </View>
@@ -118,6 +171,7 @@ export default function ConversationScreen() {
       </View>
 
       <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, gap: space.sm, flexGrow: 1 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
+        {linkError ? <Alert tone="error">{linkError}</Alert> : null}
         {loadError ? <Alert tone="error">{loadError}</Alert> : null}
         {messages.length === 0 && !loadError && <Text style={[type.bodySmall, { textAlign: "center", marginTop: space.xl }]}>
           Combinem aqui repertório, horário e valor. Pagamentos feitos fora da Muve ficam sem a garantia do cachê retido.
@@ -167,8 +221,14 @@ export default function ConversationScreen() {
   </SafeAreaView>;
 }
 
+const propostaRespondida = (message: Message) => message.statusProposta !== null && message.statusProposta !== "ABERTA";
+
 const mergeMessages = (current: Message[], incoming: Message[]) => {
-  const byId = new Map([...current, ...incoming].map((message) => [message.id, message]));
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) {
+    const known = byId.get(message.id);
+    byId.set(message.id, known && propostaRespondida(known) && !propostaRespondida(message) ? known : message);
+  }
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 };
 
