@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 import { updateProfile } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
@@ -8,8 +8,8 @@ import type { UploadFile } from "../../../shared/client/config.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, isValidChavePix, isValidDocumento, isValidTelefone, isValidUrl, type AcaoPerfil, type CampoPerfil } from "../../../shared/dominio.ts";
 import { ImageField, LocationFields, PixKeyFields } from "../../components/fields";
-import { Alert, Button, Chips, Field, Heading, Screen, Section } from "../../components/ui";
-import { type } from "../../lib/theme";
+import { Alert, Button, Chips, Field, Grupo, Icon, Screen, Surface } from "../../components/ui";
+import { colors, radius, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
 const motivo: Record<AcaoPerfil, string> = {
@@ -57,24 +57,30 @@ export default function EditProfileScreen() {
 
   return <Screen>
     {acao
-      ? <Heading size="display" title="Complete seu perfil" subtitle={`Para ${motivo[acao]}, falta: ${descreverFaltantes(faltando) || "nada; pode salvar"}.`}/>
+      ? <Surface destaque>
+        <View style={[styles.row, { gap: space.sm }]}>
+          <View style={{ width: 32, height: 32, borderRadius: radius.sm, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="checkmark-circle-outline" size={17} color={colors.accentText}/></View>
+          <Text style={type.title} accessibilityRole="header">Complete seu perfil</Text>
+        </View>
+        <Text style={type.bodySmall}>Para {motivo[acao]}, falta: {descreverFaltantes(faltando) || "nada; pode salvar"}.</Text>
+      </Surface>
       : null}
     {pede("foto") && <ImageField label={me.fotoPerfilUrl ? "Trocar foto do perfil" : "Foto do perfil"} preview={preview} onPick={(file, uri) => { setAvatar(file); setPreview(uri); setError(""); }} onError={setError}/>}
-    <Section title="Dados">
+    <Grupo titulo="Seus dados" icone="person-outline">
       {!acao && <Field label={isMusician ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={form.nome} onChangeText={(nome) => set({ nome })}/>}
       {pede("documento") && <Field label="CPF ou CNPJ" value={form.documento} onChangeText={(v) => set({ documento: maskDocumento(v) })} keyboardType="numeric" placeholder="000.000.000-00" hint={acao ? "Identifica a conta; nunca aparece para outros usuários." : undefined}/>}
       {pede("telefone") && <Field label="Telefone" value={form.telefone} onChangeText={(v) => set({ telefone: maskPhone(v) })} keyboardType="phone-pad" placeholder="(00) 00000-0000" hint={acao ? "Compartilhado com a outra parte só após uma contratação." : undefined}/>}
       {pede("cidade") && <LocationFields uf={form.uf} cidade={form.cidade} onUfChange={(uf) => set({ uf, cidade: "" })} onCidadeChange={(cidade) => set({ cidade })} onError={setError}/>}
-    </Section>
-    {isMusician && (pede("estilos") || !acao) && <Section title="Como você toca">
-      <Text style={type.bodySmall}>O feed só mostra eventos destes estilos.</Text>
+    </Grupo>
+    {isMusician && (pede("estilos") || !acao) && <Grupo titulo="Como você toca" icone="musical-notes-outline">
+      <Text style={type.bodySmall}>O feed só mostra eventos destes estilos. Escolha quantos quiser.</Text>
       <Chips options={ESTILOS_MUSICAIS} selected={estilos} onToggle={(s) => { setEstilos((old) => old.includes(s) ? old.filter((x) => x !== s) : [...old, s]); setError(""); }}/>
       {!acao && <Field label="Link do seu trabalho (opcional)" hint="YouTube, Instagram, Spotify... é o que o contratante vê antes de escolher." value={form.portfolioUrl} onChangeText={(portfolioUrl) => set({ portfolioUrl })} autoCapitalize="none" keyboardType="url" placeholder="https://"/>}
       {!acao && <Field label="Bio (opcional)" value={form.bio} onChangeText={(bio) => set({ bio })} multiline maxLength={1000} placeholder="Conte um pouco sobre sua trajetória musical..."/>}
-    </Section>}
-    {isMusician && pede("chavePix") && <Section title="Recebimento">
+    </Grupo>}
+    {isMusician && pede("chavePix") && <Grupo titulo="Recebimento" icone="cash-outline">
       <PixKeyFields tipo={form.chavePixTipo} chave={form.chavePix} onTipoChange={(chavePixTipo) => set({ chavePixTipo })} onChaveChange={(chavePix) => set({ chavePix })}/>
-    </Section>}
+    </Grupo>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button title={acao ? "Salvar e continuar" : "Salvar alterações"} icon="arrow-forward" onPress={save} loading={submitting}/>
     <Button title="Cancelar" variant="text" onPress={() => router.back()} disabled={submitting}/>

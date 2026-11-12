@@ -9,6 +9,7 @@ import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts
 import { EventStatusPill, ReviewsSection } from "../../components/events";
 import { Alert, Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Surface, Section, Tag, type IconName } from "../../components/ui";
 import { abrirLink } from "../../lib/links";
+import { TopBar } from "../../components/TopBar";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
@@ -27,7 +28,7 @@ export default function ProfileScreen() {
     ...(isMusician && me.chavePix ? [{ icon: "flash-outline" as IconName, text: `Pix (${ROTULOS_CHAVE_PIX[me.chavePixTipo as TipoChavePix] ?? me.chavePixTipo}): ${me.chavePix}` }] : []),
   ];
 
-  return <Screen>
+  return <Screen topo={<TopBar titulo="Perfil"/>}>
     <Surface destaque>
       <View style={[styles.row, { gap: space.lg }]}>
         <View style={{ borderRadius: 999, padding: 3, borderWidth: 1, borderColor: "rgba(139,107,255,0.5)" }}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={80}/></View>

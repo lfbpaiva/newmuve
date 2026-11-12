@@ -5,7 +5,7 @@ import {
   Navigation, Phone, Plus, RefreshCw, Repeat, Save, Search, Send, SendHorizontal, Settings, ShieldCheck, SlidersHorizontal, SquarePen, Star, Store, Tag as TagIcone, Trash2, TrendingUp, User, Users, Volume2, X, Zap,
   type LucideIcon,
 } from "lucide-react-native";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -311,6 +311,16 @@ export function Fab({ label, icon, onPress }: { label: string; icon: IconName; o
   </Animated.View>;
 }
 
+export function Grupo({ titulo, icone, children }: { titulo: string; icone: IconName; children: ReactNode }) {
+  return <View style={[styles.card, { gap: space.lg }]}>
+    <View style={[styles.row, { gap: space.sm }]}>
+      <View style={{ width: 30, height: 30, borderRadius: radius.sm, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name={icone} size={16} color={colors.accentText}/></View>
+      <Text style={type.title} accessibilityRole="header">{titulo}</Text>
+    </View>
+    {children}
+  </View>;
+}
+
 export function PontoAoVivo({ cor = colors.accentBright }: { cor?: string }) {
   const reduce = useReduceMotion();
   const pulso = useRef(new Animated.Value(0)).current;
@@ -414,7 +424,7 @@ export function Select({ label, value, options, placeholder = "Selecionar", disa
   return <View style={{ gap: 4 }}>
     <Text style={type.labelSmall}>{label}</Text>
     <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={() => { setQuery(""); setOpen(true); }} style={[styles.input, styles.between, disabled ? { opacity: 0.55 } : null]}>
-      <Text style={[type.body, !selected ? { color: colors.ink3 } : null]} numberOfLines={1}>{selected?.label ?? placeholder}</Text>
+      <Text style={[type.body, { flexShrink: 1 }, !selected ? { color: colors.ink3 } : null]} numberOfLines={1}>{selected?.label ?? placeholder}</Text>
       <Icon name="chevron-down" size={18} color={colors.ink2}/>
     </Pressable>
     <Modal visible={open} animationType="slide" onRequestClose={() => setOpen(false)}>
@@ -511,22 +521,39 @@ function Simbolo({ icon, tone }: { icon: IconName; tone: "neutral" | "error" }) 
   </View>;
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <View style={[styles.empty, { alignItems: "center" }]} accessibilityRole="alert">
-    <Simbolo icon="alert" tone="error"/>
-    <Text style={[type.title, { textAlign: "center" }]}>Algo deu errado</Text>
-    <Text style={[type.bodySmall, { textAlign: "center" }]}>{message}</Text>
-    <Button title="Tentar novamente" variant="tonal" icon="refresh" onPress={onRetry} block={false}/>
+function Centralizado({ children }: { children: ReactNode }) {
+  return <>{Children.map(children, (filho) => isValidElement<{ style?: TextStyle }>(filho) && filho.type === Text
+    ? cloneElement(filho, { style: [filho.props.style, { textAlign: "center" }] as unknown as TextStyle })
+    : filho)}</>;
+}
+
+function CaixaDeEstado({ children }: { children: ReactNode }) {
+  return <View style={{ alignItems: "center", gap: space.md, paddingVertical: space.xl, paddingHorizontal: space.lg, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.hairline, backgroundColor: colors.surface, overflow: "hidden" }}>
+    <LinearGradient pointerEvents="none" colors={gradients.brilho} style={{ position: "absolute", left: 0, right: 0, top: 0, height: 120 }}/>
+    {children}
   </View>;
 }
 
+function AcaoCentral({ children }: { children: ReactNode }) {
+  return children ? <View style={{ flexDirection: "row", justifyContent: "center", alignSelf: "stretch", marginTop: space.xs }}>{children}</View> : null;
+}
+
+export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return <View accessibilityRole="alert"><CaixaDeEstado>
+    <Simbolo icon="alert" tone="error"/>
+    <Text style={[type.title, { textAlign: "center" }]}>Algo deu errado</Text>
+    <Text style={[type.bodySmall, { textAlign: "center" }]}>{message}</Text>
+    <AcaoCentral><Button title="Tentar novamente" variant="tonal" icon="refresh" onPress={onRetry} block={false}/></AcaoCentral>
+  </CaixaDeEstado></View>;
+}
+
 export function EmptyState({ title, children, action, icon = "calendar-outline" }: { title: string; children?: ReactNode; action?: ReactNode; icon?: IconName }) {
-  return <View style={[styles.empty, { alignItems: "center", paddingHorizontal: space.lg, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed", borderColor: colors.line }]}>
+  return <CaixaDeEstado>
     <Simbolo icon={icon} tone="neutral"/>
     <Text style={[type.title, { textAlign: "center" }]}>{title}</Text>
-    {children}
-    {action}
-  </View>;
+    <Centralizado>{children}</Centralizado>
+    <AcaoCentral>{action}</AcaoCentral>
+  </CaixaDeEstado>;
 }
 
 export function Avatar({ uri, name = "", size = 48, square = false }: { uri?: string | null; name?: string; size?: number; square?: boolean }) {

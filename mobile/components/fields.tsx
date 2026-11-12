@@ -30,7 +30,7 @@ export function LocationFields({ uf, cidade, onUfChange, onCidadeChange, onError
   }, [uf, onError]);
 
   return <View style={{ flexDirection: "row", gap: space.md }}>
-    <View style={{ width: 110 }}><Select label="Estado" value={uf} options={UFS.map((u) => ({ value: u, label: u }))} onChange={(next) => { onUfChange(next); onCidadeChange(""); }}/></View>
+    <View style={{ width: 96 }}><Select label="Estado" value={uf} placeholder="UF" options={UFS.map((u) => ({ value: u, label: u }))} onChange={(next) => { onUfChange(next); onCidadeChange(""); }}/></View>
     <View style={{ flex: 1 }}><Select label="Cidade" value={cidade} options={cidades.map((c) => ({ value: c, label: c }))} searchable disabled={!uf || loading || cidades.length === 0} placeholder={loading ? "Carregando..." : uf ? "Selecione a cidade" : "Escolha o estado"} onChange={onCidadeChange}/></View>
   </View>;
 }
@@ -60,7 +60,7 @@ export function ImageField({ label, preview, shape = "circle", onPick, onError }
   }
 
   if (shape === "banner") {
-    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={pick} style={({ pressed }) => ({ height: 170, borderRadius: radius.lg, overflow: "hidden", backgroundColor: pressed ? colors.surface2 : colors.surface, borderWidth: preview ? 0 : 1, borderStyle: "dashed", borderColor: colors.line, alignItems: "center", justifyContent: "center", gap: 6 })}>
+    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={pick} style={({ pressed }) => ({ height: 170, borderRadius: radius.lg, overflow: "hidden", backgroundColor: pressed ? colors.surface2 : colors.surface, borderWidth: preview ? 0 : 1, borderColor: colors.hairline, alignItems: "center", justifyContent: "center", gap: 6 })}>
       {preview ? <Image source={{ uri: preview }} style={{ width: "100%", height: "100%" }}/> : <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="image-outline" size={24} color={colors.accentText}/></View>}
       {!preview && <Text style={type.label}>{label}</Text>}
       {!preview && <Text style={type.bodySmall}>PNG, JPEG ou WebP, até 5 MB</Text>}

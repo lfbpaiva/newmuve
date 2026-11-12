@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import { cepDigits, CepError, formatCep, lookupCep } from "../../shared/client/cep.ts";
@@ -9,7 +9,7 @@ import { calcularCobranca, CASA_SEMANAS_MAXIMAS, comissaoPercentual, ESTILOS_EVE
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
 import { ImageField, LocationFields } from "./fields";
-import { Alert, Button, Checkbox, Chips, Field, Icon, Select, type IconName } from "./ui";
+import { Alert, Button, Checkbox, Chips, Field, Grupo, Select } from "./ui";
 
 type EditableEvent = EventItem & { endereco: string };
 
@@ -37,16 +37,6 @@ function initialForm(event: EditableEvent | null, local?: { uf: string | null; c
     descricao: event?.descricao ?? "",
     repetirSemanas: 1,
   };
-}
-
-function Grupo({ titulo, icone, children }: { titulo: string; icone: IconName; children: ReactNode }) {
-  return <View style={[styles.card, { gap: space.lg }]}>
-    <View style={[styles.row, { gap: space.sm }]}>
-      <View style={{ width: 30, height: 30, borderRadius: radius.sm, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name={icone} size={16} color={colors.accentText}/></View>
-      <Text style={type.title}>{titulo}</Text>
-    </View>
-    {children}
-  </View>;
 }
 
 export default function EventForm({ event, local, onSaved }: { event: EditableEvent | null; local?: { uf: string | null; cidade: string | null }; onSaved: (id: string) => void }) {

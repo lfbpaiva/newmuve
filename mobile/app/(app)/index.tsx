@@ -105,7 +105,7 @@ function Feed() {
   return <View style={styles.screen}>
     <Screen onRefresh={feed.reload} topo={<TopBar titulo="Oportunidades"/>}>
       <TituloGrande titulo={`${saudacao()}, ${primeiroNome(me.nome)}`} subtitulo={me.cidade ? `Shows perto de ${me.cidade}, ${me.uf}` : "Encontre seu próximo show"}/>
-      {setupPending && <EmptyState title="Monte seu feed" action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
+      {setupPending && <EmptyState title="Monte seu feed" icon="musical-notes-outline" action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
       {reduzida && <Alert tone="info">Por causa de uma desistência em cima da hora ou de uma ausência, novos eventos não aparecem para você até {new Date(me.visibilidadeReduzidaAte!).toLocaleDateString("pt-BR")}.</Alert>}
