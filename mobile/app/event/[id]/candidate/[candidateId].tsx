@@ -6,7 +6,7 @@ import { fetchCandidateProfile, fetchFavoriteIds, setFavorite, type CandidateSta
 import { useAsync } from "../../../../../shared/client/useAsync.ts";
 import { isPro, isValidUrl } from "../../../../../shared/dominio.ts";
 import { ReviewsSection } from "../../../../components/events";
-import { Alert, Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Section, Tag } from "../../../../components/ui";
+import { Alert, Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Surface, Section, Tag } from "../../../../components/ui";
 import { space, styles, type } from "../../../../lib/theme";
 import { abrirLink } from "../../../../lib/links";
 import { denunciar } from "../../../../lib/suporte";
@@ -39,10 +39,9 @@ export default function CandidateProfileScreen() {
     setFavorite(musician.id, favorito).then(favoritos.reload, (e: unknown) => setError(errorMessage(e)));
   };
   return <Screen>
-    <View style={{ gap: space.lg }}>
-      <View style={styles.rule}/>
+    <Surface destaque>
       <View style={[styles.row, { gap: space.lg }]}>
-        <Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={88}/>
+        <View style={{ borderRadius: 999, padding: 3, borderWidth: 1, borderColor: "rgba(139,107,255,0.5)" }}><Avatar uri={musician.fotoPerfilUrl} name={musician.nome} size={80}/></View>
         <View style={{ flex: 1, gap: space.sm }}>
           <View style={[styles.row, { gap: 6, flexWrap: "wrap" }]}><Pill text={pill.text} tone={pill.tone}/>{musician.pro ? <Pill text="Pro" tone="accent"/> : null}</View>
           <Text style={type.headline} accessibilityRole="header">{musician.nome}</Text>
@@ -53,7 +52,7 @@ export default function CandidateProfileScreen() {
       {casa && favoritos.data && (favoritos.data.includes(musician.id)
         ? <Button title="Nos favoritos" variant="tonal" icon="heart" onPress={() => favoritar(false)}/>
         : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" onPress={() => favoritar(true)}/>)}
-    </View>
+    </Surface>
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button title={`Denunciar ${musician.nome}`} variant="text" icon="flag-outline" onPress={() => { setError(""); denunciar(musician.nome, "perfil de candidato", me.email, setError); }}/>
     <Section title="Apresentação">

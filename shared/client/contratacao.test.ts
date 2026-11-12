@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { etapasDaContratacao, tempoAteOShow } from "./contratacao.ts";
+import { etapasDaContratacao, situacaoDoCache, tempoAteOShow } from "./contratacao.ts";
 import type { Hiring } from "./events.ts";
 
 const AGORA = new Date("2026-11-20T12:00:00Z");
@@ -96,5 +96,16 @@ describe("tempoAteOShow", () => {
     expect(em(30 * HORA)).toBe("Falta 1 dia");
     expect(em(80 * HORA)).toBe("Faltam 3 dias");
     expect(em(-HORA)).toBe("O show já começou");
+  });
+});
+
+describe("situacaoDoCache", () => {
+  it("explica onde está o cachê em cada momento", () => {
+    expect(situacaoDoCache(contratacao({ pagamento: null }))).toContain("assim que o contratante pagar");
+    expect(situacaoDoCache(contratacao())).toContain("guarda o cachê");
+    expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "PROCESSANDO" } }))).toContain("está repassando");
+    expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "REPASSADO" } }))).toContain("repassou");
+    expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "FALHOU" } }))).toContain("tenta de novo");
+    expect(situacaoDoCache(contratacao({ pagamento: { status: "ESTORNADO" } }))).toContain("devolvido");
   });
 });

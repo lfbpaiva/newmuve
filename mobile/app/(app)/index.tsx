@@ -1,51 +1,30 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { fetchFeed, fetchMyEvents, fetchOpenFines, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
-import { CASA_PRECO, camposFaltantes, ESTILOS_MUSICAIS, descreverFaltantes, emAcessoAntecipado, isPro, PRO_PRECO, RAIOS_FEED_KM, RAIOS_FEED_PRO_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
+import { CASA_PRECO, camposFaltantes, descreverFaltantes, emAcessoAntecipado, isPro, PRO_PRECO, RAIOS_FEED_KM, RAIOS_FEED_PRO_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import { ActiveEventCard, OpportunityCard, withEncerrado } from "../../components/events";
-import { Alert, Avatar, Button, Chips, EmptyState, ErrorState, Field, Icon, Letreiro, Reveal, Screen, Section, Skeleton } from "../../components/ui";
-import { colors, radius, space, styles, type } from "../../lib/theme";
+import { Alert, Button, NumeroAnimado, Surface, Chips, EmptyState, ErrorState, Icon, Reveal, Screen, Section, Skeleton, TituloGrande, type IconName } from "../../components/ui";
+import { TopBar } from "../../components/TopBar";
+import { colors, radius, radius as cantos, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
-import { useUnreadNotifications } from "../../lib/useUnreadNotifications";
+
+function saudacao(agora = new Date()): string {
+  const hora = agora.getHours();
+  if (hora < 12) return "Bom dia";
+  if (hora < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0] || nome;
 
 export default function HomeScreen() {
   const me = useMe();
   return me.role === "MUSICIAN" ? <Feed/> : <Dashboard/>;
-}
-
-function TopBar({ title, subtitle, role }: { title: string; subtitle: string; role: string }) {
-  const me = useMe();
-  const router = useRouter();
-  return <SafeAreaView edges={["top"]} style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-    <View style={{ width: "100%", maxWidth: 480, alignSelf: "center", paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.lg, gap: space.md }}>
-      <View style={styles.between}>
-        <View style={styles.row}><View style={{ width: 3, height: 20, backgroundColor: colors.accent }}/><Text style={{ fontFamily: "Archivo_900Black", fontSize: 18, lineHeight: 22, letterSpacing: 1, color: colors.ink }}>MUVE</Text><Text style={[type.bodySmall, { color: colors.ink2 }]}>/ {role}</Text></View>
-        <View style={[styles.row, { gap: space.sm }]}>
-        <NotificationBell/>
-        <Pressable accessibilityRole="button" accessibilityLabel="Abrir meu perfil" onPress={() => router.push("/(app)/profile")} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={40}/></Pressable>
-        </View>
-      </View>
-      <View style={{ gap: space.xs }}><Text style={[type.headline, { textTransform: "none", fontSize: 28, lineHeight: 32 }]} accessibilityRole="header">{title}</Text><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21, color: colors.ink2 }]} numberOfLines={2}>{subtitle}</Text></View>
-    </View>
-  </SafeAreaView>;
-}
-
-function NotificationBell() {
-  const me = useMe();
-  const router = useRouter();
-  const unread = useUnreadNotifications(me.id);
-  return <Pressable accessibilityRole="button" accessibilityLabel={unread > 0 ? `Notificações, ${unread} não lidas` : "Notificações"} onPress={() => router.push("/notificacoes")} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
-    <Icon name={unread > 0 ? "notifications" : "notifications-outline"} size={24}/>
-    {unread > 0 && <View style={{ position: "absolute", top: 2, right: 0, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" }}>
-      <Text style={[type.labelSmall, { color: colors.onAccent, letterSpacing: 0 }]}>{unread > 9 ? "9+" : unread}</Text>
-    </View>}
-  </Pressable>;
 }
 
 const PERIODOS: Record<PeriodoFeed, string> = { QUALQUER: "Qualquer data", SEMANA: "Próximos 7 dias", MES: "Próximos 30 dias" };
@@ -55,28 +34,36 @@ const cacheLabel = (valor: string) => (valor === "0" ? "Qualquer cachê" : `${fo
 function FeedFiltersPanel({ filtros, onChange }: { filtros: FeedFilters; onChange: (filtros: FeedFilters) => void }) {
   const [aberto, setAberto] = useState(false);
   const ativos = filtrosAtivos({ ...filtros, busca: "" });
-  return <View style={[styles.card, { borderWidth: 1, borderColor: colors.line, gap: space.md }]}>
-    <View style={{ gap: space.xs }}><Text style={type.titleSmall}>Encontre seu show</Text><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Busque por nome, cidade ou estilo e ajuste o que importa para você.</Text></View>
-    <Field label="Buscar oportunidades" value={filtros.busca} onChangeText={(busca) => onChange({ ...filtros, busca })} placeholder="Evento, cidade ou estilo" autoCapitalize="none" returnKeyType="search"/>
-    <View style={{ alignItems: "flex-start" }}>
-      <Button title={ativos > 0 ? `Filtros (${ativos})` : "Filtros"} variant={aberto ? "tonal" : "outlined"} icon="options-outline" block={false} onPress={() => setAberto(!aberto)}/>
+  return <View style={{ gap: space.md }}>
+    <View style={[styles.row, { gap: space.sm }]}>
+      <View style={[styles.row, { flex: 1, gap: space.sm, minHeight: 48, paddingHorizontal: 14, borderRadius: radius.pill, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline }]}>
+        <Icon name="search" size={18} color={colors.ink3}/>
+        <TextInput value={filtros.busca} onChangeText={(busca) => onChange({ ...filtros, busca })} placeholder="Buscar evento, cidade ou estilo" placeholderTextColor={colors.ink3} selectionColor={colors.accentText} autoCapitalize="none" returnKeyType="search" accessibilityLabel="Buscar oportunidades" style={[type.body, { flex: 1, paddingVertical: 10 }]}/>
+        {filtros.busca ? <Pressable accessibilityRole="button" accessibilityLabel="Limpar busca" onPress={() => onChange({ ...filtros, busca: "" })} hitSlop={8}><Icon name="close" size={16} color={colors.ink3}/></Pressable> : null}
+      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel={ativos > 0 ? `Filtros, ${ativos} ativos` : "Filtros"} accessibilityState={{ expanded: aberto }} onPress={() => setAberto(!aberto)} style={({ pressed }) => ({ width: 48, height: 48, borderRadius: radius.pill, alignItems: "center", justifyContent: "center", backgroundColor: aberto || ativos > 0 ? colors.accentSoft : pressed ? colors.surface2 : colors.surface, borderWidth: 1, borderColor: aberto || ativos > 0 ? "rgba(139,107,255,0.45)" : colors.hairline })}>
+        <Icon name="options-outline" size={18} color={aberto || ativos > 0 ? colors.accentText : colors.ink2}/>
+        {ativos > 0 && <View style={{ position: "absolute", top: -2, right: -2, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: colors.accent, borderWidth: 2, borderColor: colors.bg, alignItems: "center", justifyContent: "center" }}><Text style={[type.label, { fontSize: 10, lineHeight: 12, color: colors.onAccent }]}>{ativos}</Text></View>}
+      </Pressable>
     </View>
-    {aberto && <View style={{ gap: space.md }}>
-      <Text style={type.bodySmall}>Quando</Text>
+    {aberto && <Reveal><View style={[styles.card, { gap: space.md }]}>
+      <Text style={type.labelSmall}>Quando</Text>
       <Chips scroll options={Object.keys(PERIODOS)} selected={[filtros.periodo]} onToggle={(periodo) => onChange({ ...filtros, periodo: periodo as PeriodoFeed })} labels={(p) => PERIODOS[p as PeriodoFeed]}/>
-      <Text style={type.bodySmall}>Tipo de evento</Text>
+      <Text style={type.labelSmall}>Tipo de evento</Text>
       <Chips scroll options={[...TIPOS_EVENTO]} selected={filtros.tipos} onToggle={(tipo) => onChange({ ...filtros, tipos: filtros.tipos.includes(tipo) ? filtros.tipos.filter((t) => t !== tipo) : [...filtros.tipos, tipo] })}/>
-      <Text style={type.bodySmall}>Cachê mínimo</Text>
+      <Text style={type.labelSmall}>Cachê mínimo</Text>
       <Chips scroll options={CACHES_MINIMOS} selected={[String(filtros.cacheMinimo)]} onToggle={(valor) => onChange({ ...filtros, cacheMinimo: Number(valor) })} labels={cacheLabel}/>
       {filtrosAtivos(filtros) > 0 && <Button title="Limpar filtros" variant="text" block={false} onPress={() => onChange(FILTROS_VAZIOS)}/>}
-    </View>}
+    </View></Reveal>}
   </View>;
 }
 
 function HomeLoading({ label }: { label: string }) {
-  return <View style={[styles.card, { borderWidth: 1, borderColor: colors.line, gap: space.md }]} accessibilityRole="progressbar" accessibilityLabel={label}>
-    <View style={[styles.row, { gap: space.md }]}><Skeleton width={80} height={80}/><View style={{ flex: 1, gap: space.sm }}><Skeleton width="90%" height={20}/><Skeleton width="65%" height={16}/><Skeleton width="75%" height={16}/></View></View>
-    <Skeleton width="45%" height={22}/>
+  return <View style={{ gap: space.sm }} accessibilityRole="progressbar" accessibilityLabel={label}>
+    {[0, 1].map((i) => <View key={i} style={[styles.card, styles.row, { gap: space.md }]}>
+      <Skeleton width={54} height={72} style={{ borderRadius: radius.md }}/>
+      <View style={{ flex: 1, gap: space.sm }}><Skeleton width="80%" height={18}/><Skeleton width="55%" height={14}/><Skeleton width={110} height={22} style={{ borderRadius: radius.pill }}/></View>
+    </View>)}
   </View>;
 }
 
@@ -116,16 +103,21 @@ function Feed() {
   }
 
   return <View style={styles.screen}>
-    <TopBar title="Oportunidades" role="Músico" subtitle={me.cidade ? `${me.cidade}, ${me.uf} · ${(me.estilosMusicais ?? []).join(", ")}` : `Olá, ${me.nome}`}/>
-    <Screen onRefresh={feed.reload}>
+    <Screen onRefresh={feed.reload} topo={<TopBar titulo="Oportunidades"/>}>
+      <TituloGrande titulo={`${saudacao()}, ${primeiroNome(me.nome)}`} subtitulo={me.cidade ? `Shows perto de ${me.cidade}, ${me.uf}` : "Encontre seu próximo show"}/>
       {setupPending && <EmptyState title="Monte seu feed" action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
       {reduzida && <Alert tone="info">Por causa de uma desistência em cima da hora ou de uma ausência, novos eventos não aparecem para você até {new Date(me.visibilidadeReduzidaAte!).toLocaleDateString("pt-BR")}.</Alert>}
       {(multas.data ?? 0) > 0 && <Alert tone="info">Você tem {formatCurrency(multas.data!)} em multa por ausência, que será descontado do seu próximo cachê.</Alert>}
-      {!setupPending && <View style={{ gap: space.md }}><FeedFiltersPanel filtros={filtros} onChange={setFiltros}/><View style={{ gap: space.sm }}><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Distância de busca</Text><Chips scroll options={raios.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/></View></View>}
-      {!setupPending && <Letreiro itens={me.estilosMusicais?.length ? me.estilosMusicais : [...ESTILOS_MUSICAIS]}/>}
-      {!setupPending && <Text style={type.headline} accessibilityRole="header">Shows para você</Text>}
+      {!setupPending && <Reveal><View style={{ gap: space.md }}>
+        <FeedFiltersPanel filtros={filtros} onChange={setFiltros}/>
+        <Chips scroll options={raios.map(String)} selected={[String(radius)]} onToggle={changeRadius} labels={radiusLabel}/>
+      </View></Reveal>}
+      {!setupPending && <View style={[styles.between, { alignItems: "flex-end" }]}>
+        <Text style={type.headline} accessibilityRole="header">Shows para você</Text>
+        {feed.data ? <Text style={type.bodySmall}>{visiveis.length === 1 ? "1 oportunidade" : `${visiveis.length} oportunidades`}</Text> : null}
+      </View>}
       {!setupPending && (feed.data?.length ?? 0) > 0 && visiveis.length === 0 && <EmptyState title="Nenhum evento com esses filtros" action={<Button title="Limpar filtros" variant="tonal" block={false} onPress={() => setFiltros(FILTROS_VAZIOS)}/>}/>}
       {!setupPending && feed.error && <ErrorState message={feed.error} onRetry={feed.reload}/>}
       {!setupPending && !feed.error && !feed.data && <HomeLoading label="Buscando eventos..."/>}
@@ -133,10 +125,17 @@ function Feed() {
         <Text style={[type.bodySmall, { textAlign: "center" }]}>Os eventos são filtrados pelos seus estilos ({(me.estilosMusicais ?? []).join(", ")}). Novos shows compatíveis aparecem aqui assim que forem publicados.</Text>
       </EmptyState>}
       {visiveis.map((event, index) => <Reveal key={event.id} index={index} empilhar><OpportunityCard event={event} antecipado={pro && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt })}/></Reveal>)}
-      {!setupPending && !pro && <Pressable accessibilityRole="button" onPress={() => router.push("/pro")} style={({ pressed }) => [styles.card, styles.row, { gap: space.md, borderWidth: 1, borderColor: colors.accent, opacity: pressed ? 0.8 : 1 }]}>
-        <Icon name="flash-outline" size={20} color={colors.accentText}/>
-        <Text style={[type.bodySmall, { flex: 1 }]}>Veja eventos novos 24h antes de todo mundo e apareça primeiro para o contratante. Muve Pro por {formatCurrency(PRO_PRECO)}/mês.</Text>
-        <Icon name="chevron-forward" size={18} color={colors.ink3}/>
+      {!setupPending && !pro && <Pressable accessibilityRole="button" onPress={() => router.push("/pro")} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+        <Surface destaque>
+          <View style={[styles.row, { gap: space.md }]}>
+            <View style={{ width: 40, height: 40, borderRadius: cantos.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="flash" size={20} color={colors.accentText}/></View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={type.titleSmall}>Muve Pro</Text>
+              <Text style={type.bodySmall}>Veja eventos 24h antes e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
+            </View>
+            <Icon name="chevron-forward" size={18} color={colors.ink3}/>
+          </View>
+        </Surface>
       </Pressable>}
     </Screen>
   </View>;
@@ -157,43 +156,62 @@ function Dashboard() {
   const faltando = camposFaltantes(me, "criarEvento");
   const create = () => (faltando.length ? router.push({ pathname: "/account/edit", params: { acao: "criarEvento" } }) : router.push("/event/new"));
 
+  const indicadores: { valor: number; rotulo: string; icone: IconName }[] = [
+    { valor: active.length, rotulo: active.length === 1 ? "Evento ativo" : "Eventos ativos", icone: "calendar-outline" },
+    { valor: candidaturas, rotulo: candidaturas === 1 ? "Candidatura" : "Candidaturas", icone: "people-outline" },
+    { valor: concluidos.length, rotulo: concluidos.length === 1 ? "Concluído" : "Concluídos", icone: "checkmark-circle-outline" },
+  ];
+
   return <View style={styles.screen}>
-    <TopBar title="Seu painel" role="Contratante" subtitle={me.nome}/>
-    <Screen onRefresh={events.reload}>
-      <View style={[styles.card, { backgroundColor: colors.surface2, borderTopWidth: 2, borderTopColor: colors.accent, gap: space.md }]}>
-        <View style={{ gap: space.xs }}><Text style={type.titleSmall}>{events.data && all.length > 0 ? "Seus eventos em um só lugar" : "Seu próximo evento começa aqui"}</Text><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>{events.data && all.length > 0 ? "Acompanhe os eventos publicados e prepare o próximo show." : "Publique um show e acompanhe as candidaturas em um só lugar."}</Text></View>
-        <Button title={faltando.length ? "Completar perfil para criar" : "Criar novo evento"} icon="add" onPress={create}/>
-      </View>
+    <Screen onRefresh={events.reload} topo={<TopBar titulo="Painel"/>}>
+      <TituloGrande titulo={`${saudacao()}, ${primeiroNome(me.nome)}`} subtitulo="Acompanhe seus eventos e contratações"/>
+      <Reveal><Surface destaque>
+        <View style={[styles.row, { alignItems: "stretch" }]}>
+          {indicadores.map(({ valor, rotulo, icone }, index) => <View key={rotulo} style={{ flex: 1, gap: space.sm, paddingLeft: index ? space.md : 0, borderLeftWidth: index ? 1 : 0, borderLeftColor: colors.hairline }}>
+            <Icon name={icone} size={16} color={colors.accentText}/>
+            {events.data ? <NumeroAnimado valor={valor} style={[type.stat, { fontSize: 34, lineHeight: 38 }]}/> : <Skeleton width={36} height={34}/>}
+            <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{rotulo}</Text>
+          </View>)}
+        </View>
+        {investido > 0 && <View style={[styles.between, { paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline }]}>
+          <Text style={type.bodySmall}>Pago a músicos até hoje</Text>
+          <NumeroAnimado valor={investido} formatar={formatCurrency} style={[type.titleSmall, { color: colors.accentText }]}/>
+        </View>}
+        {emRepasse > 0 && <Text style={type.bodySmall}>{formatCurrency(emRepasse)} em repasse aos músicos.</Text>}
+      </Surface></Reveal>
+      <Reveal index={1}><Button title={faltando.length ? "Completar perfil para criar" : "Criar novo evento"} icon="add" onPress={create}/></Reveal>
       {faltando.length > 0 && <Alert tone="info">Antes de publicar seu primeiro evento, complete o perfil: {descreverFaltantes(faltando)}.</Alert>}
-      {events.data && <View style={[styles.row, { alignItems: "stretch", gap: space.sm }]}>
-        {[[active.length, "Ativos"], [candidaturas, "Candidaturas"], [concluidos.length, "Concluídos"]].map(([value, label]) => <View key={String(label)} style={[styles.card, { flex: 1, minWidth: 0, padding: space.md, gap: space.xs }]}>
-          <Text style={[type.stat, { fontSize: 30, lineHeight: 34 }]}>{value}</Text><Text style={[type.bodySmall, { fontSize: 12, lineHeight: 17 }]}>{label}</Text>
-        </View>)}
-      </View>}
-      {events.data && comCandidaturas.length > 0 && <View style={[styles.card, { borderWidth: 1, borderColor: colors.accent, gap: space.md }]}>
-        <View style={[styles.row, { alignItems: "flex-start", gap: space.md }]}><Icon name="people-outline" size={22} color={colors.accentText}/><View style={{ flex: 1, gap: space.xs }}><Text style={type.titleSmall}>Eventos com candidaturas</Text><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>{comCandidaturas.length === 1 ? "Um evento aberto recebeu candidaturas." : `${comCandidaturas.length} eventos abertos receberam candidaturas.`}</Text></View></View>
-        <Button title={comCandidaturas.length === 1 ? "Ver evento" : "Ver eventos"} variant="outlined" icon="arrow-forward" onPress={() => router.push(comCandidaturas.length === 1 ? `/event/${comCandidaturas[0].id}` : "/(app)/events")}/>
-      </View>}
+      {events.data && comCandidaturas.length > 0 && <Reveal index={2}><Pressable accessibilityRole="button" onPress={() => router.push(comCandidaturas.length === 1 ? `/event/${comCandidaturas[0].id}` : "/(app)/events")} style={({ pressed }) => [styles.card, styles.row, { gap: space.md, borderColor: "rgba(139,107,255,0.32)", backgroundColor: pressed ? colors.surface2 : colors.surface }]}>
+        <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="people-outline" size={20} color={colors.accentText}/></View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={type.titleSmall}>{comCandidaturas.length === 1 ? "Um evento recebeu candidaturas" : `${comCandidaturas.length} eventos receberam candidaturas`}</Text>
+          <Text style={type.bodySmall}>Veja quem se inscreveu e escolha o músico.</Text>
+        </View>
+        <Icon name="chevron-forward" size={18} color={colors.ink3}/>
+      </Pressable></Reveal>}
       <Section title="Em andamento" action={all.length > 0 ? <Button title="Ver todos" variant="text" block={false} onPress={() => router.push("/(app)/events")}/> : undefined}>
         {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
         {!events.error && !events.data && <HomeLoading label="Buscando seus eventos..."/>}
         {events.data && active.length === 0 && <EmptyState title={all.length ? "Nenhum evento em andamento" : "Publique seu primeiro evento"}>
           <Text style={[type.bodySmall, { textAlign: "center" }]}>Descreva o show, o cachê e o estilo. Músicos da região se candidatam e você escolhe quem aprovar.</Text>
         </EmptyState>}
-        {active.map((event, index) => <Reveal key={event.id} index={index}><ActiveEventCard event={event} onPress={() => router.push(`/event/${event.id}`)}/></Reveal>)}
+        <View style={{ gap: space.sm }}>
+          {active.map((event, index) => <Reveal key={event.id} index={index}><ActiveEventCard event={event} onPress={() => router.push(`/event/${event.id}`)}/></Reveal>)}
+        </View>
       </Section>
       {isPro(me.casaAte)
         ? <View style={{ flexDirection: "row", gap: space.sm }}>
           <View style={{ flex: 1 }}><Button title="Agenda" variant="tonal" icon="calendar-outline" onPress={() => router.push("/agenda")}/></View>
           <View style={{ flex: 1 }}><Button title="Favoritos" variant="tonal" icon="heart-outline" onPress={() => router.push("/favoritos")}/></View>
         </View>
-        : events.data && all.length > 0 && <Pressable accessibilityRole="button" onPress={() => router.push("/casa")} style={({ pressed }) => [styles.card, styles.row, { gap: space.md, borderWidth: 1, borderColor: colors.accent, opacity: pressed ? 0.8 : 1 }]}>
-          <Icon name="business-outline" size={20} color={colors.accentText}/>
-          <Text style={[type.bodySmall, { flex: 1 }]}>Contrata com frequência? No Muve Casa a taxa cai para 6%, com eventos recorrentes, favoritos e agenda. {formatCurrency(CASA_PRECO)}/mês.</Text>
+        : events.data && all.length > 0 && <Pressable accessibilityRole="button" onPress={() => router.push("/casa")} style={({ pressed }) => [styles.card, styles.row, { gap: space.md, backgroundColor: pressed ? colors.surface2 : colors.surface }]}>
+          <View style={{ width: 40, height: 40, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.hairline, alignItems: "center", justifyContent: "center" }}><Icon name="business-outline" size={20} color={colors.ink2}/></View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={type.titleSmall}>Muve Casa</Text>
+            <Text style={type.bodySmall}>Taxa de 6%, eventos recorrentes, favoritos e agenda por {formatCurrency(CASA_PRECO)}/mês.</Text>
+          </View>
           <Icon name="chevron-forward" size={18} color={colors.ink3}/>
         </Pressable>}
-      {investido > 0 && <Text style={type.bodySmall}>{formatCurrency(investido)} em cachês pagos a músicos até hoje.</Text>}
-      {emRepasse > 0 && <Text style={type.bodySmall}>{formatCurrency(emRepasse)} em repasse aos músicos.</Text>}
     </Screen>
   </View>;
 }

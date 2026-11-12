@@ -4,7 +4,8 @@ import { errorMessage } from "../../../shared/client/api.ts";
 import { isValidEmail, sanitizeEmail } from "../../../shared/client/validators.ts";
 import { Turnstile } from "../../components/Turnstile";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
-import { Alert, Button, Field, Heading, Screen } from "../../components/ui";
+import { AuthHeader } from "../../components/AuthHeader";
+import { Alert, Button, Field, Screen } from "../../components/ui";
 
 export default function RecoverScreen() {
   const [email, setEmail] = useState("");
@@ -36,7 +37,7 @@ export default function RecoverScreen() {
   }
 
   return <Screen>
-    <Heading title="Recupere seu acesso" subtitle="Enviaremos um link de redefinição para o e-mail cadastrado. O link abre o app."/>
+    <AuthHeader titulo="Recupere seu acesso" subtitulo="Enviaremos um link de redefinição para o e-mail cadastrado. O link abre o app."/>
     {sent
       ? <Alert tone="success">Se este e-mail estiver cadastrado, você receberá as instruções em instantes.</Alert>
       : <>

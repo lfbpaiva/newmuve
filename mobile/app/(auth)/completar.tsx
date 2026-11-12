@@ -4,7 +4,8 @@ import { Pressable, Text, View } from "react-native";
 import { completeProfile, type Role } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
-import { Alert, Button, Checkbox, Field, Heading, Icon, Screen } from "../../components/ui";
+import { AuthHeader } from "../../components/AuthHeader";
+import { Alert, Button, Checkbox, Field, Icon, Screen } from "../../components/ui";
 import { colors, radius, space, type } from "../../lib/theme";
 import { roles } from "./signup";
 
@@ -35,7 +36,7 @@ export default function CompleteSignupScreen() {
   }
 
   return <Screen>
-    <Heading size="display" title="Quase lá" subtitle={`Você entrou com ${email || "o Google"}. Falta só dizer como vai usar a Muve.`}/>
+    <AuthHeader titulo="Quase lá" subtitulo={`Você entrou com ${email || "o Google"}. Falta só dizer como vai usar a Muve.`}/>
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;

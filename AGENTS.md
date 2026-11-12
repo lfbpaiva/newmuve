@@ -26,5 +26,5 @@ Antes de concluir uma mudança: `pnpm typecheck`, `pnpm lint` e `pnpm test`. Mud
 
 ## App
 
-- Tema em `mobile/lib/theme.ts`: preto, branco e roxo como destaque, títulos em Archivo caixa alta.
+- Tema em `mobile/lib/theme.ts`: escuro em camadas, roxo da logo (`#7C4DE1`) como destaque, fonte Geist e ícones Lucide pelo componente `Icon`. A logo fica em `mobile/components/Logo.tsx`.
 - Confirmações usam o helper do app, porque `Alert.alert` com botões não funciona no navegador.

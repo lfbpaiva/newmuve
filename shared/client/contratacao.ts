@@ -75,3 +75,20 @@ export function etapasDaContratacao(hiring: Hiring, agora = new Date()): EtapaCo
 
   return [pagamentoEtapa, showEtapa, etapaConfirmacao(hiring, comecou), etapaRepasse(hiring)];
 }
+
+export function situacaoDoCache(hiring: Hiring): string {
+  const { pagamento } = hiring;
+  if (!pagamento || pagamento.status === "PENDENTE") return "O cachê fica com a Muve assim que o contratante pagar o Pix.";
+  if (pagamento.status === "ESTORNADO") return "O valor foi devolvido ao contratante.";
+  if (pagamento.status !== "PAGO") return "A cobrança foi encerrada sem pagamento.";
+  switch (pagamento.repasseStatus) {
+    case "REPASSADO":
+      return "A Muve repassou o cachê ao músico.";
+    case "PROCESSANDO":
+      return "A Muve está repassando o cachê ao músico.";
+    case "FALHOU":
+      return "O repasse falhou. A Muve tenta de novo automaticamente.";
+    default:
+      return "A Muve guarda o cachê e libera ao músico depois do show.";
+  }
+}

@@ -7,7 +7,7 @@ import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts";
 import { EventStatusPill, ReviewsSection } from "../../components/events";
-import { Alert, Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../components/ui";
+import { Alert, Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Surface, Section, Tag, type IconName } from "../../components/ui";
 import { abrirLink } from "../../lib/links";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
@@ -28,10 +28,9 @@ export default function ProfileScreen() {
   ];
 
   return <Screen>
-    <View style={{ gap: space.lg }}>
-      <View style={styles.rule}/>
+    <Surface destaque>
       <View style={[styles.row, { gap: space.lg }]}>
-        <Avatar uri={me.fotoPerfilUrl} name={me.nome} size={88}/>
+        <View style={{ borderRadius: 999, padding: 3, borderWidth: 1, borderColor: "rgba(139,107,255,0.5)" }}><Avatar uri={me.fotoPerfilUrl} name={me.nome} size={80}/></View>
         <View style={{ flex: 1, gap: space.sm }}>
           <Pill text={isMusician ? "Músico" : "Contratante"}/>
           <Text style={type.headline} accessibilityRole="header">{me.nome}</Text>
@@ -39,7 +38,7 @@ export default function ProfileScreen() {
         </View>
       </View>
       <Button title="Editar perfil" variant="outlined" icon="create-outline" onPress={() => router.push("/account/edit")}/>
-    </View>
+    </Surface>
     {isMusician && (me.bio || me.portfolioUrl) && <View style={[styles.card, { gap: space.md }]}>
       {me.bio ? <Text style={type.body}>{me.bio}</Text> : null}
       {me.portfolioUrl ? <Button title="Ver meu trabalho" variant="outlined" icon="play-circle-outline" onPress={() => { setLinkError(""); abrirLink(me.portfolioUrl!, setLinkError); }}/> : null}

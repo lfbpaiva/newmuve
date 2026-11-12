@@ -2,13 +2,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { etapasDaContratacao } from "../../../../shared/client/contratacao.ts";
+import { etapasDaContratacao, situacaoDoCache } from "../../../../shared/client/contratacao.ts";
 import { cancelHiring, confirmCompletion, fetchHiring, openDispute, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
 import { formatCurrency, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { maskPhone } from "../../../../shared/client/validators.ts";
 import { EventStatusPill } from "../../../components/events";
-import { HiringTicket } from "../../../components/HiringTicket";
+import { HiringAgreement } from "../../../components/HiringAgreement";
 import { HiringTimeline } from "../../../components/HiringTimeline";
 import { Alert, Avatar, Button, ErrorState, Field, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
@@ -111,15 +111,17 @@ export default function HiringScreen() {
   return <View style={styles.screen}>
     <Screen onRefresh={hiring.reload}>
       <View style={{ gap: space.sm }}>
-        <HiringTicket
+        <HiringAgreement
           numero={evento.id.slice(0, 8).toUpperCase()}
           titulo={evento.titulo}
           inicio={evento.inicio}
           uf={evento.uf}
           cidade={evento.cidade}
           status={<EventStatusPill status={evento.status}/>}
-          pessoa={other ? { rotulo: isContractor ? "Músico" : "Contratante", nome: other.nome } : null}
-          valor={pagamento ? { rotulo: isContractor ? "Total pago" : "Seu cachê", texto: formatCurrency(isContractor ? pagamento.total : pagamento.cache - pagamento.multaDescontada) } : null}
+          contratante={isContractor ? { papel: "Contratante", nome: me.nome, foto: me.fotoPerfilUrl, voce: true } : { papel: "Contratante", nome: contratante?.nome ?? "Conta excluída", foto: contratante?.fotoPerfilUrl, voce: false }}
+          musico={isContractor ? { papel: "Músico", nome: musico?.nome ?? "Conta excluída", foto: musico?.fotoPerfilUrl, voce: false } : { papel: "Músico", nome: me.nome, foto: me.fotoPerfilUrl, voce: true }}
+          valor={pagamento ? formatCurrency(pagamento.cache).replace(/,00$/, "") : null}
+          situacaoDoValor={situacaoDoCache(hiring.data)}
         />
         <Text style={type.bodySmall}>{formatDuration(evento.duracaoMinutos)} · {evento.tipoEvento} · {evento.estilosMusicais.join(", ")} · {evento.formacao} · {evento.somDisponivel ? "som no local" : "sem som no local"}</Text>
       </View>

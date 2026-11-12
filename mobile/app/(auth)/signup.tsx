@@ -8,7 +8,8 @@ import { isValidEmail, SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { GoogleButton } from "../../components/GoogleButton";
 import { Turnstile } from "../../components/Turnstile";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
-import { Alert, Button, Checkbox, Field, Heading, Icon, PasswordField, Screen, type IconName } from "../../components/ui";
+import { AuthHeader } from "../../components/AuthHeader";
+import { Alert, Button, Checkbox, Field, Icon, PasswordField, Screen, type IconName } from "../../components/ui";
 import { colors, radius, space, type } from "../../lib/theme";
 
 export const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
@@ -74,7 +75,7 @@ export default function SignupScreen() {
   </Screen>;
 
   return <Screen>
-    <Heading size="display" title="Vamos fazer música" subtitle="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
+    <AuthHeader titulo="Vamos fazer música" subtitulo="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;
