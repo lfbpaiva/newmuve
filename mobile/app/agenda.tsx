@@ -5,7 +5,7 @@ import { fetchMyEvents, type EventItem } from "../../shared/client/events.ts";
 import { eventDateParts } from "../../shared/client/format.ts";
 import { useAsync } from "../../shared/client/useAsync.ts";
 import { isPro } from "../../shared/dominio.ts";
-import { EventRow, EventStatusPill, withEncerrado } from "../components/events";
+import { EventPosterRow, EventStatusPill, withEncerrado } from "../components/events";
 import { Button, EmptyState, ErrorState, Icon, Loading, Screen, Section } from "../components/ui";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
@@ -32,7 +32,7 @@ export default function AgendaScreen() {
   useRefreshOnFocus(eventos.reload);
 
   if (!isPro(me.casaAte)) return <Screen>
-    <EmptyState title="A agenda do mês faz parte do Muve Casa" action={<Button title="Conhecer o Muve Casa" block={false} onPress={() => router.push("/casa")}/>}>
+    <EmptyState title="A agenda do mês faz parte do Muve Casa" icon="calendar-outline" action={<Button title="Conhecer o Muve Casa" block={false} onPress={() => router.push("/casa")}/>}>
       <Text style={[type.bodySmall, { textAlign: "center" }]}>Veja num calendário o que já está contratado e o que ainda está aberto.</Text>
     </EmptyState>
   </Screen>;
@@ -83,7 +83,7 @@ export default function AgendaScreen() {
     </View>
     <Section title={diaSelecionado ? `Dia ${diaSelecionado}` : "Eventos do mês"}>
       {lista.length === 0 && <Text style={type.bodySmall}>{diaSelecionado ? "Nenhum evento neste dia." : "Nenhum evento neste mês."}</Text>}
-      {lista.map((e) => <EventRow key={e.id} event={e} onPress={() => router.push(`/event/${e.id}`)} trailing={<EventStatusPill status={e.status} encerrado={e.encerrado} inscricoesEncerradas={e.inscricoesEncerradas}/>}/>)}
+      {lista.map((e) => <View key={e.id}><EventPosterRow event={e} onPress={() => router.push(`/event/${e.id}`)} status={<EventStatusPill status={e.status} encerrado={e.encerrado} inscricoesEncerradas={e.inscricoesEncerradas}/>}/></View>)}
     </Section>
   </Screen>;
 }
