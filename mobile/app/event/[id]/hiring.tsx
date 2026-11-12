@@ -2,11 +2,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
+import { etapasDaContratacao } from "../../../../shared/client/contratacao.ts";
 import { cancelHiring, confirmCompletion, fetchHiring, openDispute, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
-import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
+import { formatCurrency, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { maskPhone } from "../../../../shared/client/validators.ts";
 import { EventStatusPill } from "../../../components/events";
+import { HiringTicket } from "../../../components/HiringTicket";
+import { HiringTimeline } from "../../../components/HiringTimeline";
 import { Alert, Avatar, Button, ErrorState, Field, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, space, styles, type } from "../../../lib/theme";
@@ -14,14 +17,6 @@ import { abrirLink } from "../../../lib/links";
 import { denunciar } from "../../../lib/suporte";
 import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
-
-const payoutLabels: Record<string, string> = {
-  RETIDO: "Retido na plataforma até a conclusão do show",
-  PROCESSANDO: "Repasse ao músico em processamento",
-  REPASSADO: "Repassado ao músico",
-  FALHOU: "Repasse falhou; verifique a chave Pix. Será tentado novamente.",
-};
-const paymentLabels: Record<string, string> = { PAGO: "Pago", ESTORNADO: "Estornado ao contratante", PENDENTE: "Aguardando pagamento", EXPIRADO: "Cobrança expirada", CANCELADO: "Cobrança cancelada" };
 
 const finishedMessages: Record<Exclude<CancellationResult["situacao"], "ESTORNO_PROCESSANDO">, string> = {
   ESTORNADO: "O Asaas confirmou o estorno ao contratante. A contratação foi encerrada.",
@@ -116,10 +111,22 @@ export default function HiringScreen() {
   return <View style={styles.screen}>
     <Screen onRefresh={hiring.reload}>
       <View style={{ gap: space.sm }}>
-        <EventStatusPill status={evento.status}/>
-        <Text style={type.headline}>{evento.titulo}</Text>
-        <Text style={type.bodySmall}>{formatEventDateTime(evento.inicio, evento.uf)} · {formatDuration(evento.duracaoMinutos)} · {evento.tipoEvento} · {evento.estilosMusicais.join(", ")} · {evento.formacao} · {evento.somDisponivel ? "som no local" : "sem som no local"}</Text>
+        <HiringTicket
+          numero={evento.id.slice(0, 8).toUpperCase()}
+          titulo={evento.titulo}
+          inicio={evento.inicio}
+          uf={evento.uf}
+          cidade={evento.cidade}
+          status={<EventStatusPill status={evento.status}/>}
+          pessoa={other ? { rotulo: isContractor ? "Músico" : "Contratante", nome: other.nome } : null}
+          valor={pagamento ? { rotulo: isContractor ? "Total pago" : "Seu cachê", texto: formatCurrency(isContractor ? pagamento.total : pagamento.cache - pagamento.multaDescontada) } : null}
+        />
+        <Text style={type.bodySmall}>{formatDuration(evento.duracaoMinutos)} · {evento.tipoEvento} · {evento.estilosMusicais.join(", ")} · {evento.formacao} · {evento.somDisponivel ? "som no local" : "sem som no local"}</Text>
       </View>
+
+      <Section title="Andamento">
+        <View style={styles.card}><HiringTimeline etapas={etapasDaContratacao(hiring.data)}/></View>
+      </Section>
 
       <View style={[styles.cardRaised, { gap: space.md }]}>
         <View style={[styles.row, { alignItems: "flex-start", gap: 12 }]}>
@@ -152,8 +159,6 @@ export default function HiringScreen() {
               <View style={styles.between}><Text style={type.bodySmall}>Multa por ausência descontada</Text><Text style={type.body}>− {formatCurrency(pagamento.multaDescontada)}</Text></View>
               <View style={styles.between}><Text style={type.titleSmall}>Você recebe</Text><Text style={type.price}>{formatCurrency(pagamento.cache - pagamento.multaDescontada)}</Text></View>
             </> : <View style={styles.between}><Text style={type.titleSmall}>Seu cachê</Text><Text style={type.price}>{formatCurrency(pagamento.cache)}</Text></View>}
-            <View style={styles.divider}/>
-            <Text style={type.bodySmall}>{paymentLabels[pagamento.status]}{pagamento.repasseStatus ? ` · ${payoutLabels[pagamento.repasseStatus]}` : ""}</Text>
           </> : <Text style={type.bodySmall}>Sem pagamento registrado.</Text>}
         </View>
         {pagamento?.refundStatus === "PROCESSANDO" && <Alert tone="info">Estorno em processamento no Asaas. A devolução ainda não foi confirmada.</Alert>}

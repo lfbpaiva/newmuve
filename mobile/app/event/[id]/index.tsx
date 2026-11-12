@@ -1,7 +1,6 @@
-import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState, type ReactNode } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
 import {
   applyToEvent,
@@ -19,17 +18,16 @@ import {
   setApplicationsClosed,
   updateProposal,
   type Candidate,
-  type EventItem,
 } from "../../../../shared/client/events.ts";
-import { formatCurrency, formatEventDateTime, formatDuration } from "../../../../shared/client/format.ts";
+import { formatCurrency } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, hasCancellationNotice, isPro } from "../../../../shared/dominio.ts";
-import { EventStatusPill, withEncerrado } from "../../../components/events";
+import { CachePoster, EventFacts, EventHero, EventStatusPill, EventStickyHeader, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
-import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Screen, Section, Tag, type IconName } from "../../../components/ui";
+import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Reveal, Screen, Section } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { abrirLink } from "../../../lib/links";
-import { colors, radius, space, styles, type } from "../../../lib/theme";
+import { colors, space, styles, type } from "../../../lib/theme";
 import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
 
@@ -57,32 +55,6 @@ function useAction(onDone: () => void) {
   return { busy, error, run, fail: setError };
 }
 
-function Hero({ event, children }: { event: EventItem; children?: ReactNode }) {
-  return <View style={{ borderRadius: radius.lg, overflow: "hidden", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line }}>
-    <View style={{ height: 190, backgroundColor: colors.surface2 }}>
-      <Image source={{ uri: event.imagemUrl }} style={{ width: "100%", height: "100%" }} accessibilityLabel={`Foto do evento ${event.titulo}`}/>
-      <LinearGradient colors={["#24194344", "transparent", "#0a0a0caa"]} locations={[0, 0.55, 1]} style={{ position: "absolute", inset: 0 }}/>
-    </View>
-    <View style={{ padding: space.lg, gap: space.md }}>
-      {children}
-      <Text style={[type.headline, { textTransform: "none", fontSize: 28, lineHeight: 33 }]} accessibilityRole="header">{event.titulo}</Text>
-      <View style={{ gap: space.sm }}>
-        <View style={[styles.row, { alignItems: "flex-start", gap: space.sm }]}><Icon name="calendar-outline" size={18} color={colors.accentText}/><Text style={[type.bodySmall, { flex: 1, fontSize: 14, lineHeight: 21 }]}>{formatEventDateTime(event.inicio, event.uf)} · {formatDuration(event.duracaoMinutos)}</Text></View>
-        <View style={[styles.row, { alignItems: "flex-start", gap: space.sm }]}><Icon name="location-outline" size={18} color={colors.accentText}/><Text style={[type.bodySmall, { flex: 1, fontSize: 14, lineHeight: 21 }]}>{event.cidade}, {event.uf}</Text></View>
-      </View>
-    </View>
-  </View>;
-}
-
-function Facts({ event }: { event: EventItem }) {
-  const facts: { icon: IconName; text: string }[] = [
-    { icon: "pricetag-outline", text: event.tipoEvento },
-    { icon: "musical-notes-outline", text: `${event.estilosMusicais.join(", ")} · ${event.formacao}` },
-    { icon: "volume-high-outline", text: event.somDisponivel ? "Som disponível no local" : "Leve seu equipamento de som" },
-  ];
-  return <View style={[styles.card, { borderWidth: 1, borderColor: colors.line, gap: space.md }]}>{facts.map((f) => <View key={f.text} style={[styles.row, { alignItems: "flex-start", gap: space.md }]}><Icon name={f.icon} size={18} color={colors.accentText}/><Text style={[type.body, { flex: 1 }]}>{f.text}</Text></View>)}</View>;
-}
-
 function Opportunity({ eventId }: { eventId: string }) {
   const me = useMe();
   const router = useRouter();
@@ -103,14 +75,12 @@ function Opportunity({ eventId }: { eventId: string }) {
   const faltando = camposFaltantes(me, "candidatar");
   const conversar = application ? () => router.push(`/conversa/${application.id}`) : null;
 
-  return <Screen onRefresh={details.reload}>
-    <Hero event={event}><View style={[styles.row, { flexWrap: "wrap" }]}>{event.estilosMusicais.slice(0, 2).map((estilo) => <Tag key={estilo} text={estilo} onImage/>)}{event.distanciaKm ? <Tag text={`a ${event.distanciaKm} km`} onImage/> : null}</View></Hero>
-    <View style={[styles.cardRaised, { borderTopWidth: 2, borderTopColor: colors.accent, gap: space.sm }]}>
-      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Cachê oferecido</Text>
-      <Text style={type.price}>{formatCurrency(event.cache)}</Text>
-      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Pago a você após o show, sem taxa de candidatura.</Text>
-    </View>
-    <Facts event={event}/>
+  return <Screen onRefresh={details.reload} cabecalho={<EventStickyHeader titulo={event.titulo} valor={event.cache}/>}>
+    <EventHero event={event}/>
+    <Reveal index={1}><CachePoster rotulo="Cachê oferecido" valor={event.cache}>
+      <Text style={type.bodySmall}>Pago a você após o show, sem taxa de candidatura.</Text>
+    </CachePoster></Reveal>
+    <Reveal index={2}><EventFacts event={event}/></Reveal>
     <Section title="Sua participação"><View style={{ gap: space.md }}>
       {hired && <>
         {event.status === "CANCELADO"
@@ -185,15 +155,12 @@ function Manage({ eventId }: { eventId: string }) {
     confirmAction({ title: "Excluir evento", message: `Excluir "${event.titulo}"? As candidaturas recebidas serão perdidas.`, confirmLabel: "Excluir", cancelLabel: "Manter", onConfirm: () => void run(() => deleteEvent(event.id)) });
   }
 
-  return <Screen onRefresh={details.reload}>
-    <Hero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></Hero>
-    <View style={[styles.cardRaised, { borderTopWidth: 2, borderTopColor: colors.accent, gap: space.sm }]}>
-      <View style={[styles.between, { flexWrap: "wrap" }]}><Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(event.cache)}</Text></View>
-      <View style={{ height: 1, backgroundColor: colors.line }}/>
-      <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Total com a taxa de {comissaoPercentual(me.casaAte)}%</Text>
-      <Text style={type.price}>{formatCurrency(calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total)}</Text>
-    </View>
-    <Facts event={event}/>
+  return <Screen onRefresh={details.reload} cabecalho={<EventStickyHeader titulo={event.titulo} valor={calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total}/>}>
+    <EventHero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></EventHero>
+    <Reveal index={1}><CachePoster rotulo={`Total com a taxa de ${comissaoPercentual(me.casaAte)}%`} valor={calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total}>
+      <Text style={type.bodySmall}>Cachê do músico: {formatCurrency(event.cache)}</Text>
+    </CachePoster></Reveal>
+    <Reveal index={2}><EventFacts event={event}/></Reveal>
     {event.status === "CONTRATADO" && <Alert tone="success">Músico contratado: os dados do evento não podem mais ser alterados.</Alert>}
     {paymentInProgress && <Alert tone="info">Há um pagamento em andamento; conclua-o ou aguarde a cobrança expirar para editar.</Alert>}
     {event.status === "ABERTO" && event.encerrado && <Alert tone="info">A data do evento passou sem contratação. Você pode excluí-lo para limpar a lista.</Alert>}

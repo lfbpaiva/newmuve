@@ -1,17 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Animated,
   Easing,
   FlatList,
   Image,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type TextInputProps,
   type ViewStyle,
@@ -25,14 +28,125 @@ export function Icon({ name, size = 20, color = colors.ink }: { name: IconName; 
   return <Ionicons name={name} size={size} color={color}/>;
 }
 
-export function Screen({ children, scroll = true, padded = true, onRefresh }: { children: ReactNode; scroll?: boolean; padded?: boolean; onRefresh?: () => void }) {
+const nativeDriver = Platform.OS !== "web";
+const ScrollYContext = createContext<Animated.Value | null>(null);
+
+export const useScrollY = () => useContext(ScrollYContext);
+
+export function useReduceMotion(): boolean {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((value) => active && setReduce(value), () => {});
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduce);
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+  return reduce;
+}
+
+export function Screen({ children, scroll = true, padded = true, onRefresh, cabecalho }: { children: ReactNode; scroll?: boolean; padded?: boolean; onRefresh?: () => void; cabecalho?: ReactNode }) {
   const content = padded ? styles.content : { paddingBottom: 110, gap: space.xl };
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const onScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: nativeDriver }), [scrollY]);
   const refreshControl = onRefresh ? <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accentText} colors={[colors.accent]}/> : undefined;
   return <SafeAreaView style={styles.screen} edges={["left", "right"]}>
     {scroll
-      ? <ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" refreshControl={refreshControl}>{children}</ScrollView>
+      ? <ScrollYContext.Provider value={scrollY}>
+        <Animated.ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" refreshControl={refreshControl} onScroll={onScroll} scrollEventThrottle={16}>{children}</Animated.ScrollView>
+        {cabecalho}
+      </ScrollYContext.Provider>
       : <View style={[content, { flex: 1 }]}>{children}</View>}
   </SafeAreaView>;
+}
+
+const REVEAL_DISTANCIA = 28;
+const REVEAL_ATRASO_MS = 70;
+const EMPILHAR_DESLOCAMENTO = 0.55;
+
+export function Reveal({ children, index = 0, empilhar = false }: { children: ReactNode; index?: number; empilhar?: boolean }) {
+  const scrollY = useScrollY();
+  const reduce = useReduceMotion();
+  const { height } = useWindowDimensions();
+  const entrada = useRef(new Animated.Value(0)).current;
+  const [caixa, setCaixa] = useState<{ y: number; altura: number } | null>(null);
+
+  useEffect(() => {
+    if (reduce) return;
+    Animated.timing(entrada, { toValue: 1, duration: 520, delay: Math.min(index, 6) * REVEAL_ATRASO_MS, easing: Easing.out(Easing.exp), useNativeDriver: nativeDriver }).start();
+  }, [entrada, index, reduce]);
+
+  if (reduce) return <View>{children}</View>;
+  const aoRolar = scrollY && caixa && caixa.y > height
+    ? scrollY.interpolate({ inputRange: [caixa.y - height, caixa.y - height + 140], outputRange: [0, 1], extrapolate: "clamp" })
+    : null;
+  const pilha = empilhar && scrollY && caixa ? scrollY.interpolate({ inputRange: [caixa.y, caixa.y + caixa.altura], outputRange: [0, 1], extrapolate: "clamp" }) : null;
+  const progresso = Animated.multiply(entrada, aoRolar ?? 1);
+  const entradaY = progresso.interpolate({ inputRange: [0, 1], outputRange: [REVEAL_DISTANCIA, 0] });
+  return <Animated.View
+    onLayout={(event) => {
+      const { y, height: altura } = event.nativeEvent.layout;
+      setCaixa((atual) => atual ?? { y, altura });
+    }}
+    style={{
+      opacity: pilha ? Animated.multiply(progresso, pilha.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] })) : progresso,
+      transform: pilha && caixa
+        ? [{ translateY: Animated.add(entradaY, pilha.interpolate({ inputRange: [0, 1], outputRange: [0, caixa.altura * EMPILHAR_DESLOCAMENTO] })) }, { scale: pilha.interpolate({ inputRange: [0, 1], outputRange: [1, 0.88] }) }]
+        : [{ translateY: entradaY }],
+    }}
+  >{children}</Animated.View>;
+}
+
+export function CabecalhoFixo({ aparecerEm, children }: { aparecerEm: number; children: ReactNode }) {
+  const scrollY = useScrollY();
+  if (!scrollY) return null;
+  const visivel = scrollY.interpolate({ inputRange: [aparecerEm - 48, aparecerEm], outputRange: [0, 1], extrapolate: "clamp" });
+  return <Animated.View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, opacity: visivel, transform: [{ translateY: visivel.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }], backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.line, paddingHorizontal: space.lg, paddingVertical: space.md }}>
+    {children}
+  </Animated.View>;
+}
+
+export function Letreiro({ itens }: { itens: string[] }) {
+  const reduce = useReduceMotion();
+  const posicao = useRef(new Animated.Value(0)).current;
+  const [largura, setLargura] = useState(0);
+  const texto = `${itens.join("  ·  ")}  ·  `;
+
+  useEffect(() => {
+    if (reduce || !largura) return;
+    posicao.setValue(0);
+    const animacao = Animated.loop(Animated.timing(posicao, { toValue: -largura, duration: largura * 28, easing: Easing.linear, useNativeDriver: nativeDriver }));
+    animacao.start();
+    return () => animacao.stop();
+  }, [largura, posicao, reduce]);
+
+  const linha = (medir: boolean) => <Text
+    numberOfLines={1}
+    onLayout={medir ? (event) => setLargura(event.nativeEvent.layout.width) : undefined}
+    style={[type.display, { fontSize: 44, lineHeight: 50, color: colors.ink3, flexShrink: 0 }]}
+  >{texto}</Text>;
+
+  return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ marginHorizontal: -space.lg, overflow: "hidden", borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.line, paddingVertical: space.sm }}>
+    <Animated.View style={{ flexDirection: "row", width: largura ? largura * 3 : 4000, transform: [{ translateX: posicao }] }}>
+      {linha(true)}{linha(false)}{linha(false)}
+    </Animated.View>
+  </View>;
+}
+
+export function Parallax({ height, children }: { height: number; children: ReactNode }) {
+  const scrollY = useScrollY();
+  const reduce = useReduceMotion();
+  const deslocamento = scrollY && !reduce ? {
+    transform: [
+      { translateY: scrollY.interpolate({ inputRange: [-height, 0, height], outputRange: [-height / 2, 0, height * 0.45], extrapolateRight: "clamp" }) },
+      { scale: scrollY.interpolate({ inputRange: [-height, 0], outputRange: [2, 1], extrapolate: "clamp" }) },
+    ],
+  } : null;
+  return <View style={{ height, overflow: "hidden", backgroundColor: colors.surface2 }}>
+    <Animated.View style={[{ width: "100%", height: "100%" }, deslocamento]}>{children}</Animated.View>
+  </View>;
 }
 
 export function Heading({ title, subtitle, size = "headline" }: { title: string; subtitle?: string; size?: "display" | "headline" }) {
