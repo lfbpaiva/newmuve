@@ -169,22 +169,6 @@ export function ActiveEventCard({ event, onPress }: { event: EventItem & { encer
   />;
 }
 
-export function EventRow({ event, trailing, detail, onPress }: { event: EventItem; trailing: ReactNode; detail?: string; onPress: () => void }) {
-  const { day, month, time } = eventDateParts(event.inicio, event.uf);
-  return <Pressable accessibilityRole="button" onPress={onPress} android_ripple={{ color: colors.surface2 }} style={({ pressed }) => [styles.row, { gap: 14, paddingVertical: space.md, borderBottomWidth: 1, borderBottomColor: colors.line, opacity: pressed ? 0.7 : 1 }]}>
-    <View style={{ width: 56, alignItems: "center" }}>
-      <Text style={[type.stat, { fontSize: 32, lineHeight: 32 }]}>{day}</Text>
-      <Text style={type.labelSmall}>{month}</Text>
-    </View>
-    <Image source={{ uri: event.imagemUrl }} style={{ width: 56, height: 56, borderRadius: radius.sm, backgroundColor: colors.surface2 }}/>
-    <View style={{ flex: 1, gap: 4 }}>
-      <Text style={type.titleSmall} numberOfLines={2}>{event.titulo}</Text>
-      <Text style={type.bodySmall} numberOfLines={1}>{time} · {event.cidade}{detail ? ` · ${detail}` : ""}</Text>
-      <View style={[styles.row, { marginTop: 2 }]}>{trailing}</View>
-    </View>
-    <Icon name="arrow-forward" size={18} color={colors.ink3}/>
-  </Pressable>;
-}
 
 export function ReviewsSection({ userId, empty }: { userId: string; empty: string }) {
   const reviews = useAsync(`reviews:${userId}`, () => fetchReviewsOf(userId));

@@ -47,7 +47,7 @@ export default function ProfileScreen() {
     {linkError ? <Alert tone="error">{linkError}</Alert> : null}
     {isMusician && <View style={[styles.row, { flexWrap: "wrap" }]}>{(me.estilosMusicais ?? []).map((estilo) => <Tag key={estilo} text={estilo}/>)}</View>}
     <View style={styles.card}>
-      {rows.map((row, i) => <View key={row.text} style={[styles.row, { gap: 12, minHeight: 36, borderTopWidth: i ? 1 : 0, borderTopColor: colors.line, paddingTop: i ? 8 : 0 }]}>
+      {rows.map((row, i) => <View key={row.text} style={[styles.row, { gap: 12, minHeight: 36, borderTopWidth: i ? 1 : 0, borderTopColor: colors.hairline, paddingTop: i ? 8 : 0 }]}>
         <Icon name={row.icon} size={18} color={colors.ink2}/><Text style={[type.body, { flex: 1 }]}>{row.text}</Text>
       </View>)}
     </View>

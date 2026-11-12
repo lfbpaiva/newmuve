@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { signUp, type Role } from "../../../shared/client/account.ts";
 import { ApiError, errorMessage } from "../../../shared/client/api.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
@@ -9,8 +9,8 @@ import { GoogleButton } from "../../components/GoogleButton";
 import { Turnstile } from "../../components/Turnstile";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { AuthHeader } from "../../components/AuthHeader";
-import { Alert, Button, Checkbox, Field, Icon, PasswordField, Screen, type IconName } from "../../components/ui";
-import { colors, radius, space, type } from "../../lib/theme";
+import { Alert, Button, Checkbox, Field, Icon, OpcaoDePapel, PasswordField, Screen, type IconName } from "../../components/ui";
+import { colors, space, type } from "../../lib/theme";
 
 export const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
   { value: "MUSICIAN", icon: "musical-notes-outline", title: "Sou músico", sub: "Quero encontrar shows" },
@@ -79,11 +79,7 @@ export default function SignupScreen() {
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;
-        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => setRole(option.value)} style={({ pressed }) => ({ flex: 1, borderRadius: radius.md, padding: space.lg, gap: 10, borderWidth: 1, borderColor: on ? colors.accentText : colors.line, backgroundColor: pressed ? colors.surface2 : on ? colors.surface : "transparent" })}>
-          <Icon name={option.icon} size={24} color={on ? colors.accentText : colors.ink2}/>
-          <Text style={type.titleSmall}>{option.title}</Text>
-          <Text style={type.bodySmall}>{option.sub}</Text>
-        </Pressable>;
+        return <OpcaoDePapel key={option.value} ativa={on} icone={option.icon} titulo={option.title} detalhe={option.sub} onPress={() => setRole(option.value)}/>;
       })}
     </View>
     <Field label={role === "MUSICIAN" ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={form.nome} onChangeText={(nome) => set({ nome })} autoComplete="name"/>

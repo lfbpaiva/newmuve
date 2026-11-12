@@ -294,22 +294,6 @@ export function Button({ title, onPress, variant = "filled", icon, disabled, loa
   </Animated.View>;
 }
 
-export function Fab({ label, icon, onPress }: { label: string; icon: IconName; onPress: () => void }) {
-  const { escala, aoPressionar, aoSoltar } = usePressao();
-  return <Animated.View style={{ position: "absolute", right: space.lg, bottom: space.xl, transform: [{ scale: escala }] }}>
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      onPressIn={aoPressionar}
-      onPressOut={aoSoltar}
-      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: pressed ? colors.accentPressed : colors.accent, borderRadius: radius.pill, paddingHorizontal: 20, height: 52, elevation: 8, shadowColor: colors.accent, shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } })}
-    >
-      <Icon name={icon} size={18} color={colors.onAccent}/>
-      <Text style={[type.label, { fontFamily: fonts.semibold, color: colors.onAccent }]}>{label}</Text>
-    </Pressable>
-  </Animated.View>;
-}
 
 export function Grupo({ titulo, icone, children }: { titulo: string; icone: IconName; children: ReactNode }) {
   return <View style={[styles.card, { gap: space.lg }]}>
@@ -319,6 +303,16 @@ export function Grupo({ titulo, icone, children }: { titulo: string; icone: Icon
     </View>
     {children}
   </View>;
+}
+
+export function OpcaoDePapel({ ativa, icone, titulo, detalhe, onPress }: { ativa: boolean; icone: IconName; titulo: string; detalhe: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="radio" accessibilityState={{ checked: ativa }} onPress={onPress} style={({ pressed }) => ({ flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
+    <View style={{ width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: ativa ? colors.accent : colors.surface2 }}>
+      <Icon name={icone} size={20} color={ativa ? colors.onAccent : colors.ink2}/>
+    </View>
+    <Text style={type.titleSmall}>{titulo}</Text>
+    <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 17 }]}>{detalhe}</Text>
+  </Pressable>;
 }
 
 export function PontoAoVivo({ cor = colors.accentBright }: { cor?: string }) {
