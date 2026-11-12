@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import { fetchFavorites, fetchMyEvents, inviteMusician, setFavorite, type Favorite } from "../../shared/client/events.ts";
@@ -19,6 +19,7 @@ export default function FavoritesScreen() {
   useRefreshOnFocus(favoritos.reload);
   const [error, setError] = useState("");
   const [snack, setSnack] = useState("");
+  const hideSnack = useCallback(() => setSnack(""), []);
 
   if (!isPro(me.casaAte)) return <Screen>
     <EmptyState title="Favoritos fazem parte do Muve Casa" action={<Button title="Conhecer o Muve Casa" block={false} onPress={() => router.push("/casa")}/>}>
@@ -64,6 +65,6 @@ export default function FavoritesScreen() {
         <Button title="Remover dos favoritos" variant="text" block={false} onPress={() => void act(() => setFavorite(musician.id, false), "Removido dos favoritos.")}/>
       </View>)}
     </Screen>
-    {snack ? <Snackbar message={snack} onHide={() => setSnack("")}/> : null}
+    {snack ? <Snackbar message={snack} onHide={hideSnack}/> : null}
   </View>;
 }

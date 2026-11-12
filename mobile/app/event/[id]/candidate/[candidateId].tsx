@@ -1,11 +1,14 @@
 import { useLocalSearchParams } from "expo-router";
-import { Linking, Text, View } from "react-native";
+import { useState } from "react";
+import { Text, View } from "react-native";
+import { errorMessage } from "../../../../../shared/client/api.ts";
 import { fetchCandidateProfile, fetchFavoriteIds, setFavorite, type CandidateStatus } from "../../../../../shared/client/events.ts";
 import { useAsync } from "../../../../../shared/client/useAsync.ts";
 import { isPro, isValidUrl } from "../../../../../shared/dominio.ts";
 import { ReviewsSection } from "../../../../components/events";
-import { Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Section, Tag } from "../../../../components/ui";
+import { Alert, Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Section, Tag } from "../../../../components/ui";
 import { space, styles, type } from "../../../../lib/theme";
+import { abrirLink } from "../../../../lib/links";
 import { denunciar } from "../../../../lib/suporte";
 import { useMe } from "../../../../lib/useMe";
 
@@ -21,6 +24,7 @@ export default function CandidateProfileScreen() {
   const me = useMe();
   const casa = isPro(me.casaAte);
   const favoritos = useAsync(`favoritos-ids:${me.id}`, () => (casa ? fetchFavoriteIds(me.id) : Promise.resolve([])));
+  const [error, setError] = useState("");
 
   if (profile.error) return <Screen><ErrorState message={profile.error} onRetry={profile.reload}/></Screen>;
   if (profile.loading && !profile.data) return <Screen><Loading cards={1}/></Screen>;
@@ -30,6 +34,10 @@ export default function CandidateProfileScreen() {
 
   const { status, musician } = profile.data;
   const pill = statusPill[status];
+  const favoritar = (favorito: boolean) => {
+    setError("");
+    setFavorite(musician.id, favorito).then(favoritos.reload, (e: unknown) => setError(errorMessage(e)));
+  };
   return <Screen>
     <View style={{ gap: space.lg }}>
       <View style={styles.rule}/>
@@ -43,14 +51,15 @@ export default function CandidateProfileScreen() {
         </View>
       </View>
       {casa && favoritos.data && (favoritos.data.includes(musician.id)
-        ? <Button title="Nos favoritos" variant="tonal" icon="heart" onPress={() => void setFavorite(musician.id, false).then(favoritos.reload)}/>
-        : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" onPress={() => void setFavorite(musician.id, true).then(favoritos.reload)}/>)}
+        ? <Button title="Nos favoritos" variant="tonal" icon="heart" onPress={() => favoritar(false)}/>
+        : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" onPress={() => favoritar(true)}/>)}
     </View>
-    <Button title={`Denunciar ${musician.nome}`} variant="text" icon="flag-outline" onPress={() => denunciar(musician.nome, "perfil de candidato", me.email)}/>
+    {error ? <Alert tone="error">{error}</Alert> : null}
+    <Button title={`Denunciar ${musician.nome}`} variant="text" icon="flag-outline" onPress={() => { setError(""); denunciar(musician.nome, "perfil de candidato", me.email, setError); }}/>
     <Section title="Apresentação">
       <Text style={musician.bio ? type.body : type.bodySmall}>{musician.bio || "Descrição não informada."}</Text>
       {musician.estilosMusicais.length > 0 && <View style={[styles.row, { flexWrap: "wrap" }]}>{musician.estilosMusicais.map((estilo) => <Tag key={estilo} text={estilo}/>)}</View>}
-      {musician.portfolioUrl && isValidUrl(musician.portfolioUrl) ? <Button title="Ver trabalho do músico" variant="outlined" icon="play-circle-outline" onPress={() => Linking.openURL(musician.portfolioUrl!)}/> : null}
+      {musician.portfolioUrl && isValidUrl(musician.portfolioUrl) ? <Button title="Ver trabalho do músico" variant="outlined" icon="play-circle-outline" onPress={() => { setError(""); abrirLink(musician.portfolioUrl!, setError); }}/> : null}
     </Section>
     <ReviewsSection userId={musician.id} empty="Nenhuma avaliação recebida."/>
   </Screen>;

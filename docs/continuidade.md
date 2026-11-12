@@ -23,7 +23,8 @@ O fluxo completo funciona no sandbox da Asaas e foi testado de ponta a ponta com
 |---|---|---|
 | Supabase (banco, login, arquivos) | Ativo | Projeto "My Project" do grupo |
 | Asaas sandbox | Ativo, conta `muveapp.contato@gmail.com` | Chave em `backend/.env` |
-| Login com Google | Não ativado; o botão aparece sozinho ao ativar | README, "Entrar com Google" |
+| Login com Google | O botão aparece sozinho quando o Google está ativo no Supabase | README, "Entrar com Google" |
+| Cloudflare Turnstile (anti-robô) | Opcional; só aparece com `EXPO_PUBLIC_TURNSTILE_SITE_KEY`. Ligar junto com o captcha do Supabase, e incluir `localhost` e o domínio de `EXPO_PUBLIC_TURNSTILE_BASE_URL` no widget | `mobile/.env.example` |
 | SMTP | Não configurado; sem ele os e-mails só aparecem no log da API | README, "E-mail" |
 | Hospedagem da API | Não publicada; `render.yaml` pronto | README, "Publicação da API" |
 | Build pelo EAS (push com o app fechado) | Não gerado | README, "Notificações" |
