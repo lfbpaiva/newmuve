@@ -48,7 +48,8 @@ export default function EditProfileScreen() {
       const { bio, chavePixTipo, chavePix, portfolioUrl, ...comum } = form;
       await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl } : comum, avatar);
       await refreshMe();
-      router.back();
+      if (router.canGoBack()) router.back();
+      else router.replace("/(app)");
     } catch (e) {
       setError(errorMessage(e));
       setSubmitting(false);
@@ -66,12 +67,12 @@ export default function EditProfileScreen() {
       </Surface>
       : null}
     {pede("foto") && <ImageField label={me.fotoPerfilUrl ? "Trocar foto do perfil" : "Foto do perfil"} preview={preview} onPick={(file, uri) => { setAvatar(file); setPreview(uri); setError(""); }} onError={setError}/>}
-    <Grupo titulo="Seus dados" icone="person-outline">
+    {(!acao || pede("documento") || pede("telefone") || pede("cidade")) && <Grupo titulo="Seus dados" icone="person-outline">
       {!acao && <Field label={isMusician ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={form.nome} onChangeText={(nome) => set({ nome })}/>}
       {pede("documento") && <Field label="CPF ou CNPJ" value={form.documento} onChangeText={(v) => set({ documento: maskDocumento(v) })} keyboardType="numeric" placeholder="000.000.000-00" hint={acao ? "Identifica a conta; nunca aparece para outros usuários." : undefined}/>}
       {pede("telefone") && <Field label="Telefone" value={form.telefone} onChangeText={(v) => set({ telefone: maskPhone(v) })} keyboardType="phone-pad" placeholder="(00) 00000-0000" hint={acao ? "Compartilhado com a outra parte só após uma contratação." : undefined}/>}
       {pede("cidade") && <LocationFields uf={form.uf} cidade={form.cidade} onUfChange={(uf) => set({ uf, cidade: "" })} onCidadeChange={(cidade) => set({ cidade })} onError={setError}/>}
-    </Grupo>
+    </Grupo>}
     {isMusician && (pede("estilos") || !acao) && <Grupo titulo="Como você toca" icone="musical-notes-outline">
       <Text style={type.bodySmall}>O feed só mostra eventos destes estilos. Escolha quantos quiser.</Text>
       <Chips options={ESTILOS_MUSICAIS} selected={estilos} onToggle={(s) => { setEstilos((old) => old.includes(s) ? old.filter((x) => x !== s) : [...old, s]); setError(""); }}/>
