@@ -43,5 +43,10 @@
   "devDependencies": {
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
+  },
+  "overrides": {
+    "@expo/fingerprint": {
+      "minimatch": "^11.0.8"
+    }
   }
 }
