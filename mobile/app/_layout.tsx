@@ -1,13 +1,13 @@
 import "../lib/client";
-import { Archivo_800ExtraBold, Archivo_900Black } from "@expo-google-fonts/archivo";
-import { Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold, useFonts } from "@expo-google-fonts/manrope";
+import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold, useFonts } from "@expo-google-fonts/geist";
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
+import { Abertura } from "../components/Abertura";
 import { consumeAuthLink } from "../lib/authLinks";
 import { usePushNotifications } from "../lib/push";
 import { colors, stackOptions } from "../lib/theme";
@@ -15,17 +15,25 @@ import { colors, stackOptions } from "../lib/theme";
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({ Manrope_500Medium, Manrope_700Bold, Manrope_800ExtraBold, Archivo_800ExtraBold, Archivo_900Black });
+  const [fontsLoaded] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
+  const [abrindo, setAbrindo] = useState(true);
+  const encerrarAbertura = useCallback(() => setAbrindo(false), []);
+  useEffect(() => {
+    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded]);
   if (!fontsLoaded) return null;
   return <AuthProvider>
     <StatusBar style="light"/>
-    <WebFrame><AuthGate/></WebFrame>
+    <WebFrame>
+      <AuthGate/>
+      {abrindo && <Abertura onFim={encerrarAbertura}/>}
+    </WebFrame>
   </AuthProvider>;
 }
 
 function WebFrame({ children }: { children: ReactNode }) {
   if (Platform.OS !== "web") return children;
-  return <View style={{ flex: 1, alignItems: "center", backgroundColor: "#050506" }}>
+  return <View style={{ flex: 1, alignItems: "center", backgroundColor: "#050508" }}>
     <View style={{ flex: 1, width: "100%", maxWidth: 480, backgroundColor: colors.bg, borderLeftWidth: 1, borderRightWidth: 1, borderColor: colors.line, overflow: "hidden" }}>
       {children}
     </View>
@@ -72,23 +80,23 @@ function AuthGate() {
     </Stack.Protected>
     <Stack.Protected guard={signedIn}>
       <Stack.Screen name="(app)" options={{ headerShown: false }}/>
-      <Stack.Screen name="event/new" options={{ title: "NOVO EVENTO" }}/>
+      <Stack.Screen name="event/new" options={{ title: "Novo evento" }}/>
       <Stack.Screen name="event/[id]/index" options={{ title: "" }}/>
-      <Stack.Screen name="event/[id]/edit" options={{ title: "EDITAR EVENTO" }}/>
-      <Stack.Screen name="event/[id]/checkout" options={{ title: "PAGAMENTO" }}/>
-      <Stack.Screen name="event/[id]/hiring" options={{ title: "CONTRATAÇÃO" }}/>
-      <Stack.Screen name="event/[id]/candidate/[candidateId]" options={{ title: "PERFIL DO MÚSICO" }}/>
-      <Stack.Screen name="conversa/[candidateId]" options={{ title: "CONVERSA" }}/>
-      <Stack.Screen name="notificacoes" options={{ title: "NOTIFICAÇÕES" }}/>
-      <Stack.Screen name="pro" options={{ title: "MUVE PRO" }}/>
-      <Stack.Screen name="casa" options={{ title: "MUVE CASA" }}/>
-      <Stack.Screen name="favoritos" options={{ title: "FAVORITOS" }}/>
-      <Stack.Screen name="agenda" options={{ title: "AGENDA" }}/>
-      <Stack.Screen name="account/edit" options={{ title: "EDITAR PERFIL" }}/>
-      <Stack.Screen name="account/privacy" options={{ title: "CONTA E PRIVACIDADE" }}/>
-      <Stack.Screen name="account/delete" options={{ title: "EXCLUIR CONTA" }}/>
+      <Stack.Screen name="event/[id]/edit" options={{ title: "Editar evento" }}/>
+      <Stack.Screen name="event/[id]/checkout" options={{ title: "Pagamento" }}/>
+      <Stack.Screen name="event/[id]/hiring" options={{ title: "Contratação" }}/>
+      <Stack.Screen name="event/[id]/candidate/[candidateId]" options={{ title: "Perfil do músico" }}/>
+      <Stack.Screen name="conversa/[candidateId]" options={{ title: "Conversa" }}/>
+      <Stack.Screen name="notificacoes" options={{ title: "Notificações" }}/>
+      <Stack.Screen name="pro" options={{ title: "Muve Pro" }}/>
+      <Stack.Screen name="casa" options={{ title: "Muve Casa" }}/>
+      <Stack.Screen name="favoritos" options={{ title: "Favoritos" }}/>
+      <Stack.Screen name="agenda" options={{ title: "Agenda" }}/>
+      <Stack.Screen name="account/edit" options={{ title: "Editar perfil" }}/>
+      <Stack.Screen name="account/privacy" options={{ title: "Conta e privacidade" }}/>
+      <Stack.Screen name="account/delete" options={{ title: "Excluir conta" }}/>
     </Stack.Protected>
-    <Stack.Screen name="terms" options={{ title: "TERMOS DE USO" }}/>
+    <Stack.Screen name="terms" options={{ title: "Termos de Uso" }}/>
     <Stack.Screen name="auth" options={{ headerShown: false }}/>
   </Stack>;
 }

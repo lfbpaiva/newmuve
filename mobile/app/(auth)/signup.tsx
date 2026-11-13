@@ -1,13 +1,16 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { signUp, type Role } from "../../../shared/client/account.ts";
 import { ApiError, errorMessage } from "../../../shared/client/api.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
 import { isValidEmail, SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { GoogleButton } from "../../components/GoogleButton";
-import { Alert, Button, Checkbox, Field, Heading, Icon, PasswordField, Screen, type IconName } from "../../components/ui";
-import { colors, radius, space, type } from "../../lib/theme";
+import { Turnstile } from "../../components/Turnstile";
+import { CAPTCHA_ATIVO } from "../../lib/turnstile";
+import { AuthHeader } from "../../components/AuthHeader";
+import { Alert, Button, Checkbox, Field, Icon, OpcaoDePapel, PasswordField, Screen, type IconName } from "../../components/ui";
+import { colors, space, type } from "../../lib/theme";
 
 export const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
   { value: "MUSICIAN", icon: "musical-notes-outline", title: "Sou músico", sub: "Quero encontrar shows" },
@@ -23,6 +26,9 @@ export default function SignupScreen() {
   const inFlight = useRef(false);
   const [retryUntil, setRetryUntil] = useState<number | null>(null);
   const [sentTo, setSentTo] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const faltaCaptcha = CAPTCHA_ATIVO && !captchaToken;
   const waiting = retryUntil !== null;
   useEffect(() => {
     if (retryUntil === null) return;
@@ -40,16 +46,19 @@ export default function SignupScreen() {
     if (!isValidEmail(form.email)) return setError("Informe um e-mail válido.");
     if (form.password.length < SENHA_TAMANHO_MINIMO) return setError(`A senha deve ter pelo menos ${SENHA_TAMANHO_MINIMO} caracteres.`);
     if (!form.aceiteTermos) return setError("Aceite os Termos de Uso para criar a conta.");
+    if (faltaCaptcha) return setError("Confirme que você não é um robô.");
     inFlight.current = true;
     setSubmitting(true);
     try {
-      await signUp({ role, ...form });
+      await signUp({ role, ...form, captchaToken: captchaToken ?? undefined });
       setSentTo(form.email);
     } catch (e) {
       if (e instanceof ApiError && e.status === 429 && e.retryAfterSeconds) {
         setRetryUntil(Date.now() + e.retryAfterSeconds * 1000);
       }
       setError(errorMessage(e));
+      setCaptchaToken(null);
+      setCaptchaKey((key) => key + 1);
     } finally {
       inFlight.current = false;
       setSubmitting(false);
@@ -66,15 +75,11 @@ export default function SignupScreen() {
   </Screen>;
 
   return <Screen>
-    <Heading size="display" title="Vamos fazer música" subtitle="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
+    <AuthHeader titulo="Vamos fazer música" subtitulo="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;
-        return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: on }} onPress={() => setRole(option.value)} style={({ pressed }) => ({ flex: 1, borderRadius: radius.md, padding: space.lg, gap: 10, borderWidth: 1, borderColor: on ? colors.accentText : colors.line, backgroundColor: pressed ? colors.surface2 : on ? colors.surface : "transparent" })}>
-          <Icon name={option.icon} size={24} color={on ? colors.accentText : colors.ink2}/>
-          <Text style={type.titleSmall}>{option.title}</Text>
-          <Text style={type.bodySmall}>{option.sub}</Text>
-        </Pressable>;
+        return <OpcaoDePapel key={option.value} ativa={on} icone={option.icon} titulo={option.title} detalhe={option.sub} onPress={() => setRole(option.value)}/>;
       })}
     </View>
     <Field label={role === "MUSICIAN" ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={form.nome} onChangeText={(nome) => set({ nome })} autoComplete="name"/>
@@ -84,9 +89,10 @@ export default function SignupScreen() {
       <Checkbox label="Li e aceito os Termos de Uso" checked={form.aceiteTermos} onChange={(aceiteTermos) => set({ aceiteTermos })}/>
       <Button title="Ler os Termos de Uso" variant="text" block={false} onPress={() => router.push("/terms")}/>
     </View>
+    <Turnstile key={captchaKey} onToken={setCaptchaToken} onError={setError}/>
     {error ? <Alert tone="error">{error}</Alert> : null}
     {waiting && !error ? <Alert tone="info">Muitas tentativas de cadastro em pouco tempo. Aguarde alguns instantes; o botão volta a funcionar sozinho.</Alert> : null}
-    <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting}/>
+    <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting || faltaCaptcha}/>
     <GoogleButton onError={setError}/>
   </Screen>;
 }

@@ -18,9 +18,12 @@ export function eventDateParts(iso: string, uf: string) {
       .map((part) => [part.type, part.value]),
   );
   const mes = new Intl.DateTimeFormat("pt-BR", { timeZone: fusoDaUf(uf), month: "short" }).format(new Date(iso)).replace(".", "").toUpperCase();
+  const semana = new Intl.DateTimeFormat("pt-BR", { timeZone: fusoDaUf(uf), weekday: "short" }).format(new Date(iso)).replace(".", "").toUpperCase();
   return {
     day: parts.day,
     month: mes,
+    weekday: semana,
+    cartaz: `${semana} ${parts.day} ${mes} · ${parts.hour}H${parts.minute === "00" ? "" : parts.minute}`,
     time: `${parts.hour}:${parts.minute}`,
     data: `${parts.day}/${parts.month}/${parts.year}`,
     texto: `${parts.day}/${parts.month}/${parts.year} às ${parts.hour}:${parts.minute}`,

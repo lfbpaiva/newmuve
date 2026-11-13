@@ -1,63 +1,85 @@
 import { StyleSheet } from "react-native";
 
+export const fonts = {
+  regular: "Geist_400Regular",
+  medium: "Geist_500Medium",
+  semibold: "Geist_600SemiBold",
+  bold: "Geist_700Bold",
+};
+
 export const colors = {
-  bg: "#0a0a0c",
-  surface: "#111114",
-  surface2: "#19191e",
-  surface3: "#222228",
-  line: "#2a2a31",
-  ink: "#ffffff",
-  ink2: "#b9b9c2",
-  ink3: "#7d7d88",
-  accent: "#6d4aff",
-  accentPressed: "#5a38e8",
+  bg: "#09090d",
+  surface: "#111117",
+  surface2: "#17171f",
+  surface3: "#20202a",
+  line: "#262631",
+  hairline: "rgba(255,255,255,0.07)",
+  ink: "#f5f5f7",
+  ink2: "#a3a3b0",
+  ink3: "#7b7b88",
+  accent: "#7c4de1",
+  accentPressed: "#6a3dcc",
+  accentBright: "#8b6bff",
+  accentSoft: "rgba(139,107,255,0.14)",
   onAccent: "#ffffff",
-  accentText: "#a58bff",
-  error: "#ff6b7a",
-  errorBg: "#2a1217",
-  success: "#8de08b",
-  successBg: "#13261a",
+  accentText: "#ac94ff",
+  error: "#ff7a87",
+  errorBg: "rgba(255,122,135,0.1)",
+  success: "#6ee7a0",
+  successBg: "rgba(110,231,160,0.1)",
+  warning: "#f6c46b",
+  warningBg: "rgba(246,196,107,0.1)",
   star: "#ffd166",
 };
 
+export const gradients = {
+  brilho: ["rgba(124,77,225,0.22)", "rgba(124,77,225,0)"] as const,
+  superficie: ["#16161e", "#111117"] as const,
+};
+
+const numeros = { fontVariant: ["tabular-nums" as const] };
+
 export const type = StyleSheet.create({
-  display: { fontFamily: "Archivo_900Black", fontSize: 40, lineHeight: 40, letterSpacing: -1.2, textTransform: "uppercase", color: colors.ink },
-  headline: { fontFamily: "Archivo_900Black", fontSize: 26, lineHeight: 27, letterSpacing: -0.6, textTransform: "uppercase", color: colors.ink },
-  title: { fontFamily: "Archivo_800ExtraBold", fontSize: 18, lineHeight: 22, letterSpacing: -0.2, textTransform: "uppercase", color: colors.ink },
-  titleSmall: { fontFamily: "Manrope_800ExtraBold", fontSize: 16, lineHeight: 21, color: colors.ink },
-  body: { fontFamily: "Manrope_500Medium", fontSize: 15, lineHeight: 22, color: colors.ink },
-  bodySmall: { fontFamily: "Manrope_500Medium", fontSize: 13, lineHeight: 19, color: colors.ink2 },
-  label: { fontFamily: "Manrope_800ExtraBold", fontSize: 12, lineHeight: 16, letterSpacing: 1.2, textTransform: "uppercase", color: colors.ink },
-  labelSmall: { fontFamily: "Manrope_800ExtraBold", fontSize: 10, lineHeight: 13, letterSpacing: 1.4, textTransform: "uppercase", color: colors.ink3 },
-  price: { fontFamily: "Archivo_900Black", fontSize: 26, lineHeight: 28, letterSpacing: -0.6, color: colors.ink },
-  stat: { fontFamily: "Archivo_900Black", fontSize: 44, lineHeight: 44, letterSpacing: -1.5, color: colors.ink },
+  display: { fontFamily: fonts.bold, fontSize: 34, lineHeight: 38, letterSpacing: -1.2, color: colors.ink },
+  headline: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 29, letterSpacing: -0.7, color: colors.ink },
+  title: { fontFamily: fonts.semibold, fontSize: 17, lineHeight: 22, letterSpacing: -0.3, color: colors.ink },
+  titleSmall: { fontFamily: fonts.semibold, fontSize: 15, lineHeight: 20, letterSpacing: -0.2, color: colors.ink },
+  body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 23, color: colors.ink },
+  bodySmall: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: colors.ink2 },
+  label: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 18, letterSpacing: -0.1, color: colors.ink },
+  labelSmall: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 14, letterSpacing: 0.7, textTransform: "uppercase", color: colors.ink3 },
+  price: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 28, letterSpacing: -0.8, color: colors.ink, ...numeros },
+  stat: { fontFamily: fonts.bold, fontSize: 40, lineHeight: 44, letterSpacing: -1.6, color: colors.ink, ...numeros },
 });
 
 export const stackOptions = {
   headerStyle: { backgroundColor: colors.bg },
   headerShadowVisible: false,
   headerTintColor: colors.ink,
-  headerTitleStyle: { fontFamily: "Archivo_800ExtraBold", fontSize: 15 },
+  headerTitleStyle: { fontFamily: fonts.semibold, fontSize: 16 },
   headerBackButtonDisplayMode: "minimal",
   contentStyle: { backgroundColor: colors.bg },
+  animation: "slide_from_right",
 } as const;
 
-export const radius = { xs: 2, sm: 4, md: 8, lg: 12, pill: 999 };
+export const radius = { xs: 6, sm: 10, md: 14, lg: 20, pill: 999 };
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 40 };
+
+export const motion = { rapido: 160, base: 260, lento: 420 };
 
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: space.lg, paddingBottom: 110, gap: space.xl },
+  content: { padding: space.lg, paddingBottom: 120, gap: space.xl },
   section: { gap: space.md },
   row: { flexDirection: "row", alignItems: "center", gap: space.sm },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.sm },
-  card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: space.lg, gap: space.sm },
-  cardRaised: { backgroundColor: colors.surface2, borderRadius: radius.md, padding: space.lg, gap: space.sm },
+  card: { backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.hairline, padding: space.lg, gap: space.sm },
+  cardRaised: { backgroundColor: colors.surface2, borderRadius: radius.md, borderWidth: 1, borderColor: colors.hairline, padding: space.lg, gap: space.sm },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  rule: { height: 1, backgroundColor: colors.ink, opacity: 0.9 },
-  input: { backgroundColor: "transparent", borderBottomWidth: 1, borderBottomColor: colors.line, paddingHorizontal: 0, minHeight: 48, paddingVertical: 12, color: colors.ink, fontFamily: "Manrope_500Medium", fontSize: 16 },
-  inputFocused: { borderBottomColor: colors.accentText },
-  inputError: { borderBottomColor: colors.error },
+  rule: { height: 1, backgroundColor: colors.hairline },
+  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.sm, paddingHorizontal: 14, minHeight: 50, paddingVertical: 12, color: colors.ink, fontFamily: fonts.regular, fontSize: 16 },
+  inputFocused: { borderColor: colors.accentBright, backgroundColor: colors.surface2 },
+  inputError: { borderColor: colors.error },
   alertError: { backgroundColor: colors.errorBg, borderRadius: radius.sm, padding: space.md },
   alertSuccess: { backgroundColor: colors.successBg, borderRadius: radius.sm, padding: space.md },
   alertInfo: { backgroundColor: colors.surface2, borderRadius: radius.sm, padding: space.md },

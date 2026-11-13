@@ -124,7 +124,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Denúncia | Em conversa, comprovante e perfil de candidato, "Denunciar" abre um e-mail ao suporte já preenchido. Não há bloqueio de usuário |
 | Dados pessoais | Em Conta e privacidade, a pessoa pede uma cópia dos dados ao suporte. Quem entra só pelo Google exclui a conta confirmando o e-mail, pois não tem senha |
 | CEP do evento | Campo opcional no cadastro do evento: consulta o ViaCEP e preenche estado, cidade e rua. O CEP não é gravado |
-| Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez |
+| Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez. Entrar com senha, criar conta, recuperar a senha e excluir uma conta com senha exigem a verificação anti-robô (Cloudflare Turnstile), conferida pelo Supabase Auth, quando ela está configurada |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
 | Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
 

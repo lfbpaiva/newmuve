@@ -21,6 +21,8 @@ const password = z
   .min(SENHA_TAMANHO_MINIMO, `A senha deve ter pelo menos ${SENHA_TAMANHO_MINIMO} caracteres.`)
   .max(72, "A senha deve ter no máximo 72 caracteres.");
 
+const captchaToken = z.string().trim().max(2048, "Confirme que você não é um robô.").optional();
+
 const nome = texto("Informe seu nome.").min(1, "Informe seu nome.").max(120, "O nome deve ter no máximo 120 caracteres.");
 
 export const signupSchema = z.object({
@@ -30,6 +32,7 @@ export const signupSchema = z.object({
   password,
   aceiteTermos: z.literal(true, { error: "Aceite os Termos de Uso para criar a conta." }),
   redirectTo: z.string().trim().max(300).optional(),
+  captchaToken,
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 
@@ -98,6 +101,7 @@ export type ProfileChanges = z.infer<typeof musicianProfile> | z.infer<typeof co
 export const deleteAccountSchema = z.object({
   email: texto("Informe o e-mail da conta.").toLowerCase(),
   password: z.string({ error: "Informe a senha." }),
+  captchaToken,
 });
 export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 

@@ -45,6 +45,7 @@ export interface SignupData {
   email: string;
   password: string;
   aceiteTermos: boolean;
+  captchaToken?: string;
 }
 
 const REMEMBERED_EMAIL_KEY = "muve.rememberedEmail";
@@ -65,6 +66,7 @@ function authError(error: AuthError): ApiError {
     over_email_send_rate_limit: "Muitos e-mails solicitados. Aguarde alguns minutos e tente novamente.",
     weak_password: "Escolha uma senha mais forte.",
     same_password: "A nova senha deve ser diferente da atual.",
+    captcha_failed: "Não foi possível confirmar que você não é um robô. Tente novamente.",
   };
   const message = (error.code && messages[error.code]) || "Não foi possível concluir a operação. Tente novamente.";
   return new ApiError(message, error.status ?? 0, error.code ?? "ERRO_DE_AUTENTICACAO");
@@ -74,8 +76,8 @@ export async function signUp(dados: SignupData): Promise<void> {
   await apiRequest("/auth/signup", { method: "POST", body: { ...dados, redirectTo: clientConfig().redirectUrl } });
 }
 
-export async function signIn(email: string, password: string): Promise<void> {
-  const { error } = await supabase().auth.signInWithPassword({ email, password });
+export async function signIn(email: string, password: string, captchaToken?: string): Promise<void> {
+  const { error } = await supabase().auth.signInWithPassword({ email, password, options: { captchaToken } });
   if (error) throw authError(error);
 }
 
@@ -89,8 +91,8 @@ export async function signOut(): Promise<void> {
   await supabase().auth.signOut({ scope: "local" });
 }
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  const { error } = await supabase().auth.resetPasswordForEmail(email, { redirectTo: clientConfig().redirectUrl });
+export async function requestPasswordReset(email: string, captchaToken?: string): Promise<void> {
+  const { error } = await supabase().auth.resetPasswordForEmail(email, { redirectTo: clientConfig().redirectUrl, captchaToken });
   if (error) throw authError(error);
 }
 
@@ -113,8 +115,8 @@ export async function hasPasswordLogin(): Promise<boolean> {
   return (metadata?.providers ?? [metadata?.provider]).includes("email");
 }
 
-export async function deleteAccount(email: string, password: string): Promise<void> {
-  await apiRequest("/me", { method: "DELETE", body: { email, password } });
+export async function deleteAccount(email: string, password: string, captchaToken?: string): Promise<void> {
+  await apiRequest("/me", { method: "DELETE", body: { email, password, captchaToken } });
   await forgetEmail();
   await signOut();
 }

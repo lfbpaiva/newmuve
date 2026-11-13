@@ -37,6 +37,32 @@ pnpm dev:app
 
 Leia o QR Code com o Expo Go. No terminal do Expo, a tecla `w` abre o app no navegador em `http://localhost:8081`. A API fica em `http://localhost:3333/api`.
 
+### Testar no celular (Expo Go)
+
+O app usa o Expo SDK 58: atualize o Expo Go pela loja antes de começar.
+
+1. Deixe `EXPO_PUBLIC_API_URL` **comentada** em `mobile/.env`. Com `localhost`, o celular tenta falar com ele mesmo e os dados não carregam; sem a variável, o app usa o endereço do computador que roda o Expo.
+2. Suba a API e o app (`pnpm dev:api` e `pnpm dev:app`) e leia o QR Code. No Android, leia pelo próprio Expo Go; no iPhone, pela câmera.
+3. Celular e computador precisam estar **na mesma rede**. Para conferir, abra no navegador do celular `http://IP-DO-COMPUTADOR:3333/api/health`: deve aparecer `{"status":"ok"}`. O IP aparece no terminal do Expo (`exp://192.168.x.x:8081`) ou em `ipconfig`.
+
+**"Failed to download remote update" ou "Something went wrong":** o celular não alcança o computador. Causas comuns: Wi-Fi de convidados, repetidor, roteador que isola o Wi-Fi dos aparelhos no cabo, ou o Windows bloqueando o Node (na primeira vez, permita o acesso em redes privadas e públicas). Se a rede não puder ser mudada, use o **cabo USB** no Android:
+
+1. No celular, ative o modo desenvolvedor (toque 7 vezes em "Número da versão") e a **Depuração USB**; ligue o cabo e permita a depuração.
+2. No computador, ligue as portas do celular às do computador (o `adb` vem com o Android Studio, em `%LOCALAPPDATA%\Android\Sdk\platform-tools`):
+
+```bash
+adb reverse tcp:8081 tcp:8081
+```
+
+```bash
+adb reverse tcp:3333 tcp:3333
+```
+
+3. Em `mobile/.env`, defina `EXPO_PUBLIC_API_URL=http://localhost:3333/api` e suba o app com `npx expo start --localhost` (dentro de `mobile/`).
+4. No Expo Go, toque em "Enter URL manually" e digite `exp://localhost:8081`.
+
+Ao voltar ao teste pela rede, comente de novo `EXPO_PUBLIC_API_URL`.
+
 Os Termos de Uso ficam em `mobile/app/terms.tsx`; ao mudar as regras, atualize o texto e `TERMOS_VERSAO` em `shared/dominio.ts`.
 
 Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). Para usar as duas no mesmo navegador, abra uma em `http://localhost:8081` e outra em `http://127.0.0.1:8081`. O script `node scripts/contas-demo.mjs` recria as duas do zero, com fotos do Unsplash (uso livre).
