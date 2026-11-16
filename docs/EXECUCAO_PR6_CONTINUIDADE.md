@@ -43,6 +43,12 @@ Registro vivo da execução que finaliza o PR #6 (`integracao/redesign-lote1` �
 - `b3ccd5d` fix(mobile): proposta, teclado, avaliações, painel e suporte.
 - Commit deste arquivo de continuidade.
 
+## Push
+
+- `git push origin integracao/redesign-lote1` sem force: `0ba3389..2d52582`. Local e remoto iguais.
+- PR #6 aberto, não mesclado, 14 commits, sem conflitos com o `main`; CI `verificar` aprovado no `2d52582`.
+- A descrição do PR ainda diz "Nenhuma migration nova" e cita 281 testes: precisa ser atualizada por alguém com acesso ao GitHub (o navegador desta máquina não está conectado).
+
 ## Observações de verificação
 
 - `pnpm lint` na raiz encontra a pasta local `newmuve/` (cópias antigas e zips, excluída do Git por `.git/info/exclude`) e falha por dois `tsconfig`. Rodado com `npx eslint . --ignore-pattern "newmuve/**"`: sem erros. A pasta não foi tocada.
