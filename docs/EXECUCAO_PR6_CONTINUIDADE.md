@@ -91,6 +91,15 @@ Registro vivo da execução que finaliza o PR #6 (`integracao/redesign-lote1` �
 - A sessão da CLI expirou no fim do dia ("Invalid access token"); para a janela, login de novo com a conta do Muve (`--no-browser`).
 - **Checkpoint:** aguardando autorização para a janela de aplicação.
 
+## Auditoria para o Expo Go (16/11/2026)
+
+- Auditoria dos 51 tópicos do documento mestre, de mocks e das integrações em `docs/AUDITORIA_EXPO_GO.md`.
+- Nenhum mock, credencial embutida ou login automático no código de execução; abrir já logado vem da sessão persistida e é validado pela API.
+- Correções: erro da consulta de pagamento não é mais engolido na tela do contratante; salvar perfil usa a resposta do `PATCH`; sessão restaurada em paralelo com as fontes.
+- Testes: typecheck e lint limpos; 897 testes; exports Android e web sem erro.
+- API (3333) e Expo (8081, Expo Go) abertos em terminais visíveis para o teste no celular.
+- Bloqueado por migration: Ver contratação, avaliar, estorno, contestação e repasse.
+
 ## Pendências que dependem de pessoas
 
 1. **Aplicar as 12 migrations novas no Supabase hospedado** — pendente de autorização específica. Riscos: plano sem backup automático; chaves legadas ainda ativas permitem que backends antigos rodem a rotina. Exige exportação verificável antes. Enquanto não aplicar, `GET /events/:id/contratacao` responde 500 (coluna `disputes.payment_id` ausente) e as avaliações ficam bloqueadas.
