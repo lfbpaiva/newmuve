@@ -68,6 +68,29 @@ Registro vivo da execução que finaliza o PR #6 (`integracao/redesign-lote1` �
 - **Bloqueio:** o CLI não está autenticado e o navegador não tem sessão no painel. Alguém da equipe precisa rodar `npx supabase login`; depois, `1-exportar.sh lylxorfrwuioednhukhz <pasta>`, `0-verificar-desvio.sh`, `2-restaurar-e-verificar.sh` e `3-ensaiar-migrations.sh`.
 - Texto novo da descrição do PR #6 em `C:\Users\Administrador\Downloads\Claude\newmuve-backups\PR6_DESCRICAO.md` (o navegador não está conectado ao GitHub).
 
+## Exportação real do hospedado (16/11/2026)
+
+- CLI autenticada na conta do Muve: organização `vlbdouewndfitdumeapm`, projeto `lylxorfrwuioednhukhz` ("My Project", `us-east-2`, `ACTIVE_HEALTHY`). O projeto antigo `xxagvofwqkjpudtalduj` pertence a outra conta e não foi usado.
+- Exportação em `newmuve-backups\2026-11-16-hospedado` (fora do Git, acesso só do usuário, Administradores e SISTEMA); `SHA256SUMS` conferido.
+- Hospedado: 21 migrations; 5 usuários, 6 eventos, 4 pagamentos, 0 contestações, 0 multas, 12 arquivos no Storage.
+- Desvio em relação à referência de 21: ACL de tabelas igual; função extra `public.rls_auto_enable()` com o event trigger `ensure_rls` (recurso do Supabase, não entra no dump); hash diferente em `claim_asaas_refund` e `finalize_asaas_refund`, com texto do dump idêntico (em investigação).
+- Pré-verificação concluída: nada das 12 migrations existe ainda; nenhuma transferência repetida; 2 pagamentos `REPASSADO` com transferência viram tentativas `LEGADO` na migration 3; nenhuma operação financeira em andamento; nenhuma contestação para a migration 11.
+- Hash das duas funções explicado: corpo com CRLF no hospedado; sem `\r` é idêntico; metadados iguais.
+- Conexão da CLI: papel `cli_login_postgres` (membro de `postgres`, senha com validade curta); consultas `--read-only` rodam como `supabase_read_only_user`.
+- Restauração na cópia isolada: 49/49 tabelas, 463/463 objetos; `ensure_rls` recriado só na cópia.
+- Ensaio: 12 migrations OK, pgTAP 25 arquivos sem falha, estado final igual à referência v33; 33 objetos novos sem acesso de `anon`/`authenticated`; migration 3 cria 2 tentativas `LEGADO`; migration 11 não encerra nenhuma contestação.
+- Relatório completo (com UUIDs, fora do Git): `newmuve-backups\RELATORIO_ENSAIO_2026-11-16.md`.
+- Rehearsal aprovado pelo usuário em 16/11/2026; aplicação no hospedado **ainda não autorizada**.
+
+## Preparação final (16/11/2026)
+
+- Storage: 12 arquivos baixados para `2026-11-16-hospedado\storage`, com tamanho, MD5 (`eTag`) e SHA-256 conferidos.
+- Permissões: tabelas novas com `service_role` só leitura e sem acesso de cliente; as 27 funções chamadas pelo backend do PR com `execute` só para `service_role`; 7 funções internas sem `service_role` de propósito.
+- Rotina: trava livre (geração 0); sem `pg_cron`/`pg_net`; workflow só na branch do PR (0 execuções agendadas); backend do PR exige `ENABLE_FINANCIAL_ROUTINE=true`.
+- **Achado crítico:** o backend do `main` roda a rotina sempre, ao iniciar e a cada 5 minutos, gravando repasses direto em `payments`. Nenhuma instância do `main` pode ficar ligada ao hospedado depois das migrations, e a URL da Render não deve ser acessada (acordaria o serviço). Sequência de implantação sem intervalo em `docs/PLANO_MIGRATIONS_HOSPEDADO.md`, seção 6.
+- A sessão da CLI expirou no fim do dia ("Invalid access token"); para a janela, login de novo com a conta do Muve (`--no-browser`).
+- **Checkpoint:** aguardando autorização para a janela de aplicação.
+
 ## Pendências que dependem de pessoas
 
 1. **Aplicar as 12 migrations novas no Supabase hospedado** — pendente de autorização específica. Riscos: plano sem backup automático; chaves legadas ainda ativas permitem que backends antigos rodem a rotina. Exige exportação verificável antes. Enquanto não aplicar, `GET /events/:id/contratacao` responde 500 (coluna `disputes.payment_id` ausente) e as avaliações ficam bloqueadas.

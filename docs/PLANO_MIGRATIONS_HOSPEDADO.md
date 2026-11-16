@@ -12,7 +12,7 @@ Situação em 16/11/2026: **nenhuma migration foi aplicada no hospedado.** Este 
 | Pendentes | 12, de `20261113120000` a `20261116150000` |
 | CLI | Supabase CLI 3.1.0; Docker Desktop com as imagens locais |
 
-O CLI desta máquina não está autenticado ("Invalid access token") e o navegador interno não tem sessão no painel. A exportação do hospedado depende de alguém da equipe rodar `npx supabase login` (a pessoa digita a própria credencial; nenhum agente digita senha ou token).
+Projeto confirmado pela CLI em 16/11/2026: "My Project", `us-east-2` (Ohio), `ACTIVE_HEALTHY`, organização `vlbdouewndfitdumeapm` ("Muve"). A CLI precisa estar logada na **conta do Muve**; a conta institucional enxerga só o projeto antigo `xxagvofwqkjpudtalduj`, que não deve ser usado. Para não pegar a sessão errada do navegador, usar `npx supabase login --no-browser` e abrir o link numa janela anônima com a conta do Muve. A sessão da CLI expira: no fim do dia 16/11 ela já respondia "Invalid access token".
 
 ## 2. Exportação verificável (preparada e testada)
 
@@ -25,6 +25,10 @@ Os scripts ficam **fora do repositório**, em `C:\Users\Administrador\Downloads\
 | `2-restaurar-e-verificar.sh <pasta>` | confere os hashes, restaura num **segundo Supabase local isolado** (`muve_restauro`, portas 544xx) e compara contagem e inventário com a origem | não |
 | `3-ensaiar-migrations.sh <pasta>` | roda a pré-verificação, aplica as 12 migrations na cópia restaurada, uma por transação, e roda os 25 arquivos pgTAP | não |
 | `preverificacao.sql` | consultas que antecipam falhas e mudanças de dados (seção 5) | só leitura |
+| `checagens_extras.sql`, `checagens_complementares.sql` | repasses da migration 3, contestações da migration 11, duplicidades, inconsistências, órfãos, Storage | só leitura |
+| `papeis_temporarios.sql` | papéis fora do padrão e objetos deles | só leitura |
+| `permissoes_clientes.sql`, `pos_ensaio.mjs` | acesso de `anon` e `authenticated` antes e depois do ensaio | não (rodam na cópia) |
+| `4-baixar-storage.mjs <ref> <pasta>` | baixa os arquivos dos buckets pelas URLs públicas e confere tamanho, MD5 (`eTag`) e SHA-256 | não: só `GET` |
 
 O inventário cobre funções (hash da definição), policies, triggers, constraints, índices, colunas, grants de tabela, **ACL de tabelas e funções**, RLS ligado, buckets e histórico de migrations.
 
@@ -42,12 +46,22 @@ O inventário cobre funções (hash da definição), policies, triggers, constra
 
 ### Limitações da exportação
 
-- **Arquivos dos buckets** (fotos de perfil, capas) não entram: só os metadados em `storage.objects`. As migrations não mexem no storage.
+- **Arquivos dos buckets** (fotos de perfil, capas) não entram no dump, só os metadados em `storage.objects`. Eles são baixados à parte (seção 11). As migrations não mexem no storage.
 - A estrutura dos esquemas `auth` e `storage` pertence à plataforma e não é exportada; os **dados** de `auth` (usuários, identidades) entram.
 - Configurações do projeto (Auth, URLs de redirecionamento, captcha, chaves de API, SMTP) não fazem parte do banco.
 - Sessões, tokens de atualização e logs de auditoria são exportados, mas não entram na comparação, porque mudam a cada login.
 - Diferenças em triggers ou policies de `auth`/`storage` podem vir da versão da plataforma, e não de desvio do projeto.
 - A exportação é um retrato do momento: o que for gravado depois dela não está nela.
+- **Event triggers não entram no dump.** O hospedado tem `ensure_rls` (recurso do Supabase que liga RLS em tabelas novas do `public`); numa restauração ele é recriado com `create event trigger ensure_rls on ddl_command_end when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO') execute function public.rls_auto_enable();`.
+- A CLI exporta usando o papel `cli_login_postgres`, que ela mantém no projeto com senha de validade curta; consultas `--read-only` rodam como `supabase_read_only_user`, que não enxerga todos os grants em `information_schema` (por isso a comparação usa a ACL do catálogo).
+
+### Resultado com os dados reais (16/11/2026)
+
+- Exportação do hospedado com hashes conferidos; restauração com 49/49 tabelas e 463/463 objetos iguais.
+- Desvio em relação à referência: só a função do Supabase `rls_auto_enable()` e o corpo de `claim_asaas_refund` e `finalize_asaas_refund` gravado com CRLF (texto igual sem `\r`, metadados iguais).
+- Ensaio na cópia: 12 migrations aplicadas, pgTAP sem falhas, estado final igual ao das 33 migrations; os 33 objetos novos não dão acesso a `anon` nem `authenticated`.
+- Efeito nos dados: 2 tentativas de repasse `LEGADO` (`CONCLUIDA`) na migration 3; nenhuma contestação vinculada ou encerrada na migration 11 (o hospedado tem 0).
+- Achados de qualidade, que não bloqueiam: 3 URLs de imagem sem arquivo e 8 arquivos sem referência no Storage; um pagamento cancelado sem evento.
 
 ## 3. O que as 12 migrations mudam (diferença real entre o estado de 21 e o de 33)
 
@@ -82,8 +96,8 @@ A ordem é obrigatória: cada uma depende das anteriores e todas precisam entrar
 
 - **`drop function`:** as 4 funções provisórias da migration 2 (removidas na 3, nunca existiram no hospedado) e `claim_asaas_refund(uuid, text)` na 12. O backend do `main` chama `claim_asaas_refund` com parâmetros nomeados (`p_payment_id`, `p_refund_action`), e a função nova tem o terceiro parâmetro com valor padrão: **continua compatível**.
 - **`drop constraint` e `drop index` em `disputes`:** recriados na mesma migration, com regras que aceitam os dados atuais.
-- **Backend antigo com o banco novo:** as rotas de leitura e pagamento continuam funcionando. O repasse antigo grava direto em `payments`, sem tentativas. Hoje ele não roda sozinho (rotina desligada), mas não deve ser usado entre a migração e a publicação do backend novo.
-- **Backend novo com o banco antigo:** é o que acontece hoje no ambiente local, e a tela de contratação dá erro 500 (`disputes.payment_id` não existe). Por isso migrations e backend novo precisam entrar juntos.
+- **Backend antigo (`main`, commit `34ca762`) com o banco novo: incompatível.** O `server.ts` do `main` executa a rotina financeira **sempre**, ao iniciar e a cada 5 minutos, sem `ENABLE_FINANCIAL_ROUTINE`. Ela grava `repasse_status` e `repasse_asaas_id` direto em `payments`, quita multas direto em `penalties` e pede transferências à Asaas, sem passar por `repasse_tentativas`. Depois das migrations isso cria repasses sem tentativa, que a conciliação nova não reconhece. As rotas de leitura e o estorno (`claim_asaas_refund` com parâmetros nomeados) continuariam funcionando, mas a rotina é suficiente para tornar qualquer instância do `main` proibida a partir da migração.
+- **Backend novo com o banco antigo: quebra sem corromper dados.** Chama funções que ainda não existem (`claim_payout`, `abrir_contestacao`, `claim_asaas_refund` com 3 parâmetros…) e lê `disputes.payment_id`; as chamadas falham com erro (a tela de contratação dá 500). Não deve ficar no ar antes das migrations.
 - **Chaves legadas ainda ativas:** permitem que backends antigos falem com o banco. Desativá-las depois da migração depende de autorização própria.
 
 ## 5. Pré-verificação no hospedado (somente leitura)
@@ -101,14 +115,29 @@ Rodar `preverificacao.sql` com `npx supabase db query --remote=lylxorfrwuioednhu
 
 E também: `0-verificar-desvio.sh` sem diferenças fora de `auth`/`storage`.
 
-## 6. Plano de execução (só depois da aprovação)
+## 6. Sequência de implantação (só depois da aprovação)
 
-1. Janela combinada com o grupo; ninguém usa o app; backend local e da Render parados ou sem tráfego.
-2. Exportar (`1-exportar.sh lylxorfrwuioednhukhz <pasta>`), verificar a restauração (`2-...`), conferir o desvio (`0-...`) e ensaiar na cópia com os dados reais (`3-...`). Qualquer falha interrompe o plano.
-3. Pré-verificação no hospedado (seção 5), revisada pelo grupo.
-4. `npx supabase db push --remote=lylxorfrwuioednhukhz --dry-run`: precisa listar exatamente as 12 migrations, em ordem.
-5. Aplicar: `npx supabase db push --remote=lylxorfrwuioednhukhz`.
-6. Publicar o backend desta branch (só depois do merge, decisão do grupo), com `ENABLE_FINANCIAL_ROUTINE` ausente.
+Não existe ordem segura com uma API no ar: o backend antigo é incompatível com o banco novo e o backend novo não funciona no banco antigo. A sequência elimina o intervalo deixando **nenhum backend** ligado ao hospedado entre a migração e a publicação do backend novo.
+
+**Antes da janela (decisões do grupo):**
+- Como o backend novo chega à Render: merge do PR no `main` ou apontar o serviço para `integracao/redesign-lote1`. O serviço `muve-api` tem `autoDeployTrigger: off`.
+- Na Render: `ENABLE_FINANCIAL_ROUTINE=false` (já no `render.yaml`) e **sem** `FINANCIAL_ROUTINE_TOKEN`.
+- **Não acessar a URL da Render antes da janela:** no plano gratuito o serviço dorme, e uma requisição o acorda; se ele roda o código do `main`, a rotina começa na hora.
+
+**Janela:**
+1. Avisar o grupo; ninguém usa o app.
+2. **Parar todo backend ligado ao hospedado:** suspender o serviço `muve-api` na Render (Dashboard → Suspend) e confirmar com cada pessoa que não há API local do `main` rodando com o `.env` do hospedado.
+3. Exportação nova e verificação (`1-exportar.sh`, `2-restaurar-e-verificar.sh`, `0-verificar-desvio.sh`, `4-baixar-storage.mjs`), pré-verificação (seção 5) e ensaio (`3-ensaiar-migrations.sh`, com o `ensure_rls` recriado na cópia). Qualquer diferença nova interrompe a janela.
+4. `npx supabase db push --remote=lylxorfrwuioednhukhz --dry-run`: exatamente as 12 migrations, em ordem.
+5. `npx supabase db push --remote=lylxorfrwuioednhukhz`.
+6. Validação do banco (seção 7, itens 1 a 4).
+7. Publicar o backend do PR na Render e retomar o serviço; conferir no log "Rotina financeira desabilitada nesta instância".
+8. Testes de fumaça (seção 7, item 5) e conferência da fila de webhooks no painel da Asaas Sandbox (as notificações enviadas durante a parada são reenviadas pela Asaas; a fila pode ser pausada depois de falhas seguidas).
+9. Liberar o app.
+
+**Se o passo 5 falhar no meio:** cada migration roda numa transação, então o banco fica numa das migrations intermediárias. O serviço continua suspenso; corrigir com migration nova ensaiada na cópia ou restaurar (seção 8). O backend antigo **não** volta ao ar.
+
+**Mitigação adicional (decisão própria):** desativar as chaves legadas do Supabase impede que qualquer cópia esquecida do `main` acesse o banco. Antes disso, confirmar qual chave a Render e cada `.env` usam.
 
 ## 7. Validação posterior
 
@@ -127,4 +156,20 @@ E também: `0-verificar-desvio.sh` sem diferenças fora de `auth`/`storage`.
 
 ## 9. Rotina financeira
 
-Continua desligada. O workflow `.github/workflows/rotina-financeira.yml` só dispara com a variável de repositório `ROTINA_FINANCEIRA_ATIVA = true` **e** os secrets `MUVE_API_URL` e `FINANCIAL_ROUTINE_TOKEN`; a API ainda exige `ENABLE_FINANCIAL_ROUTINE`. Nenhum deles existe, e este plano não cria nenhum.
+- **Backend do PR:** só agenda a rotina com `ENABLE_FINANCIAL_ROUTINE=true` **e** em produção ou com Supabase local (`financialRoutineAllowed`); o disparo externo (`POST /admin/rotina-financeira`) ainda exige `FINANCIAL_ROUTINE_TOKEN` válido. Nenhuma das duas variáveis existe no `backend/.env`; o `render.yaml` define `ENABLE_FINANCIAL_ROUTINE: "false"`.
+- **Backend do `main`:** roda a rotina sempre (seção 4). É o único caminho de execução automática hoje.
+- **Workflow** `.github/workflows/rotina-financeira.yml`: existe só na branch do PR; o GitHub só agenda workflows do branch padrão. API pública do GitHub em 16/11/2026: o repositório tem só o workflow `CI` registrado e **0** execuções agendadas. Depois do merge, ele só faz algo com a variável `ROTINA_FINANCEIRA_ATIVA = true` e os secrets `MUVE_API_URL` e `FINANCIAL_ROUTINE_TOKEN`.
+- **Banco:** o dump do hospedado não tem `pg_cron` nem `pg_net` (extensões: `pg_stat_statements`, `pgcrypto`, `supabase_vault`, `unaccent`).
+- **Linha de trava (migration 10):** `rotina_financeira_execucao` tem uma única linha (`id = 1`). `dono` nulo significa "nenhuma execução em andamento", o estado normal em repouso. Ela só é ocupada por `adquirir_rotina_financeira`, que o backend chama ao rodar a rotina; não liga nada. Na cópia: livre, geração 0, nunca executada.
+
+## 10. Permissões depois das migrations (medido na cópia)
+
+- **Tabelas novas** (`repasse_tentativas`, `repasse_decisoes`, `repasse_alertas`, `rotina_financeira_execucao`): `service_role` só com `select`; `anon` e `authenticated` sem acesso; RLS ligado e nenhuma policy. O backend do PR só faz `select` nelas; toda escrita passa por funções. `repasse_alertas` tem triggers que impedem `update`, `delete` e `truncate`.
+- **Funções:** as 27 que o backend do PR chama existem com uma única assinatura e `execute` para `service_role`, sem `anon` nem `authenticated`. Das 29 novas, 7 não têm `execute` para `service_role` de propósito: são internas ou só da migration (`encerrar_tentativa_sem_repasse`, `importar_repasses_legados`, `validar_busca_de_ausencia`, `private.impedir_alteracao_de_alerta`, `private.reabrir_contestacao_do_evento`, `private.reabrir_contestacao_do_pagamento`, `private.vincular_contestacoes_ao_pagamento`), e nenhuma delas é chamada pelo backend.
+- **Permissões anteriores**, iguais à referência: `authenticated` lê 13 tabelas (filtradas por RLS) e executa as funções auxiliares das policies; `anon` tem `execute` em 4 funções do esquema `private`, mas não tem `usage` nesse esquema.
+
+## 11. Backup completo
+
+- Banco: exportação de 16/11/2026, com hashes, restaurada e verificada (seção 2).
+- **Storage:** os 12 arquivos (`avatars` 6, `event-banners` 6) baixados pelas URLs públicas dos buckets, com a estrutura `storage/<bucket>/<caminho>`; tamanho e MD5 conferem com o `eTag` de cada objeto; `SHA256SUMS` e `manifesto.json` conferidos. As 3 URLs que apontam para arquivos inexistentes não foram recriadas.
+- Continuam fora: configurações do projeto (Auth, URLs, captcha, SMTP, chaves) e o event trigger `ensure_rls` (recriado à mão).
