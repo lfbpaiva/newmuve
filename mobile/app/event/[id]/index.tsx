@@ -131,7 +131,7 @@ function Opportunity({ eventId }: { eventId: string }) {
 function Manage({ eventId }: { eventId: string }) {
   const router = useRouter();
   const details = useAsync(`manage:${eventId}`, async () => {
-    const [raw, candidates, checkout] = await Promise.all([fetchEvent(eventId), fetchCandidates(eventId), fetchCheckoutStatus(eventId).catch(() => null)]);
+    const [raw, candidates, checkout] = await Promise.all([fetchEvent(eventId), fetchCandidates(eventId), fetchCheckoutStatus(eventId)]);
     return { event: withEncerrado(raw), candidates, checkout };
   });
   useRefreshOnFocus(details.reload);

@@ -21,13 +21,14 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded]);
-  if (!fontsLoaded) return null;
   return <AuthProvider>
-    <StatusBar style="light"/>
-    <WebFrame>
-      <AuthGate/>
-      {abrindo && <Abertura onFim={encerrarAbertura}/>}
-    </WebFrame>
+    {fontsLoaded && <>
+      <StatusBar style="light"/>
+      <WebFrame>
+        <AuthGate/>
+        {abrindo && <Abertura onFim={encerrarAbertura}/>}
+      </WebFrame>
+    </>}
   </AuthProvider>;
 }
 

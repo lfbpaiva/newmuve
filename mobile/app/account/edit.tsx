@@ -46,8 +46,7 @@ export default function EditProfileScreen() {
     setSubmitting(true);
     try {
       const { bio, chavePixTipo, chavePix, portfolioUrl, ...comum } = form;
-      await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl } : comum, avatar);
-      await refreshMe();
+      await refreshMe(await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl } : comum, avatar));
       if (router.canGoBack()) router.back();
       else router.replace("/(app)");
     } catch (e) {
