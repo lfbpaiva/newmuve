@@ -60,6 +60,14 @@ Registro vivo da execução que finaliza o PR #6 (`integracao/redesign-lote1` �
 - `gh` não instalado: conferir o PR pelo navegador; o push usa o `git`.
 - Docker Desktop precisa ser aberto antes (`%LOCALAPPDATA%\Programs\DockerDesktop`).
 
+## Preparação das migrations no hospedado (16/11/2026)
+
+- Plano completo em `docs/PLANO_MIGRATIONS_HOSPEDADO.md`. Nada foi aplicado no hospedado.
+- Scripts de exportação, restauração, ensaio e pré-verificação em `C:\Users\Administrador\Downloads\Claude\newmuve-backups\scripts` (fora do repositório, porque a exportação tem dados pessoais).
+- Procedimento testado com o Supabase local como origem: restauração 607/607 objetos e 51/51 tabelas; 12 migrations aplicadas na cópia; pgTAP sem falhas; resultado idêntico ao banco das 33 migrations (781/781).
+- **Bloqueio:** o CLI não está autenticado e o navegador não tem sessão no painel. Alguém da equipe precisa rodar `npx supabase login`; depois, `1-exportar.sh lylxorfrwuioednhukhz <pasta>`, `0-verificar-desvio.sh`, `2-restaurar-e-verificar.sh` e `3-ensaiar-migrations.sh`.
+- Texto novo da descrição do PR #6 em `C:\Users\Administrador\Downloads\Claude\newmuve-backups\PR6_DESCRICAO.md` (o navegador não está conectado ao GitHub).
+
 ## Pendências que dependem de pessoas
 
 1. **Aplicar as 12 migrations novas no Supabase hospedado** — pendente de autorização específica. Riscos: plano sem backup automático; chaves legadas ainda ativas permitem que backends antigos rodem a rotina. Exige exportação verificável antes. Enquanto não aplicar, `GET /events/:id/contratacao` responde 500 (coluna `disputes.payment_id` ausente) e as avaliações ficam bloqueadas.
