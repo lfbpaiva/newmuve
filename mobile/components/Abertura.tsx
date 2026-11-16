@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, View } from "react-native";
+import { AccessibilityInfo, Animated, AppState, Easing, Platform, StyleSheet, View } from "react-native";
+import { ABERTURA_DESENHO_MS, ABERTURA_LIMITE_MS, ABERTURA_PAUSA_MS, ABERTURA_SAIDA_MS, encerrarUmaVez } from "../lib/abertura";
 import { colors } from "../lib/theme";
 import { Logo } from "./Logo";
 
@@ -14,20 +15,31 @@ export function Abertura({ onFim }: { onFim: () => void }) {
 
   useEffect(() => {
     let cancelado = false;
+    const encerrar = encerrarUmaVez(() => {
+      if (!cancelado) onFim();
+    });
+    const limite = setTimeout(encerrar, ABERTURA_LIMITE_MS);
+    const estado = AppState.addEventListener("change", (atual) => {
+      if (atual !== "active") encerrar();
+    });
+    const animacao = Animated.sequence([
+      Animated.parallel([
+        Animated.timing(revelar, { toValue: 1, duration: ABERTURA_DESENHO_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+        Animated.timing(entrada, { toValue: 1, duration: ABERTURA_DESENHO_MS, easing: Easing.out(Easing.cubic), useNativeDriver: nativeDriver }),
+      ]),
+      Animated.delay(ABERTURA_PAUSA_MS),
+      Animated.timing(saida, { toValue: 1, duration: ABERTURA_SAIDA_MS, easing: Easing.in(Easing.cubic), useNativeDriver: nativeDriver }),
+    ]);
     AccessibilityInfo.isReduceMotionEnabled().then((reduzir) => {
       if (cancelado) return;
-      if (reduzir) return onFim();
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(revelar, { toValue: 1, duration: 950, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
-          Animated.timing(entrada, { toValue: 1, duration: 950, easing: Easing.out(Easing.cubic), useNativeDriver: nativeDriver }),
-        ]),
-        Animated.delay(260),
-        Animated.timing(saida, { toValue: 1, duration: 520, easing: Easing.in(Easing.cubic), useNativeDriver: nativeDriver }),
-      ]).start(({ finished }) => finished && onFim());
-    }, onFim);
+      if (reduzir) return encerrar();
+      animacao.start(encerrar);
+    }, encerrar);
     return () => {
       cancelado = true;
+      clearTimeout(limite);
+      estado.remove();
+      animacao.stop();
     };
   }, [revelar, entrada, saida, onFim]);
 

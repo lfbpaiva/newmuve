@@ -33,3 +33,26 @@ describe("notificação com o app fechado", () => {
     expect(world.notifications).toHaveLength(1);
   });
 });
+
+describe("aviso de penalidade", () => {
+  it("explica os 15 dias sem feed e sem novas inscrições, inclusive por convite e com o Pro, sem cancelar inscrições existentes", async () => {
+    const world = memoryWorld();
+    const notifier = createNotifier({ ...world.stores, appUrl: "http://localhost:8081" });
+    const event = world.seedEvent({ titulo: "Noite de rock" });
+
+    await notifier.penaltyApplied(event, "m1", 100, new Date("2030-06-25T12:00:00Z"));
+    await notifier.penaltyApplied(event, "m1", 0, new Date("2030-06-25T12:00:00Z"));
+
+    const [ausencia, desistencia] = world.notifications;
+    expect(ausencia.titulo).toBe("Multa por ausência: \"Noite de rock\"");
+    expect(ausencia.texto).toContain("multa de R$ 100,00");
+    expect(desistencia.titulo).toBe("Desistência em cima da hora: \"Noite de rock\"");
+    expect(desistencia.texto).not.toContain("multa");
+    for (const aviso of [ausencia, desistencia]) {
+      expect(aviso.texto).toContain("A penalidade é de 15 dias: até 25/06/2030");
+      expect(aviso.texto).toContain("não verá novos eventos no feed e não poderá fazer novas inscrições, nem por convite, mesmo com o Muve Pro");
+      expect(aviso.texto).toContain("As inscrições que você já fez continuam valendo");
+      expect(aviso.texto).not.toMatch(/cancelad/i);
+    }
+  });
+});

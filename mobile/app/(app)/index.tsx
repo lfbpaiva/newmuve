@@ -103,7 +103,7 @@ function Feed() {
   }
 
   return <View style={styles.screen}>
-    <Screen onRefresh={feed.reload} topo={<TopBar titulo="Oportunidades"/>}>
+    <Screen onRefresh={feed.reload} carregando={feed.loading} topo={<TopBar titulo="Oportunidades"/>}>
       <TituloGrande titulo={`${saudacao()}, ${primeiroNome(me.nome)}`} subtitulo={me.cidade ? `Shows perto de ${me.cidade}, ${me.uf}` : "Encontre seu próximo show"}/>
       {setupPending && <EmptyState title="Monte seu feed" icon="musical-notes-outline" action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
@@ -163,7 +163,7 @@ function Dashboard() {
   ];
 
   return <View style={styles.screen}>
-    <Screen onRefresh={events.reload} topo={<TopBar titulo="Painel"/>}>
+    <Screen onRefresh={events.reload} carregando={events.loading} topo={<TopBar titulo="Painel"/>}>
       <TituloGrande titulo={`${saudacao()}, ${primeiroNome(me.nome)}`} subtitulo="Acompanhe seus eventos e contratações"/>
       <Reveal><Surface destaque>
         <View style={[styles.row, { alignItems: "stretch" }]}>

@@ -1,10 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
+import { AmbienteRecusado, carregarAmbienteLocal, exigirLoopback } from "./e2e-ambiente.mjs";
 
-const env = Object.fromEntries(
-  readFileSync("backend/.env", "utf8").split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]),
-);
-const API = "http://localhost:3333/api";
+let API;
 const PASSWORD = "Teste-e2e-123";
 const USERS = {
   contractor: { email: "e2e.contratante@muve.test", role: "CONTRACTOR" },
@@ -13,7 +12,9 @@ const USERS = {
 };
 const DOCS = { contractor: "11222333000181", musician: "52998224725", musician2: "11144477735" };
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
-const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, noSession);
+let admin;
+let local;
+let criarSessao;
 
 const png = () => new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64")], "banner.png", { type: "image/png" });
 let failures = 0;
@@ -22,17 +23,15 @@ function check(label, ok, detail = "") {
   console.log(`${ok ? "ok  " : "FAIL"} ${label}${ok ? "" : ` -> ${detail}`}`);
 }
 
-async function cleanup() {
-  const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
-  for (const user of data.users.filter((u) => Object.values(USERS).some((t) => t.email === u.email))) {
-    for (const bucket of ["avatars", "event-banners"]) {
-      const { data: files } = await admin.storage.from(bucket).list(user.id);
-      if (files?.length) await admin.storage.from(bucket).remove(files.map((f) => `${user.id}/${f.name}`));
-    }
-    await admin.from("payments").delete().eq("contractor_id", user.id);
-    await admin.auth.admin.deleteUser(user.id);
-  }
-  await admin.from("payments").delete().like("asaas_payment_id", "pay_e2e_%");
+export async function prepararE2E({ executar, lerArquivo, criarCliente, api }) {
+  const ambiente = await carregarAmbienteLocal({ executar, lerArquivo });
+  exigirLoopback(api, "API do E2E");
+  const cliente = criarCliente(ambiente.supabaseUrl, ambiente.serviceRoleKey, noSession);
+  const { data, error } = await cliente.auth.admin.listUsers({ perPage: 200 });
+  if (error) throw error;
+  const restantes = data.users.filter((u) => Object.values(USERS).some((t) => t.email === u.email));
+  if (restantes.length) throw new Error("O banco local ainda tem contas do E2E. Rode pelo pnpm test:e2e, que reseta o Supabase local antes e depois.");
+  return { ambiente, admin: cliente };
 }
 
 async function createUser(key) {
@@ -47,7 +46,7 @@ async function createUser(key) {
   } else {
     await admin.from("contractor_profiles").insert({ ...common, nome_fantasia: "Bar Teste", documento: DOCS[key] }).throwOnError();
   }
-  const client = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, noSession);
+  const client = criarSessao(local.supabaseUrl, local.anonKey, noSession);
   const session = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (session.error) throw session.error;
   return { id, token: session.data.session.access_token, db: client };
@@ -72,13 +71,73 @@ const eventForm = (overrides = {}) => {
   return form;
 };
 
-async function run() {
-  await cleanup();
+export function exigirApiDoOrquestrador(apiIniciada) {
+  if (!apiIniciada?.url || !apiIniciada.processo || apiIniciada.processo.exitCode !== null || apiIniciada.processo.signalCode !== null) {
+    throw new AmbienteRecusado("Ambiente E2E recusado: o E2E só roda com a API iniciada pelo orquestrador (pnpm test:e2e).");
+  }
+  exigirLoopback(apiIniciada.url, "API do E2E");
+  return apiIniciada.url;
+}
+
+async function dispararRotina(headers) {
+  const response = await fetch(`${API}/admin/rotina-financeira`, { method: "POST", headers });
+  const json = await response.json().catch(() => null);
+  return { status: response.status, json };
+}
+
+async function execucaoDaRotina() {
+  const { data, error } = await admin.from("rotina_financeira_execucao").select("dono, geracao, ultimo_resultado, ultimo_sucesso_em, ultimo_erro").eq("id", 1).single();
+  if (error) throw error;
+  return data;
+}
+
+async function aguardarFimDaRotina() {
+  for (let tentativa = 0; tentativa < 50; tentativa++) {
+    const execucao = await execucaoDaRotina();
+    if (execucao.dono === null && execucao.ultimo_resultado !== null) return execucao;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return execucaoDaRotina();
+}
+
+async function verificarRotinaFinanceira(token) {
+  if (!token) throw new AmbienteRecusado("Ambiente E2E recusado: a API local foi iniciada sem token de disparo da rotina financeira.");
+  let r = await dispararRotina({});
+  check("rotina financeira sem token: 401", r.status === 401, JSON.stringify(r));
+  r = await dispararRotina({ "x-rotina-token": "token-errado" });
+  check("rotina financeira com token errado: 401", r.status === 401, JSON.stringify(r));
+  r = await dispararRotina({ "x-rotina-token": token, "Content-Type": "application/json" });
+  check("rotina financeira com token: 202 e iniciada", r.status === 202 && r.json?.resultado === "INICIADA", JSON.stringify(r));
+  const execucao = await aguardarFimDaRotina();
+  check("rotina financeira termina com sucesso e libera a trava", execucao.dono === null && execucao.ultimo_resultado === "SUCESSO" && execucao.ultimo_sucesso_em !== null, JSON.stringify(execucao));
+
+  const outra = randomUUID();
+  const { data: geracao, error } = await admin.rpc("adquirir_rotina_financeira", { p_dono: outra, p_validade_segundos: 60 });
+  check("outra execução segura a trava no banco local", !error && geracao !== null, JSON.stringify(error ?? geracao));
+  r = await dispararRotina({ "x-rotina-token": token });
+  check("rotina financeira com execução ativa: 409 sem iniciar outra", r.status === 409 && r.json?.resultado === "EM_ANDAMENTO", JSON.stringify(r));
+  const depois = await execucaoDaRotina();
+  check("a execução ativa continua com o mesmo dono", depois.dono === outra && depois.geracao === geracao, JSON.stringify(depois));
+  const { data: encerrada } = await admin.rpc("encerrar_rotina_financeira", { p_dono: outra, p_geracao: geracao, p_resultado: "SUCESSO", p_erro: null });
+  check("a execução simulada encerra a própria trava", encerrada === true, JSON.stringify(encerrada));
+}
+
+export async function executarE2E({ apiIniciada, executar, lerArquivo, criarCliente = createClient }) {
+  const url = exigirApiDoOrquestrador(apiIniciada);
+  failures = 0;
+  criarSessao = criarCliente;
+  ({ ambiente: local, admin } = await prepararE2E({ executar, lerArquivo, criarCliente, api: url }));
+  API = url;
   const c = await createUser("contractor");
+  let r = await api(c, "GET", "/me");
+  if (r.status !== 200 || r.json?.email !== USERS.contractor.email) {
+    throw new AmbienteRecusado("Ambiente E2E recusado: a API não reconheceu a sessão criada no Supabase local, então não está ligada ao banco local.");
+  }
   const m = await createUser("musician");
   const m2 = await createUser("musician2");
 
-  let r = await api(c, "GET", "/me");
+  await verificarRotinaFinanceira(apiIniciada.tokenDaRotina);
+
   check("GET /me devolve o perfil com documento", r.status === 200 && r.json.documento === DOCS.contractor && r.json.email === USERS.contractor.email, JSON.stringify(r));
   r = await api(null, "GET", "/me");
   check("GET /me sem token: 401", r.status === 401);
@@ -111,7 +170,7 @@ async function run() {
   const perto = await m.db.rpc("musician_feed", { p_raio_km: 50 });
   const longe = await m.db.rpc("musician_feed", { p_raio_km: 0 });
   check("feed por raio: Toledo aparece a ~38 km com raio 50 e some com raio 0", perto.data?.some((e) => e.event_id === toledoId && Number(e.distancia_km) > 30 && Number(e.distancia_km) < 45) && !longe.data?.some((e) => e.event_id === toledoId), JSON.stringify([perto.error ?? perto.data, longe.data]));
-  r = await api(m, "POST", `/events/${toledoId}/candidatura`);
+  r = await api(m, "POST", `/events/${toledoId}/candidatura`, {});
   check("músico se inscreve em cidade vizinha dentro do raio: 204", r.status === 204, JSON.stringify(r));
   await admin.from("events").delete().eq("id", toledoId);
   const others = await m.db.from("musician_profiles").select("user_id");
@@ -125,15 +184,15 @@ async function run() {
   const direct = await m.db.from("event_candidates").insert({ event_id: eventId, musician_id: m.id });
   check("cliente não grava candidatura direto no banco", Boolean(direct.error));
 
-  r = await api(m, "POST", `/events/${eventId}/candidatura`);
+  r = await api(m, "POST", `/events/${eventId}/candidatura`, {});
   check("músico se inscreve: 204", r.status === 204, JSON.stringify(r));
-  r = await api(m, "POST", `/events/${eventId}/candidatura`);
+  r = await api(m, "POST", `/events/${eventId}/candidatura`, {});
   check("inscrição duplicada: 409", r.code === "JA_INSCRITO", JSON.stringify(r));
   await admin.from("musician_profiles").update({ chave_pix: null, chave_pix_tipo: null }).eq("user_id", m2.id).throwOnError();
-  r = await api(m2, "POST", `/events/${eventId}/candidatura`);
+  r = await api(m2, "POST", `/events/${eventId}/candidatura`, {});
   check("perfil incompleto (sem chave Pix) não se candidata: 409 com o que falta", r.code === "PERFIL_INCOMPLETO" && r.json.error.message.includes("chave Pix"), JSON.stringify(r));
   await admin.from("musician_profiles").update({ chave_pix: USERS.musician2.email, chave_pix_tipo: "EMAIL" }).eq("user_id", m2.id).throwOnError();
-  await api(m2, "POST", `/events/${eventId}/candidatura`);
+  await api(m2, "POST", `/events/${eventId}/candidatura`, {});
   const cands = await c.db.from("event_candidates").select("id, musician:musician_profiles(user_id, nome_completo, avaliacao_media)").eq("event_id", eventId);
   check("contratante vê os 2 candidatos com perfil", cands.data?.length === 2 && cands.data.every((x) => x.musician?.nome_completo), JSON.stringify(cands.error ?? cands.data));
   const candidateId = cands.data.find((x) => x.musician.user_id === m.id).id;
@@ -141,7 +200,7 @@ async function run() {
   r = await api(m, "POST", `/events/${eventId}/checkout`, { candidateId });
   check("músico não aprova candidato: 404", r.status === 404, JSON.stringify(r));
   r = await api(c, "POST", `/events/${eventId}/checkout`, { candidateId });
-  check(env.ASAAS_API_KEY ? "checkout gera cobrança Pix com comissão: 201" : "checkout sem Asaas configurada: 503 controlado", env.ASAAS_API_KEY ? r.status === 201 && Boolean(r.json.pixCopiaCola) && r.json.valor === 495.55 : r.code === "PAGAMENTO_NAO_CONFIGURADO", JSON.stringify(r));
+  check("checkout sem Asaas configurada: 503 controlado", r.code === "PAGAMENTO_NAO_CONFIGURADO", JSON.stringify(r));
   r = await api(c, "GET", `/events/${eventId}/contratacao`);
   check("comprovante indisponível antes da contratação: 409", r.code === "EVENTO_NAO_CONTRATADO", JSON.stringify(r));
   r = await api(null, "POST", "/webhooks/asaas", { id: "evt", event: "PAYMENT_RECEIVED", payment: { id: "x" } });
@@ -166,7 +225,7 @@ async function run() {
   r = await api(m, "DELETE", "/me", { email: USERS.musician.email, password: PASSWORD });
   check("músico com show contratado não exclui a conta: 409", r.code === "CONTRATACAO_EM_ANDAMENTO", JSON.stringify(r));
   r = await api(m, "DELETE", `/events/${eventId}/contratacao`);
-  check(env.ASAAS_API_KEY ? "músico desiste: estorno e evento reaberto" : "desistência sem Asaas: falha controlada, contratação intacta", env.ASAAS_API_KEY ? r.json?.reembolsado === true : r.status === 503, JSON.stringify(r));
+  check("desistência sem Asaas: falha controlada, contratação intacta", r.status === 503, JSON.stringify(r));
 
   r = await api(c, "POST", `/events/${eventId}/confirmacao`);
   check("confirmação antes do evento: 409", r.code === "EVENTO_NAO_INICIADO", JSON.stringify(r));
@@ -190,7 +249,9 @@ async function run() {
   r = await api(c, "GET", "/me");
   check("média do contratante atualizada", r.json?.avaliacaoMedia === 4 && r.json?.totalAvaliacoes === 1, JSON.stringify(r.json));
   r = await api(c, "GET", `/events/${eventId}/contratacao`);
-  check(env.ASAAS_API_KEY ? "repasse ao músico solicitado após a conclusão" : "repasse sem Asaas: registrado como FALHOU para nova tentativa", env.ASAAS_API_KEY ? ["PROCESSANDO", "REPASSADO"].includes(r.json?.pagamento?.repasseStatus) : r.json?.pagamento?.repasseStatus === "FALHOU", JSON.stringify(r.json?.pagamento));
+  check("repasse sem Asaas: registrado como FALHOU para nova tentativa", r.json?.pagamento?.repasseStatus === "FALHOU", JSON.stringify(r.json?.pagamento));
+  const tentativas = await admin.from("repasse_tentativas").select("estado, origem").eq("payment_id", (await admin.from("payments").select("id").eq("asaas_payment_id", "pay_e2e_1").single()).data?.id);
+  check("repasse sem Asaas só deixa tentativas encerradas como FALHOU", tentativas.data?.length > 0 && tentativas.data.every((t) => t.estado === "FALHOU" && t.origem === "ATUAL"), JSON.stringify(tentativas.error ?? tentativas.data));
 
   r = await api(m2, "DELETE", "/me", { email: USERS.musician2.email, password: "senha-errada" });
   check("exclusão com senha errada: 400", r.code === "CREDENCIAIS_NAO_CONFEREM", JSON.stringify(r));
@@ -200,8 +261,10 @@ async function run() {
   check("documento da conta excluída fica livre para novo cadastro (sem lista de bloqueio)", docLivre.data === null, JSON.stringify(docLivre));
 
   console.log(failures ? `\n${failures} verificação(ões) falharam` : "\nTodas as verificações passaram");
-  process.exit(failures ? 1 : 0);
+  return failures;
 }
 
-if (process.argv[2] === "cleanup") cleanup().then(() => console.log("contas e dados de teste removidos"));
-else run().catch((error) => { console.error(error); process.exit(1); });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  console.error("Este arquivo não roda sozinho. Use pnpm test:e2e: o orquestrador sobe o Supabase e a API locais e só então executa o E2E.");
+  process.exitCode = 1;
+}

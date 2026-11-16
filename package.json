@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "node scripts/test-db.mjs",
-    "test:e2e": "node scripts/e2e-api.mjs run",
+    "test:e2e": "node scripts/e2e-local.mjs",
     "format": "oxfmt"
   },
   "dependencies": {

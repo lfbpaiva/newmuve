@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "../domain/errors.ts";
 import { createNotifier } from "./notifications.ts";
-import { createPaymentService } from "./paymentService.ts";
-import { contratante, hoursFromNow, memoryWorld, NOW, outroContratante, payAtAsaas } from "./testing.ts";
+import { COBRANCA_REMOVIDA_NA_ASAAS } from "./ports.ts";
+import { createPaymentService, situacaoDoEstornoNaAsaas } from "./paymentService.ts";
+import { createRotinaFinanceira } from "./rotinaFinanceira.ts";
+import { contratante, DECLARACAO_AUSENCIA, hoursFromNow, memoryWorld, NOW, outroContratante, payAtAsaas } from "./testing.ts";
 
 function setup() {
   const world = memoryWorld();
@@ -23,6 +26,14 @@ beforeEach(() => {
 });
 
 const checkout = (now = NOW) => t.service.startCheckout(contratante, t.event.id, t.candidate.id, now);
+const HORA = 60 * 60 * 1000;
+const tentativaAberta = (paymentId: string) => t.world.tentativas.find((tentativa) => tentativa.paymentId === paymentId && tentativa.encerradaEm === null)!;
+const tentativasDo = (paymentId: string) => t.world.tentativas.filter((tentativa) => tentativa.paymentId === paymentId);
+const recuar = (tentativa: { solicitadaEm: Date; verificacaoIniciadaEm: Date | null }, campo: "solicitadaEm" | "verificacaoIniciadaEm", ms: number) => {
+  tentativa[campo] = new Date(Date.now() - ms);
+};
+const semResposta = () =>
+  vi.spyOn(t.world.stores.asaas, "transferPix").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado sem saber se a Asaas criou a transferência"));
 
 describe("checkout (aprovar candidato)", () => {
   it("cobra o valor proposto pelo músico, mais a taxa, quando ele pediu outro cachê", async () => {
@@ -310,8 +321,10 @@ describe("repasse ao músico", () => {
 
     await t.service.payout(t.event.id);
 
-    expect(t.world.asaasCalls.transferPix).toEqual([{ value: 750, pixAddressKey: "m1@exemplo.com", pixAddressKeyType: "EMAIL" }]);
+    const tentativa = tentativaAberta(payment.id);
+    expect(t.world.asaasCalls.transferPix).toEqual([{ value: 750, pixAddressKey: "m1@exemplo.com", pixAddressKeyType: "EMAIL", externalReference: tentativa.id }]);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    expect(tentativa).toMatchObject({ origem: "ATUAL", estado: "PENDENTE", referenciaExterna: tentativa.id });
   });
 
   it("nunca repassa duas vezes, mesmo com chamadas simultâneas", async () => {
@@ -360,23 +373,27 @@ describe("repasse ao músico", () => {
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("resposta perdida da Asaas não gera segunda transferência: o repasse é localizado pela referência", async () => {
+  it("resposta perdida da Asaas não gera segunda transferência: a tentativa é localizada pela própria referência", async () => {
     const payment = await contratado();
     t.world.failures.transferLost = true;
 
     await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    expect(tentativa).toMatchObject({ estado: "INCONCLUSIVA", asaasTransferId: null });
+    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(tentativa.id);
     expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", asaasTransferId: null });
 
     t.world.failures.transferLost = false;
     await t.service.payout(t.event.id);
 
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
-    expect(t.world.payments.get(payment.id)?.asaasTransferId).toMatch(/^tra_/);
+    expect(t.world.asaasCalls.findTransfersByReference).toEqual([{ reference: tentativa.id, maxPages: 5 }]);
+    expect(tentativaAberta(payment.id)).toMatchObject({ estado: "PENDENTE", asaasTransferId: expect.stringMatching(/^tra_/) });
   });
 
   it("falha ao gravar depois da transferência não marca o repasse como falho", async () => {
     const payment = await contratado();
-    vi.spyOn(t.world.stores.payments, "setPayout").mockRejectedValueOnce(new Error("banco fora do ar"));
+    vi.spyOn(t.world.stores.payments, "registerTransfer").mockRejectedValueOnce(new Error("banco fora do ar"));
 
     await t.service.payout(t.event.id);
     await t.service.payout(t.event.id);
@@ -385,19 +402,37 @@ describe("repasse ao músico", () => {
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("sem transferência localizada, o repasse só é reenviado pela liberação do suporte", async () => {
+  it("sem transferência localizada, o repasse só é reenviado depois das duas conferências do suporte", async () => {
     const payment = await contratado();
-    t.world.failures.transfer = true;
+    semResposta();
     await t.service.payout(t.event.id);
-    t.world.failures.transfer = false;
-    t.world.payments.get(payment.id)!.repasseStatus = "PROCESSANDO";
+    const tentativa = tentativaAberta(payment.id);
 
     await t.service.payout(t.event.id);
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
 
-    await expect(t.service.releaseStuckPayout(payment.id)).resolves.toBe("REENVIADO");
+    await expect(t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte")).rejects.toMatchObject({ code: "LIBERACAO_PRAZO_NAO_ATINGIDO" });
+    recuar(tentativa, "solicitadaEm", 25 * HORA);
+    await expect(t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte")).resolves.toMatchObject({ resultado: "VERIFICACAO_INICIADA" });
+    await expect(t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte")).rejects.toMatchObject({ code: "LIBERACAO_ESTADO_INVALIDO" });
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).rejects.toMatchObject({ code: "LIBERACAO_PRAZO_NAO_ATINGIDO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    recuar(tentativa, "verificacaoIniciadaEm", 61 * 60 * 1000);
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", "confirmo")).rejects.toMatchObject({ code: "LIBERACAO_DECLARACAO_INVALIDA" });
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).resolves.toEqual({ resultado: "AUSENCIA_CONFIRMADA" });
+
+    expect(tentativa.estado).toBe("AUSENCIA_CONFIRMADA");
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
-    await expect(t.service.releaseStuckPayout(payment.id)).rejects.toMatchObject({ code: "REPASSE_NAO_INCERTO" });
+    const nova = tentativaAberta(payment.id);
+    expect(nova.id).not.toBe(tentativa.id);
+    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(nova.id);
+    expect(t.world.decisoes).toEqual([
+      expect.objectContaining({ tentativaId: tentativa.id, etapa: "VERIFICACAO", operadorNomeInformado: "Ana Suporte", identidadeAutenticada: false, declaracao: null }),
+      expect.objectContaining({ tentativaId: tentativa.id, etapa: "CONFIRMACAO", operadorNomeInformado: "Ana Suporte", identidadeAutenticada: false, declaracao: DECLARACAO_AUSENCIA }),
+    ]);
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).rejects.toMatchObject({ code: "LIBERACAO_ESTADO_INVALIDO" });
   });
 
   it("nova tentativa ignora a notificação atrasada da transferência anterior", async () => {
@@ -450,13 +485,33 @@ describe("estorno da contratação", () => {
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", repasseStatus: null });
   });
 
-  it("não estorna o que já foi repassado ao músico", async () => {
+  it("repasse em processamento bloqueia o estorno como repasse em andamento, e só o concluído aparece como já repassado", async () => {
     const payment = await checkout();
     payAtAsaas(t.world, payment.asaasPaymentId);
     await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
     await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
 
-    await expect(t.service.refundHiring(t.event.id, "CANCELAR")).rejects.toMatchObject({ code: "REPASSE_JA_REALIZADO" });
+    await expect(t.service.refundHiring(t.event.id, "CANCELAR")).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA", status: 409 });
+
+    const transferId = t.world.payments.get(payment.id)!.asaasTransferId!;
+    t.world.asaasTransfers.set(transferId, "DONE");
+    await t.service.handleWebhook({ id: "evt_repasse_ok", event: "TRANSFER_DONE", transfer: { id: transferId } });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+
+    await expect(t.service.refundHiring(t.event.id, "CANCELAR")).rejects.toMatchObject({ code: "REPASSE_JA_REALIZADO", status: 409 });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+  });
+
+  it("tentativa aberta com o repasse marcado como falho também bloqueia o estorno como repasse em andamento", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    semResposta();
+    await t.service.payout(t.event.id);
+    t.world.payments.get(payment.id)!.repasseStatus = "FALHOU";
+
+    await expect(t.service.refundHiring(t.event.id, "CANCELAR")).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA" });
     expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
   });
 });
@@ -592,5 +647,858 @@ describe("ciclo do estorno", () => {
     await expect(checkout()).rejects.toMatchObject({ code: "MUSICO_OCUPADO" });
     expect(t.world.asaasCalls.createPixCharge).toHaveLength(0);
     expect(outro.status).toBe("CONTRATADO");
+  });
+});
+
+describe("reserva e liquidação de multas no repasse", () => {
+  async function contratado() {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    return payment;
+  }
+  const multa = (valor: number) => {
+    const penalty = { id: `pen_${t.world.penalties.length + 1}`, musicianId: "m1", eventId: null, tipo: "AUSENCIA" as const, multa: valor, quitada: false, estornoPaymentId: null, reservaPaymentId: null as string | null };
+    t.world.penalties.push(penalty);
+    return penalty;
+  };
+  const transferenciaAtual = (paymentId: string) => t.world.payments.get(paymentId)!.asaasTransferId!;
+  const avisos = (titulo: string) => t.world.notifications.filter((n) => n.userId === "m1" && n.titulo.startsWith(titulo));
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("transferência pendente reserva a multa; a falha definitiva devolve a multa e a nova tentativa reserva de novo", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+
+    await t.service.payout(t.event.id);
+    const primeira = transferenciaAtual(payment.id);
+    expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(650);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", multaDescontada: 100 });
+
+    t.world.asaasTransfers.set(primeira, "FAILED");
+    await t.service.handleWebhook({ id: "evt_falha", event: "TRANSFER_FAILED", transfer: { id: primeira } });
+    expect(fine).toMatchObject({ reservaPaymentId: null, quitada: false });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", multaDescontada: 0, asaasTransferId: null });
+    expect(tentativasDo(payment.id)).toEqual([expect.objectContaining({ estado: "FALHOU", asaasTransferId: primeira })]);
+
+    await t.service.payout(t.event.id);
+    const segunda = transferenciaAtual(payment.id);
+    expect(segunda).not.toBe(primeira);
+    expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(650);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+
+    t.world.asaasTransfers.set(segunda, "DONE");
+    await t.service.payout(t.event.id);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: true });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+  });
+
+  it("falha ao quitar depois da transferência concluída é recuperada pela rotina sem desconto duplicado", async () => {
+    const rotina = createRotinaFinanceira({ paymentStore: t.world.stores.payments, eventStore: t.world.stores.events, payments: t.service, events: { settleDueHiring: async () => {} }, trava: t.world.stores.trava });
+    const fine = multa(100);
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    t.world.asaasTransfers.set(transferenciaAtual(payment.id), "DONE");
+    vi.spyOn(t.world.stores.payments, "completeAttempt").mockRejectedValueOnce(new Error("banco fora do ar"));
+
+    await rotina.run(minutesLater(10));
+    expect(fine.quitada).toBe(false);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+
+    await rotina.run(minutesLater(20));
+    await rotina.run(minutesLater(30));
+    await flush();
+    expect(fine.quitada).toBe(true);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(avisos("Cachê repassado")).toHaveLength(1);
+  });
+
+  it("transferência perdida conciliada depois de uma multa nova quita só as multas reservadas originalmente", async () => {
+    const original = multa(100);
+    const payment = await contratado();
+    t.world.failures.transferLost = true;
+    await t.service.payout(t.event.id);
+    t.world.failures.transferLost = false;
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", asaasTransferId: null, multaDescontada: 100 });
+    expect(original.reservaPaymentId).toBe(payment.id);
+
+    const nova = multa(50);
+    const [perdida] = [...t.world.asaasTransfers.keys()];
+    t.world.asaasTransfers.set(perdida, "DONE");
+    await t.service.payout(t.event.id);
+
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "REPASSADO", asaasTransferId: perdida, multaDescontada: 100 });
+    expect(original).toMatchObject({ quitada: true, reservaPaymentId: payment.id });
+    expect(nova).toMatchObject({ quitada: false, reservaPaymentId: null });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("webhooks e consultas repetidos não repetem a quitação nem o aviso", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const transferId = transferenciaAtual(payment.id);
+    t.world.asaasTransfers.set(transferId, "DONE");
+
+    await Promise.all([
+      t.service.handleWebhook({ id: "evt_a", event: "TRANSFER_DONE", transfer: { id: transferId } }),
+      t.service.handleWebhook({ id: "evt_b", event: "TRANSFER_DONE", transfer: { id: transferId } }),
+      t.service.payout(t.event.id),
+    ]);
+    await t.service.handleWebhook({ id: "evt_a", event: "TRANSFER_DONE", transfer: { id: transferId } });
+    await t.service.payout(t.event.id);
+    await flush();
+
+    expect(fine.quitada).toBe(true);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(avisos("Cachê repassado")).toHaveLength(1);
+  });
+
+  it("multa maior que o cachê fica inteira aberta, multa menor posterior é reservada e multa zero nunca entra", async () => {
+    const grande = multa(800);
+    const zero = multa(0);
+    const pequena = multa(100);
+    const payment = await contratado();
+
+    await t.service.payout(t.event.id);
+
+    expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(650);
+    expect(grande).toMatchObject({ reservaPaymentId: null, quitada: false });
+    expect(zero).toMatchObject({ reservaPaymentId: null, quitada: false });
+    expect(pequena).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+  });
+
+  it("liberação pelo suporte com busca incompleta não avança e mantém a reserva; com ausência confirmada, reserva de novo e reenvia", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    expect(fine.reservaPaymentId).toBe(payment.id);
+    recuar(tentativa, "solicitadaEm", 25 * HORA);
+
+    t.world.failures.transferSearchIncomplete = true;
+    await expect(t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte")).rejects.toMatchObject({ code: "PAGAMENTO_BUSCA_INCOMPLETA" });
+    await t.service.payout(t.event.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
+    expect(fine.reservaPaymentId).toBe(payment.id);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", multaDescontada: 100 });
+
+    t.world.failures.transferSearchIncomplete = false;
+    await t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte");
+    recuar(tentativa, "verificacaoIniciadaEm", 61 * 60 * 1000);
+    t.world.failures.transferSearchIncomplete = true;
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).rejects.toMatchObject({ code: "PAGAMENTO_BUSCA_INCOMPLETA" });
+    expect(tentativa.estado).toBe("EM_VERIFICACAO");
+    expect(fine.reservaPaymentId).toBe(payment.id);
+
+    t.world.failures.transferSearchIncomplete = false;
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).resolves.toEqual({ resultado: "AUSENCIA_CONFIRMADA" });
+    expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 650, externalReference: tentativaAberta(payment.id).id })]);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+  });
+
+  it("notificação atrasada de falha de uma transferência antiga não libera a reserva da atual", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const antiga = transferenciaAtual(payment.id);
+    t.world.asaasTransfers.set(antiga, "FAILED");
+    await t.service.handleWebhook({ id: "evt_1", event: "TRANSFER_FAILED", transfer: { id: antiga } });
+    await t.service.payout(t.event.id);
+    const atual = transferenciaAtual(payment.id);
+
+    await t.service.handleWebhook({ id: "evt_2", event: "TRANSFER_FAILED", transfer: { id: antiga } });
+
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", asaasTransferId: atual, multaDescontada: 100 });
+    expect(fine.reservaPaymentId).toBe(payment.id);
+  });
+
+  it("repasse falho antigo com transferência registrada fica travado para conciliação manual", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    Object.assign(t.world.payments.get(payment.id)!, { repasseStatus: "FALHOU", asaasTransferId: "tra_antiga", multaDescontada: 100 });
+
+    await t.service.payout(t.event.id);
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(fine.reservaPaymentId).toBeNull();
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", asaasTransferId: "tra_antiga" });
+    expect(console.error).toHaveBeenCalledWith("Repasse falho antigo com transferência registrada; requer conciliação manual", payment.id, "tra_antiga");
+  });
+});
+
+describe("tentativas de repasse", () => {
+  async function contratado() {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    return payment;
+  }
+  const avisos = (titulo: string) => t.world.notifications.filter((n) => n.userId === "m1" && n.titulo.startsWith(titulo));
+  const transferenciaNaAsaas = (id: string, status: string, externalReference: string) => {
+    t.world.asaasTransfers.set(id, status);
+    t.world.asaasTransferDetails.set(id, { externalReference, value: 750 });
+  };
+  const tentativaLegada = (paymentId: string, asaasTransferId: string | null) => {
+    const legada = { id: `00000000-0000-4000-9000-${paymentId.padStart(12, "0")}`, paymentId, origem: "LEGADO" as const, estado: "INCONCLUSIVA" as const, referenciaExterna: paymentId, asaasTransferId, solicitadaEm: new Date(Date.now() - 30 * 24 * HORA), verificacaoIniciadaEm: null, encerradaEm: null };
+    t.world.tentativas.push(legada);
+    Object.assign(t.world.payments.get(paymentId)!, { repasseStatus: "PROCESSANDO" });
+    return legada;
+  };
+
+  it("transferência concluída já na resposta do pedido conclui o repasse na hora", async () => {
+    const payment = await contratado();
+    vi.spyOn(t.world.stores.asaas, "transferPix").mockImplementationOnce(async (transfer) => {
+      transferenciaNaAsaas("tra_instantanea", "DONE", transfer.externalReference);
+      return { id: "tra_instantanea", status: "DONE" };
+    });
+
+    await t.service.payout(t.event.id);
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(tentativasDo(payment.id)).toEqual([expect.objectContaining({ estado: "CONCLUIDA", asaasTransferId: "tra_instantanea" })]);
+    expect(avisos("Cachê repassado")).toHaveLength(1);
+  });
+
+  it("recusa definitiva da Asaas encerra a tentativa e permite tentar de novo", async () => {
+    const payment = await contratado();
+    t.world.failures.transferUnavailable = true;
+    await t.service.payout(t.event.id);
+    expect(tentativasDo(payment.id)).toEqual([expect.objectContaining({ estado: "FALHOU", asaasTransferId: null })]);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+
+    t.world.failures.transferUnavailable = false;
+    await t.service.payout(t.event.id);
+    expect(tentativaAberta(payment.id)).toMatchObject({ estado: "PENDENTE" });
+  });
+
+  it("erro ambíguo deixa a tentativa inconclusiva e a rotina nunca reenvia sozinha", async () => {
+    const payment = await contratado();
+    const rotina = createRotinaFinanceira({ paymentStore: t.world.stores.payments, eventStore: t.world.stores.events, payments: t.service, events: { settleDueHiring: async () => {} }, trava: t.world.stores.trava });
+    const pedido = semResposta();
+
+    await t.service.payout(t.event.id);
+    await rotina.run(minutesLater(10));
+    await rotina.run(minutesLater(20));
+
+    expect(pedido).toHaveBeenCalledTimes(1);
+    expect(tentativaAberta(payment.id)).toMatchObject({ estado: "INCONCLUSIVA", asaasTransferId: null });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+  });
+
+  it("solicitação sem registro vira inconclusiva depois de 10 minutos e é conciliada pela referência da tentativa", async () => {
+    const payment = await contratado();
+    vi.spyOn(t.world.stores.payments, "registerTransfer").mockRejectedValueOnce(new Error("banco fora do ar"));
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    expect(tentativa.estado).toBe("SOLICITANDO");
+
+    await expect(t.service.markStalePayoutRequests()).resolves.toBe(0);
+    recuar(tentativa, "solicitadaEm", 11 * 60 * 1000);
+    await expect(t.service.markStalePayoutRequests()).resolves.toBe(1);
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
+
+    await t.service.payout(t.event.id);
+    expect(tentativa).toMatchObject({ estado: "PENDENTE", asaasTransferId: expect.stringMatching(/^tra_/) });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("busca incompleta na rotina mantém a tentativa inconclusiva", async () => {
+    const payment = await contratado();
+    t.world.failures.transferLost = true;
+    await t.service.payout(t.event.id);
+    t.world.failures.transferLost = false;
+    t.world.failures.transferSearchIncomplete = true;
+
+    await t.service.payout(t.event.id);
+
+    expect(tentativaAberta(payment.id)).toMatchObject({ estado: "INCONCLUSIVA", asaasTransferId: null });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("duas transferências com a referência da mesma tentativa geram alerta e nenhuma é adotada", async () => {
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    transferenciaNaAsaas("tra_dup_1", "PENDING", tentativa.id);
+    transferenciaNaAsaas("tra_dup_2", "DONE", tentativa.id);
+
+    await t.service.payout(t.event.id);
+
+    expect(tentativa).toMatchObject({ estado: "INCONCLUSIVA", asaasTransferId: null });
+    expect(t.world.alertas).toEqual([
+      { tentativaId: tentativa.id, tipo: "POSSIVEL_DUPLICIDADE", asaasTransferId: "tra_dup_1", status: "PENDING" },
+      { tentativaId: tentativa.id, tipo: "POSSIVEL_DUPLICIDADE", asaasTransferId: "tra_dup_2", status: "DONE" },
+    ]);
+  });
+
+  it("verificação que encontra a transferência registra a tentativa em vez de liberar", async () => {
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    recuar(tentativa, "solicitadaEm", 25 * HORA);
+    transferenciaNaAsaas("tra_achada", "PENDING", tentativa.id);
+
+    await expect(t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte")).resolves.toEqual({ resultado: "TRANSFERENCIA_ENCONTRADA" });
+
+    expect(tentativa).toMatchObject({ estado: "PENDENTE", asaasTransferId: "tra_achada" });
+    expect(t.world.decisoes).toHaveLength(0);
+  });
+
+  it("transferência concluída de uma tentativa encerrada vira alerta e nunca é adotada", async () => {
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const antiga = tentativaAberta(payment.id);
+    recuar(antiga, "solicitadaEm", 25 * HORA);
+    await t.service.verifyPayoutAbsence(antiga.id, "Ana Suporte");
+    recuar(antiga, "verificacaoIniciadaEm", 61 * 60 * 1000);
+    await t.service.confirmPayoutAbsence(antiga.id, "Ana Suporte", DECLARACAO_AUSENCIA);
+    const atual = tentativaAberta(payment.id);
+
+    transferenciaNaAsaas("tra_tardia", "DONE", antiga.id);
+    await t.service.handleWebhook({ id: "evt_tardio", event: "TRANSFER_DONE", transfer: { id: "tra_tardia" } });
+
+    expect(antiga.estado).toBe("AUSENCIA_CONFIRMADA");
+    expect(t.world.alertas.filter((alerta) => alerta.tentativaId === antiga.id).map((alerta) => alerta.tipo).sort()).toEqual(["POSSIVEL_DUPLICIDADE", "RESPOSTA_TARDIA"]);
+    expect(atual).toMatchObject({ estado: "PENDENTE" });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    expect(avisos("Cachê repassado")).toHaveLength(0);
+  });
+
+  it("tentativa legada nunca entra na conciliação automática pela referência", async () => {
+    const payment = await contratado();
+    const legada = tentativaLegada(payment.id, null);
+    transferenciaNaAsaas("tra_antiga_ref", "DONE", payment.id);
+
+    await t.service.payout(t.event.id);
+    await t.service.handleWebhook({ id: "evt_legado", event: "TRANSFER_DONE", transfer: { id: "tra_antiga_ref" } });
+
+    expect(t.world.asaasCalls.findTransfersByReference).toHaveLength(0);
+    expect(legada).toMatchObject({ estado: "INCONCLUSIVA", asaasTransferId: null });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+
+  it("tentativa legada com transferência registrada só é resolvida pela conferência do suporte", async () => {
+    const payment = await contratado();
+    const legada = tentativaLegada(payment.id, "tra_legada");
+    transferenciaNaAsaas("tra_legada", "DONE", payment.id);
+
+    await t.service.payout(t.event.id);
+    await t.service.handleWebhook({ id: "evt_legada", event: "TRANSFER_DONE", transfer: { id: "tra_legada" } });
+    expect(legada.estado).toBe("INCONCLUSIVA");
+    await expect(t.service.verifyPayoutAbsence(legada.id, "Ana Suporte")).rejects.toMatchObject({ code: "LIBERACAO_TRANSFERENCIA_CONHECIDA" });
+
+    await expect(t.service.checkPayoutTransfer(legada.id)).resolves.toBe("CONCLUIDA");
+    expect(legada.estado).toBe("CONCLUIDA");
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+  });
+});
+
+describe("solicitação de repasse parada", () => {
+  async function contratado() {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    return payment;
+  }
+  async function solicitacaoInterrompida(payment: { id: string }, { envioRegistrado }: { envioRegistrado: boolean }) {
+    const { tentativaId } = await t.world.stores.payments.claimPayout(payment.id);
+    if (envioRegistrado) await t.world.stores.payments.registerRequestSent(tentativaId!);
+    return t.world.tentativas.find((tentativa) => tentativa.id === tentativaId)!;
+  }
+
+  it("queda antes do envio, com a rotina desligada: a próxima chamada encerra a tentativa e faz uma nova, com uma única transferência", async () => {
+    const payment = await contratado();
+    const parada = await solicitacaoInterrompida(payment, { envioRegistrado: false });
+
+    await t.service.payout(t.event.id);
+    expect(parada.estado).toBe("SOLICITANDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+    await t.service.payout(t.event.id);
+
+    expect(parada).toMatchObject({ estado: "FALHOU", asaasTransferId: null });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    const nova = tentativaAberta(payment.id);
+    expect(nova.id).not.toBe(parada.id);
+    expect(nova).toMatchObject({ estado: "PENDENTE" });
+    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(nova.id);
+  });
+
+  it("queda depois do envio registrado: a tentativa fica inconclusiva, é procurada na Asaas e nada é reenviado", async () => {
+    const payment = await contratado();
+    const parada = await solicitacaoInterrompida(payment, { envioRegistrado: true });
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+
+    await t.service.payout(t.event.id);
+    await t.service.payout(t.event.id);
+
+    expect(parada.estado).toBe("INCONCLUSIVA");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.asaasCalls.findTransfersByReference.map((busca) => busca.reference)).toEqual([parada.id, parada.id]);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    await expect(t.world.stores.payments.claimRefund(payment.id, "CANCELAR")).resolves.toBe(false);
+    await expect(t.world.stores.payments.claimPayout(payment.id)).resolves.toMatchObject({ tentativaId: null });
+  });
+
+  it("queda depois do envio, com a transferência criada: a busca encontra e registra, sem segundo envio", async () => {
+    const payment = await contratado();
+    const parada = await solicitacaoInterrompida(payment, { envioRegistrado: true });
+    t.world.asaasTransfers.set("tra_criada_antes_da_queda", "PENDING");
+    t.world.asaasTransferDetails.set("tra_criada_antes_da_queda", { externalReference: parada.id, value: 750 });
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+
+    await t.service.payout(t.event.id);
+
+    expect(parada).toMatchObject({ estado: "PENDENTE", asaasTransferId: "tra_criada_antes_da_queda" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+
+  it("falha ao registrar o envio sem gravação: nada é enviado e a regra de solicitação parada libera uma nova tentativa", async () => {
+    const payment = await contratado();
+    vi.spyOn(t.world.stores.payments, "registerRequestSent").mockRejectedValueOnce(new Error("banco fora do ar"));
+
+    await t.service.payout(t.event.id);
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    const parada = tentativaAberta(payment.id);
+    expect(parada).toMatchObject({ estado: "SOLICITANDO", asaasTransferId: null });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+    await t.service.payout(t.event.id);
+
+    expect(parada.estado).toBe("FALHOU");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(tentativaAberta(payment.id).id);
+  });
+
+  it("envio gravado no banco com erro na resposta: a tentativa não vira falha, nada é enviado e ela fica protegida", async () => {
+    const payment = await contratado();
+    const registrar = t.world.stores.payments.registerRequestSent;
+    vi.spyOn(t.world.stores.payments, "registerRequestSent").mockImplementationOnce(async (attemptId) => {
+      await registrar(attemptId);
+      throw new Error("resposta perdida");
+    });
+
+    await t.service.payout(t.event.id);
+
+    const tentativa = tentativaAberta(payment.id);
+    expect(tentativa).toMatchObject({ estado: "SOLICITANDO", asaasTransferId: null });
+    expect(tentativa.pedidoEnviadoEm).toBeInstanceOf(Date);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    await t.service.payout(t.event.id);
+    expect(tentativa.estado).toBe("SOLICITANDO");
+
+    recuar(tentativa, "solicitadaEm", 11 * 60 * 1000);
+    await t.service.payout(t.event.id);
+    await t.service.markStalePayoutRequests();
+
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
+    expect(tentativasDo(payment.id)).toHaveLength(1);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    await expect(t.world.stores.payments.failAttempt(tentativa.id, null)).resolves.toBe(false);
+    await expect(t.world.stores.payments.claimRefund(payment.id, "CANCELAR")).resolves.toBe(false);
+    await expect(t.world.stores.payments.claimPayout(payment.id)).resolves.toMatchObject({ tentativaId: null });
+  });
+
+  it("registro recusado porque a tentativa foi encerrada por prazo: nada é enviado", async () => {
+    await contratado();
+    vi.spyOn(t.world.stores.payments, "registerRequestSent").mockResolvedValueOnce(false);
+
+    await t.service.payout(t.event.id);
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(console.error).toHaveBeenCalledWith("Tentativa de repasse encerrada antes do envio; a transferência não foi pedida", expect.any(String), expect.any(String));
+  });
+
+  it("a rotina financeira usa a mesma regra para as solicitações paradas", async () => {
+    const payment = await contratado();
+    const parada = await solicitacaoInterrompida(payment, { envioRegistrado: false });
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+
+    await expect(t.service.markStalePayoutRequests()).resolves.toBe(1);
+
+    expect(parada.estado).toBe("FALHOU");
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+  });
+});
+
+describe("conciliação de tentativas fora do pagamento atual", () => {
+  async function contratado() {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    return payment;
+  }
+  const multa = (valor: number) => {
+    const penalty = { id: `pen_${t.world.penalties.length + 1}`, musicianId: "m1", eventId: null, tipo: "AUSENCIA" as const, multa: valor, quitada: false, estornoPaymentId: null, reservaPaymentId: null as string | null };
+    t.world.penalties.push(penalty);
+    return penalty;
+  };
+  let webhooks = 0;
+  const estornarNaAsaas = async (payment: { asaasPaymentId: string; valor: number }) => {
+    t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
+    await t.service.handleWebhook({ id: `evt_estorno_${++webhooks}`, event: "PAYMENT_REFUNDED", payment: { id: payment.asaasPaymentId } });
+  };
+  const concluirNaAsaas = async (transferId: string) => {
+    t.world.asaasTransfers.set(transferId, "DONE");
+    await t.service.handleWebhook({ id: `evt_transferencia_${++webhooks}`, event: "TRANSFER_DONE", transfer: { id: transferId } });
+  };
+  const rotina = () =>
+    createRotinaFinanceira({ paymentStore: t.world.stores.payments, eventStore: t.world.stores.events, payments: t.service, events: { settleDueHiring: async () => {} }, trava: t.world.stores.trava });
+  const alertasDe = (tentativaId: string) => t.world.alertas.filter((alerta) => alerta.tentativaId === tentativaId && alerta.tipo === "REPASSE_E_ESTORNO");
+  const avisos = (titulo: string) => t.world.notifications.filter((n) => n.userId === "m1" && n.titulo.startsWith(titulo));
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const substituir = (paymentId: string) => {
+    const antigo = t.world.payments.get(paymentId)!;
+    t.world.payments.set("pay_novo", { ...antigo, id: "pay_novo", asaasPaymentId: "pay_asaas_novo", repasseStatus: "RETIDO", multaDescontada: 0, asaasTransferId: null, createdAt: antigo.createdAt + 1 });
+  };
+  const estadoFinal = (paymentId: string, tentativaId: string) => {
+    const payment = t.world.payments.get(paymentId)!;
+    return {
+      tentativa: t.world.tentativas.find((tentativa) => tentativa.id === tentativaId)?.estado,
+      pagamento: payment.status,
+      estorno: payment.refundStatus,
+      repasse: payment.repasseStatus,
+      retido: payment.multaDescontada,
+      evento: t.world.events.get(t.event.id)?.status,
+      reservadas: t.world.penalties.filter((p) => p.reservaPaymentId === paymentId && !p.quitada).length,
+      quitadas: t.world.penalties.filter((p) => p.reservaPaymentId === paymentId && p.quitada).length,
+      alertas: alertasDe(tentativaId).length,
+    };
+  };
+  const ESTADO_FINAL_COM_ESTORNO = {
+    tentativa: "CONCLUIDA", pagamento: "ESTORNADO", estorno: "CONFIRMADO", repasse: "REPASSADO", retido: 100, evento: "CANCELADO", reservadas: 1, quitadas: 0, alertas: 1,
+  };
+
+  it("estorno antes da conclusão: a rotina procura a tentativa pela referência, registra o alerta e não envia outra transferência", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    t.world.failures.transferLost = true;
+    await t.service.payout(t.event.id);
+    t.world.failures.transferLost = false;
+    const tentativa = tentativaAberta(payment.id);
+    const [transferId] = [...t.world.asaasTransfers.keys()];
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
+
+    await estornarNaAsaas(payment);
+    t.world.asaasTransfers.set(transferId!, "DONE");
+    await t.service.payout(t.event.id);
+    expect(t.world.asaasCalls.findTransfersByReference).toHaveLength(0);
+
+    await rotina().run(minutesLater(30));
+    await rotina().run(minutesLater(60));
+    await flush();
+
+    expect(estadoFinal(payment.id, tentativa.id)).toEqual(ESTADO_FINAL_COM_ESTORNO);
+    expect(t.world.asaasCalls.findTransfersByReference.map((busca) => busca.reference)).toEqual([tentativa.id]);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+    expect(alertasDe(tentativa.id)[0]?.detalhes).toEqual({
+      ordem: "ESTORNO_ANTES_DA_CONCLUSAO",
+      paymentId: payment.id,
+      valorRetido: 100,
+      valorTransferido: 650,
+      valorPendente: 100,
+      multas: [{ id: fine.id, multa: 100, reservaPaymentId: payment.id, quitada: false }],
+    });
+    expect(avisos("Cachê repassado")).toHaveLength(0);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("REPASSE_E_ESTORNO"), payment.id, tentativa.id, transferId);
+
+    await concluirNaAsaas(transferId!);
+    expect(estadoFinal(payment.id, tentativa.id)).toEqual(ESTADO_FINAL_COM_ESTORNO);
+  });
+
+  it("estorno depois da conclusão: a quitação é desfeita, guardada na foto, e o estado final é o mesmo", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    const transferId = tentativa.asaasTransferId!;
+    await concluirNaAsaas(transferId);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: true });
+
+    await estornarNaAsaas(payment);
+    expect(alertasDe(tentativa.id)[0]?.detalhes).toMatchObject({
+      ordem: "ESTORNO_DEPOIS_DA_CONCLUSAO",
+      valorRetido: 100,
+      valorTransferido: 650,
+      valorPendente: 100,
+      multas: [{ id: fine.id, multa: 100, reservaPaymentId: payment.id, quitada: true }],
+    });
+
+    await concluirNaAsaas(transferId);
+    await estornarNaAsaas(payment);
+
+    expect(estadoFinal(payment.id, tentativa.id)).toEqual(ESTADO_FINAL_COM_ESTORNO);
+    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("conferência manual de transferência concluída depois do estorno devolve o alerta", async () => {
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    await estornarNaAsaas(payment);
+    t.world.asaasTransfers.set(tentativa.asaasTransferId!, "DONE");
+
+    await expect(t.service.checkPayoutTransfer(tentativa.id)).resolves.toBe("REPASSE_E_ESTORNO");
+    await expect(t.service.checkPayoutTransfer(tentativa.id)).rejects.toMatchObject({ code: "TENTATIVA_SEM_TRANSFERENCIA" });
+    expect(alertasDe(tentativa.id)).toHaveLength(1);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("solicitação parada de pagamento estornado é encerrada sem envio, sem chamar o repasse", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    const { tentativaId } = await t.world.stores.payments.claimPayout(payment.id);
+    await estornarNaAsaas(payment);
+    const parada = t.world.tentativas.find((tentativa) => tentativa.id === tentativaId)!;
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+    const payout = vi.spyOn(t.service, "payout");
+
+    await expect(t.service.reconcileOutsidePayout()).resolves.toBe(1);
+
+    expect(parada.estado).toBe("FALHOU");
+    expect(payout).not.toHaveBeenCalled();
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", repasseStatus: "FALHOU", multaDescontada: 0 });
+    expect(fine).toMatchObject({ reservaPaymentId: null, quitada: false });
+    await expect(t.world.stores.payments.claimPayout(payment.id)).resolves.toMatchObject({ tentativaId: null });
+  });
+
+  it("solicitação parada com envio registrado em pagamento estornado fica inconclusiva e protegida", async () => {
+    const payment = await contratado();
+    const { tentativaId } = await t.world.stores.payments.claimPayout(payment.id);
+    await t.world.stores.payments.registerRequestSent(tentativaId!);
+    await estornarNaAsaas(payment);
+    const parada = t.world.tentativas.find((tentativa) => tentativa.id === tentativaId)!;
+    recuar(parada, "solicitadaEm", 11 * 60 * 1000);
+
+    await t.service.reconcileOutsidePayout();
+
+    expect(parada.estado).toBe("INCONCLUSIVA");
+    expect(t.world.asaasCalls.findTransfersByReference.map((busca) => busca.reference)).toEqual([parada.id]);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await expect(t.world.stores.payments.failAttempt(parada.id, null)).resolves.toBe(false);
+  });
+
+  it("busca vazia não libera nada: a tentativa do pagamento estornado continua aguardando a conferência do suporte", async () => {
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    await estornarNaAsaas(payment);
+
+    await t.service.reconcileOutsidePayout();
+    await t.service.reconcileOutsidePayout();
+
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
+    expect(t.world.asaasCalls.findTransfersByReference.map((busca) => busca.reference)).toEqual([tentativa.id, tentativa.id]);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", repasseStatus: "PROCESSANDO" });
+    await expect(t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte")).rejects.toMatchObject({ code: "LIBERACAO_PRAZO_NAO_ATINGIDO" });
+  });
+
+  it("pagamento substituído: a tentativa do pagamento antigo é conciliada e o pagamento novo não é repassado", async () => {
+    const payment = await contratado();
+    t.world.failures.transferLost = true;
+    await t.service.payout(t.event.id);
+    t.world.failures.transferLost = false;
+    const tentativa = tentativaAberta(payment.id);
+    const [transferId] = [...t.world.asaasTransfers.keys()];
+    substituir(payment.id);
+    t.world.asaasTransfers.set(transferId!, "DONE");
+
+    await expect(t.service.reconcileOutsidePayout()).resolves.toBe(1);
+
+    expect(tentativa).toMatchObject({ estado: "CONCLUIDA", asaasTransferId: transferId });
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(t.world.payments.get("pay_novo")?.repasseStatus).toBe("RETIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(alertasDe(tentativa.id)).toHaveLength(0);
+  });
+
+  it("confirmação de ausência de um pagamento substituído não repassa o pagamento novo", async () => {
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    substituir(payment.id);
+
+    recuar(tentativa, "solicitadaEm", 25 * HORA);
+    await t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte");
+    recuar(tentativa, "verificacaoIniciadaEm", 61 * 60 * 1000);
+    await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).resolves.toEqual({ resultado: "AUSENCIA_CONFIRMADA" });
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get("pay_novo")?.repasseStatus).toBe("RETIDO");
+    expect(tentativasDo("pay_novo")).toHaveLength(0);
+  });
+
+  it("confirmação de ausência de um pagamento estornado não pede novo repasse", async () => {
+    const payment = await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+    const tentativa = tentativaAberta(payment.id);
+    await estornarNaAsaas(payment);
+    const payout = vi.spyOn(t.service, "payout");
+
+    recuar(tentativa, "solicitadaEm", 25 * HORA);
+    await t.service.verifyPayoutAbsence(tentativa.id, "Ana Suporte");
+    recuar(tentativa, "verificacaoIniciadaEm", 61 * 60 * 1000);
+    await t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA);
+
+    expect(payout).not.toHaveBeenCalled();
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativasDo(payment.id)).toHaveLength(1);
+  });
+
+  it("a tentativa do pagamento atual fica com o repasse de sempre e não é consultada duas vezes", async () => {
+    await contratado();
+    semResposta();
+    await t.service.payout(t.event.id);
+
+    await expect(t.service.reconcileOutsidePayout()).resolves.toBe(0);
+    expect(t.world.asaasCalls.findTransfersByReference).toHaveLength(0);
+  });
+
+  it("falha da transferência depois do estorno libera as multas sem avisar o músico de nova tentativa", async () => {
+    const fine = multa(100);
+    const payment = await contratado();
+    await t.service.payout(t.event.id);
+    const transferId = tentativaAberta(payment.id).asaasTransferId!;
+    await estornarNaAsaas(payment);
+
+    t.world.asaasTransfers.set(transferId, "FAILED");
+    await t.service.handleWebhook({ id: "evt_falha_estornado", event: "TRANSFER_FAILED", transfer: { id: transferId } });
+    await flush();
+
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "ESTORNADO", repasseStatus: "FALHOU" });
+    expect(fine).toMatchObject({ reservaPaymentId: null, quitada: false });
+    expect(avisos("Repasse não concluído")).toHaveLength(0);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+});
+
+describe("situação do estorno na Asaas", () => {
+  const hire = async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    return t.world.payments.get(payment.id)!;
+  };
+  const estornoNaAsaas = (payment: { asaasPaymentId: string; valor: number }, status: string, situacaoDaCobranca = "RECEIVED") =>
+    t.world.asaasCharges.set(payment.asaasPaymentId, { status: situacaoDaCobranca, value: payment.valor, refunds: [{ status, value: payment.valor }] } as never);
+  const estornoPedidoHa = (payment: { id: string }, ms: number) =>
+    Object.assign(t.world.payments.get(payment.id)!, { refundStatus: "PROCESSANDO", refundAction: "CANCELAR", refundRequestedAt: new Date(Date.now() - ms) });
+
+  it.each([
+    ["PENDING", "EM_ANDAMENTO"],
+    ["AWAITING_CRITICAL_ACTION_AUTHORIZATION", "EM_ANDAMENTO"],
+    ["AWAITING_CUSTOMER_EXTERNAL_AUTHORIZATION", "EM_ANDAMENTO"],
+    ["DONE", "CONCLUIDO"],
+    ["CANCELLED", "ENCERRADO_SEM_DEVOLUCAO"],
+    ["ESTADO_NOVO_DA_ASAAS", "DESCONHECIDA"],
+  ])("classifica o estorno %s como %s", (status, situacao) => {
+    expect(situacaoDoEstornoNaAsaas(status)).toBe(situacao);
+  });
+
+  it.each(["PENDING", "AWAITING_CRITICAL_ACTION_AUTHORIZATION", "ESTADO_NOVO_DA_ASAAS"])("repetir a solicitação com estorno %s na Asaas não pede outro estorno", async (status) => {
+    const payment = await hire();
+    estornoNaAsaas(payment, status);
+
+    expect(await t.service.refundHiring(t.event.id, "CANCELAR")).toBe("PROCESSANDO");
+    expect(await t.service.refundHiring(t.event.id, "CANCELAR")).toBe("PROCESSANDO");
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: "PROCESSANDO" });
+  });
+
+  it.each(["PENDING", "AWAITING_CRITICAL_ACTION_AUTHORIZATION", "ESTADO_NOVO_DA_ASAAS"])("estorno %s na Asaas continua em processamento na reconciliação, sem liberar a contratação", async (status) => {
+    const payment = await hire();
+    estornoPedidoHa(payment, 10 * 60_000);
+    estornoNaAsaas(payment, status);
+
+    expect(await t.service.refreshRefund(t.event.id)).toMatchObject({ status: "PAGO", refundStatus: "PROCESSANDO", refundAction: "CANCELAR" });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+  });
+
+  it.each(["PENDING", "AWAITING_CRITICAL_ACTION_AUTHORIZATION", "ESTADO_NOVO_DA_ASAAS"])("aviso de estorno negado enquanto o estorno está %s na Asaas não nega o estorno", async (status) => {
+    const payment = await hire();
+    estornoPedidoHa(payment, 10 * 60_000);
+    estornoNaAsaas(payment, status);
+
+    await t.service.handleWebhook({ id: `evt_negado_${status}`, event: "PAYMENT_REFUND_DENIED", payment: { id: payment.asaasPaymentId } });
+
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: "PROCESSANDO" });
+  });
+
+  it("estorno concluído na Asaas finaliza o estorno", async () => {
+    const payment = await hire();
+    estornoPedidoHa(payment, 10 * 60_000);
+    estornoNaAsaas(payment, "DONE", "REFUNDED");
+
+    expect(await t.service.refreshRefund(t.event.id)).toMatchObject({ status: "ESTORNADO", refundStatus: "CONFIRMADO" });
+  });
+
+  it("estorno cancelado na Asaas vira estorno negado na reconciliação", async () => {
+    const payment = await hire();
+    estornoPedidoHa(payment, 10 * 60_000);
+    estornoNaAsaas(payment, "CANCELLED");
+
+    expect(await t.service.refreshRefund(t.event.id)).toMatchObject({ status: "PAGO", refundStatus: "NEGADO" });
+  });
+
+  it("aviso de estorno negado com o estorno cancelado na Asaas nega o estorno", async () => {
+    const payment = await hire();
+    estornoPedidoHa(payment, 10 * 60_000);
+    estornoNaAsaas(payment, "CANCELLED");
+
+    await t.service.handleWebhook({ id: "evt_negado_cancelado", event: "PAYMENT_REFUND_DENIED", payment: { id: payment.asaasPaymentId } });
+
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: "NEGADO" });
+  });
+
+  it("estorno anterior cancelado na Asaas permite pedir um novo estorno", async () => {
+    const payment = await hire();
+    estornoNaAsaas(payment, "CANCELLED");
+
+    await t.service.refundHiring(t.event.id, "CANCELAR");
+
+    expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
+  });
+});
+
+describe("cobrança removida na Asaas", () => {
+  it("cobrança pendente que a Asaas informa como removida vira cancelada, sem confirmar a contratação", async () => {
+    const payment = await checkout();
+    t.world.asaasCharges.set(payment.asaasPaymentId, { status: COBRANCA_REMOVIDA_NA_ASAAS, value: payment.valor });
+
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+
+    expect(t.world.payments.get(payment.id)?.status).toBe("CANCELADO");
+    expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
+  });
+
+  it("cobrança pendente que continua pendente na Asaas segue aguardando o Pix", async () => {
+    const payment = await checkout();
+
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+
+    expect(t.world.payments.get(payment.id)?.status).toBe("PENDENTE");
   });
 });

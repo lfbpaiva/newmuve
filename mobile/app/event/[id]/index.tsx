@@ -75,7 +75,7 @@ function Opportunity({ eventId }: { eventId: string }) {
   const faltando = camposFaltantes(me, "candidatar");
   const conversar = application ? () => router.push(`/conversa/${application.id}`) : null;
 
-  return <Screen onRefresh={details.reload} cabecalho={<EventStickyHeader titulo={event.titulo} valor={event.cache}/>}>
+  return <Screen onRefresh={details.reload} carregando={details.loading} cabecalho={<EventStickyHeader titulo={event.titulo} valor={event.cache}/>}>
     <EventHero event={event}/>
     <Reveal index={1}><CachePoster rotulo="Cachê oferecido" valor={event.cache}>
       <Text style={type.bodySmall}>Pago a você após o show, sem taxa de candidatura.</Text>
@@ -155,7 +155,7 @@ function Manage({ eventId }: { eventId: string }) {
     confirmAction({ title: "Excluir evento", message: `Excluir "${event.titulo}"? As candidaturas recebidas serão perdidas.`, confirmLabel: "Excluir", cancelLabel: "Manter", onConfirm: () => void run(() => deleteEvent(event.id)) });
   }
 
-  return <Screen onRefresh={details.reload} cabecalho={<EventStickyHeader titulo={event.titulo} valor={calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total}/>}>
+  return <Screen onRefresh={details.reload} carregando={details.loading} cabecalho={<EventStickyHeader titulo={event.titulo} valor={calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total}/>}>
     <EventHero event={event}><EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/></EventHero>
     <Reveal index={1}><CachePoster rotulo={`Total com a taxa de ${comissaoPercentual(me.casaAte)}%`} valor={calcularCobranca(event.cache, comissaoPercentual(me.casaAte)).total}>
       <Text style={type.bodySmall}>Cachê do músico: {formatCurrency(event.cache)}</Text>

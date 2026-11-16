@@ -5,7 +5,7 @@ import {
   Navigation, Phone, Plus, RefreshCw, Repeat, Save, Search, Send, SendHorizontal, Settings, ShieldCheck, SlidersHorizontal, SquarePen, Star, Store, Tag as TagIcone, Trash2, TrendingUp, User, Users, Volume2, X, Zap,
   type LucideIcon,
 } from "lucide-react-native";
-import { Children, cloneElement, createContext, isValidElement, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -13,6 +13,7 @@ import {
   Easing,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -24,10 +25,12 @@ import {
   View,
   type TextInputProps,
   type TextStyle,
+  type ViewInstance,
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, EMPILHAR_DESLOCAMENTO, medidaDoReveal, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques, type AvisoDeFimDaRolagem } from "../lib/reveal";
 import { colors, fonts, gradients, motion, radius, space, styles, type } from "../lib/theme";
 
 const icones = {
@@ -117,6 +120,7 @@ export function Icon({ name, size = 20, color = colors.ink }: { name: IconName; 
 
 const nativeDriver = Platform.OS !== "web";
 const ScrollYContext = createContext<Animated.Value | null>(null);
+const FimDaRolagemContext = createContext<AvisoDeFimDaRolagem | null>(null);
 
 export const useScrollY = () => useContext(ScrollYContext);
 
@@ -159,56 +163,118 @@ export function TituloCompacto({ titulo }: { titulo: string }) {
   return <Animated.Text numberOfLines={1} style={[type.title, { flexShrink: 1, opacity: visivel, transform: [{ translateY: visivel.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>{titulo}</Animated.Text>;
 }
 
-export function Screen({ children, scroll = true, padded = true, onRefresh, cabecalho, topo }: { children: ReactNode; scroll?: boolean; padded?: boolean; onRefresh?: () => void; cabecalho?: ReactNode; topo?: ReactNode }) {
+const ATUALIZACAO_LIMITE_MS = 15_000;
+
+function EvitaTeclado({ children }: { children: ReactNode }) {
+  const caixa = useRef<ViewInstance>(null);
+  const [deslocamento, setDeslocamento] = useState(0);
+  if (Platform.OS === "web") return children;
+  return <View ref={caixa} style={{ flex: 1 }} onLayout={() => caixa.current?.measureInWindow((_x, y) => setDeslocamento((atual) => (atual === y ? atual : y)))}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={deslocamento}>{children}</KeyboardAvoidingView>
+  </View>;
+}
+
+export function Screen({ children, scroll = true, padded = true, onRefresh, carregando, cabecalho, topo, evitarTeclado = false }: { children: ReactNode; scroll?: boolean; padded?: boolean; onRefresh?: () => void; carregando?: boolean; cabecalho?: ReactNode; topo?: ReactNode; evitarTeclado?: boolean }) {
   const content = padded ? styles.content : { paddingBottom: 110, gap: space.xl };
   const scrollY = useRef(new Animated.Value(0)).current;
   const onScroll = useMemo(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: nativeDriver }), [scrollY]);
-  const refreshControl = onRefresh ? <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.accentText} colors={[colors.accent]}/> : undefined;
+  const fimDaRolagem = useMemo(() => criarAvisoDeFimDaRolagem(), []);
+  const avisarFimDaRolagem = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => fimDaRolagem.publicar(event.nativeEvent.contentOffset.y), [fimDaRolagem]);
+  const [puxou, setPuxou] = useState(false);
+  useEffect(() => {
+    if (puxou && carregando !== true) setPuxou(false);
+  }, [puxou, carregando]);
+  useEffect(() => {
+    if (!puxou) return;
+    const limite = setTimeout(() => setPuxou(false), ATUALIZACAO_LIMITE_MS);
+    return () => clearTimeout(limite);
+  }, [puxou]);
+  const atualizar = useCallback(() => {
+    setPuxou(true);
+    onRefresh?.();
+  }, [onRefresh]);
+  const refreshControl = onRefresh ? <RefreshControl refreshing={deveMostrarAtualizacao(puxou, carregando)} onRefresh={atualizar} tintColor={colors.accentText} colors={[colors.accent]}/> : undefined;
+  const corpo = scroll
+    ? <ScrollYContext.Provider value={scrollY}><FimDaRolagemContext.Provider value={fimDaRolagem}>
+      {topo}
+      <Animated.ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" refreshControl={refreshControl} onScroll={onScroll} onScrollEndDrag={avisarFimDaRolagem} onMomentumScrollEnd={avisarFimDaRolagem} scrollEventThrottle={16}>{children}</Animated.ScrollView>
+      {cabecalho}
+    </FimDaRolagemContext.Provider></ScrollYContext.Provider>
+    : <View style={[content, { flex: 1 }]}>{children}</View>;
   return <SafeAreaView style={styles.screen} edges={["left", "right"]}>
-    {scroll
-      ? <ScrollYContext.Provider value={scrollY}>
-        {topo}
-        <Animated.ScrollView contentContainerStyle={content} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" refreshControl={refreshControl} onScroll={onScroll} scrollEventThrottle={16}>{children}</Animated.ScrollView>
-        {cabecalho}
-      </ScrollYContext.Provider>
-      : <View style={[content, { flex: 1 }]}>{children}</View>}
+    {evitarTeclado ? <EvitaTeclado>{corpo}</EvitaTeclado> : corpo}
   </SafeAreaView>;
 }
 
 const REVEAL_DISTANCIA = 28;
 const REVEAL_ATRASO_MS = 70;
-const EMPILHAR_DESLOCAMENTO = 0.55;
+
+const posicaoAtual = (valor: Animated.Value) => (valor as unknown as { __getValue?: () => number }).__getValue?.() ?? 0;
 
 export function Reveal({ children, index = 0, empilhar = false }: { children: ReactNode; index?: number; empilhar?: boolean }) {
   const scrollY = useScrollY();
+  const fimDaRolagem = useContext(FimDaRolagemContext);
   const reduce = useReduceMotion();
   const { height } = useWindowDimensions();
   const entrada = useRef(new Animated.Value(0)).current;
-  const [caixa, setCaixa] = useState<{ y: number; altura: number } | null>(null);
+  const [medida, setMedida] = useState<{ y: number; altura: number; index: number } | null>(null);
+  const caixa = medida?.index === index ? medida : null;
+  const [recebeToques, setRecebeToques] = useState(true);
+  const recebeToquesRef = useRef(true);
+  const caixaY = caixa?.y;
+  const caixaAltura = caixa?.altura;
 
   useEffect(() => {
     if (reduce) return;
     Animated.timing(entrada, { toValue: 1, duration: 520, delay: Math.min(index, 6) * REVEAL_ATRASO_MS, easing: Easing.out(Easing.exp), useNativeDriver: nativeDriver }).start();
   }, [entrada, index, reduce]);
 
+  useEffect(() => {
+    const aplicar = (valor: boolean) => {
+      if (recebeToquesRef.current === valor) return;
+      recebeToquesRef.current = valor;
+      setRecebeToques(valor);
+    };
+    if (reduce || !scrollY || caixaY === undefined || caixaAltura === undefined) return aplicar(true);
+    const atual = { y: caixaY, altura: caixaAltura };
+    if (!precisaAcompanharRolagem(atual, height, empilhar)) return aplicar(true);
+    const avaliar = (posicao: number) => aplicar(revealRecebeToques({ posicao, caixa: atual, alturaDaJanela: height, empilhar }));
+    if (nativeDriver && fimDaRolagem) {
+      avaliar(fimDaRolagem.posicao());
+      return fimDaRolagem.inscrever(avaliar);
+    }
+    avaliar(posicaoAtual(scrollY));
+    const ouvinte = scrollY.addListener(({ value }) => avaliar(value));
+    return () => scrollY.removeListener(ouvinte);
+  }, [scrollY, fimDaRolagem, caixaY, caixaAltura, height, empilhar, reduce]);
+
+  const animacao = useMemo(() => {
+    const aoRolar = scrollY && caixaY !== undefined && caixaY > height
+      ? scrollY.interpolate({ inputRange: [caixaY - height, caixaY - height + REVEAL_FAIXA_DE_ENTRADA], outputRange: [0, 1], extrapolate: "clamp" })
+      : null;
+    const pilha = empilhar && scrollY && caixaY !== undefined && caixaAltura !== undefined
+      ? scrollY.interpolate({ inputRange: [caixaY, caixaY + caixaAltura], outputRange: [0, 1], extrapolate: "clamp" })
+      : null;
+    const progresso = Animated.multiply(entrada, aoRolar ?? 1);
+    const entradaY = progresso.interpolate({ inputRange: [0, 1], outputRange: [REVEAL_DISTANCIA, 0] });
+    if (!pilha || caixaAltura === undefined) return { opacity: progresso, transform: [{ translateY: entradaY }] };
+    return {
+      opacity: Animated.multiply(progresso, pilha.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] })),
+      transform: [
+        { translateY: Animated.add(entradaY, pilha.interpolate({ inputRange: [0, 1], outputRange: [0, caixaAltura * EMPILHAR_DESLOCAMENTO] })) },
+        { scale: pilha.interpolate({ inputRange: [0, 1], outputRange: [1, 0.88] }) },
+      ],
+    };
+  }, [scrollY, entrada, caixaY, caixaAltura, height, empilhar]);
+
   if (reduce) return <View>{children}</View>;
-  const aoRolar = scrollY && caixa && caixa.y > height
-    ? scrollY.interpolate({ inputRange: [caixa.y - height, caixa.y - height + 140], outputRange: [0, 1], extrapolate: "clamp" })
-    : null;
-  const pilha = empilhar && scrollY && caixa ? scrollY.interpolate({ inputRange: [caixa.y, caixa.y + caixa.altura], outputRange: [0, 1], extrapolate: "clamp" }) : null;
-  const progresso = Animated.multiply(entrada, aoRolar ?? 1);
-  const entradaY = progresso.interpolate({ inputRange: [0, 1], outputRange: [REVEAL_DISTANCIA, 0] });
   return <Animated.View
+    pointerEvents={recebeToques ? "auto" : "none"}
     onLayout={(event) => {
-      const { y, height: altura } = event.nativeEvent.layout;
-      setCaixa((atual) => atual ?? { y, altura });
+      const { y, altura } = medidaDoReveal(event.nativeEvent.layout.y, event.nativeEvent.layout.height);
+      setMedida((atual) => (atual && atual.y === y && atual.altura === altura && atual.index === index ? atual : { y, altura, index }));
     }}
-    style={{
-      opacity: pilha ? Animated.multiply(progresso, pilha.interpolate({ inputRange: [0, 1], outputRange: [1, 0.2] })) : progresso,
-      transform: pilha && caixa
-        ? [{ translateY: Animated.add(entradaY, pilha.interpolate({ inputRange: [0, 1], outputRange: [0, caixa.altura * EMPILHAR_DESLOCAMENTO] })) }, { scale: pilha.interpolate({ inputRange: [0, 1], outputRange: [1, 0.88] }) }]
-        : [{ translateY: entradaY }],
-    }}
+    style={animacao}
   >{children}</Animated.View>;
 }
 
@@ -376,14 +442,14 @@ export function Field({ label, error, hint, trailing, style, ...input }: TextInp
         onBlur={(e) => { setFocused(false); input.onBlur?.(e); }}
         style={[styles.input, focused ? styles.inputFocused : null, error ? styles.inputError : null, input.multiline ? { minHeight: 96, textAlignVertical: "top" } : null, input.editable === false ? { opacity: 0.55 } : null, trailing ? { paddingRight: 48 } : null, style]}
       />
-      {trailing ? <View style={{ position: "absolute", right: 0, top: 0, width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>{trailing}</View> : null}
+      {trailing ? <View style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 48, alignItems: "center", justifyContent: "center" }}>{trailing}</View> : null}
     </View>
     {hint && !error ? <Text style={[type.bodySmall, { marginTop: 4 }]}>{hint}</Text> : null}
     {error ? <Text style={[type.bodySmall, { color: colors.error, marginTop: 4 }]}>{error}</Text> : null}
   </View>;
 }
 
-export function PasswordField({ label = "Senha", value, onChangeText }: { label?: string; value: string; onChangeText: (value: string) => void }) {
+export function PasswordField({ label = "Senha", value, onChangeText, nova = false }: { label?: string; value: string; onChangeText: (value: string) => void; nova?: boolean }) {
   const [visible, setVisible] = useState(false);
   return <Field
     label={label}
@@ -392,6 +458,9 @@ export function PasswordField({ label = "Senha", value, onChangeText }: { label?
     secureTextEntry={!visible}
     placeholder="Mínimo de 6 caracteres"
     autoCapitalize="none"
+    autoCorrect={false}
+    autoComplete={nova ? "new-password" : "current-password"}
+    textContentType={nova ? "newPassword" : "password"}
     trailing={<Pressable onPress={() => setVisible(!visible)} accessibilityRole="button" accessibilityLabel={visible ? "Ocultar senha" : "Mostrar senha"} hitSlop={8} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
       <Icon name={visible ? "eye-off-outline" : "eye-outline"} color={colors.ink2}/>
     </Pressable>}
@@ -586,7 +655,7 @@ export function Snackbar({ message, onHide }: { message: string; onHide: () => v
     const timer = setTimeout(() => Animated.timing(entrada, { toValue: 0, duration: motion.rapido, useNativeDriver: nativeDriver }).start(onHide), 3200);
     return () => clearTimeout(timer);
   }, [entrada, onHide]);
-  return <Animated.View accessibilityLiveRegion="polite" style={{ position: "absolute", left: space.lg, right: space.lg, bottom: space.xl, opacity: entrada, transform: [{ translateY: entrada.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }, { scale: entrada.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }], backgroundColor: colors.surface3, borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.md, padding: 14, flexDirection: "row", alignItems: "center", gap: 10, elevation: 8, shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } }}>
+  return <Animated.View pointerEvents="none" accessibilityLiveRegion="polite" style={{ position: "absolute", left: space.lg, right: space.lg, bottom: space.xl, opacity: entrada, transform: [{ translateY: entrada.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }, { scale: entrada.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }], backgroundColor: colors.surface3, borderWidth: 1, borderColor: colors.hairline, borderRadius: radius.md, padding: 14, flexDirection: "row", alignItems: "center", gap: 10, elevation: 8, shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 18, shadowOffset: { width: 0, height: 10 } }}>
     <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: colors.successBg, alignItems: "center", justifyContent: "center" }}><Icon name="checkmark" size={15} color={colors.success}/></View>
     <Text style={[type.body, { flex: 1 }]}>{message}</Text>
   </Animated.View>;

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { completeProfile, type Role } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
@@ -19,6 +19,11 @@ export default function CompleteSignupScreen() {
   const [aceite, setAceite] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [concluido, setConcluido] = useState(false);
+
+  useEffect(() => {
+    if (concluido && state.status === "signedIn") router.replace("/");
+  }, [concluido, state.status, router]);
 
   async function submit() {
     if (!nome.trim()) return setError("Informe seu nome.");
@@ -28,14 +33,14 @@ export default function CompleteSignupScreen() {
     try {
       await completeProfile({ role, nome: nome.trim(), aceiteTermos: true });
       await refreshMe();
-      router.replace("/");
+      setConcluido(true);
     } catch (e) {
       setError(errorMessage(e));
       setSubmitting(false);
     }
   }
 
-  return <Screen>
+  return <Screen evitarTeclado>
     <AuthHeader titulo="Quase lá" subtitulo={`Você entrou com ${email || "o Google"}. Falta só dizer como vai usar a Muve.`}/>
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {

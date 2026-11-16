@@ -3,17 +3,18 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
+import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, openCheckout, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
 import { formatCountdown, formatCurrency, formatEventDateTime } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, COBRANCA_VALIDADE_MS, comissaoPercentual } from "../../../../shared/dominio.ts";
 import { Alert, Button, ErrorState, Icon, Loading, Pill, PontoAoVivo, Reveal, Screen, Skeleton, Snackbar, Surface } from "../../../components/ui";
+import { segundosAte, situacaoDaCobranca } from "../../../lib/cobranca";
 import { confirmAction } from "../../../lib/confirm";
 import { colors, radius, space, styles, type } from "../../../lib/theme";
 import { useMe } from "../../../lib/useMe";
 
 const POLLING_INTERVAL_MS = 5000;
-const secondsUntil = (iso: string) => Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+const secondsUntil = (iso: string) => segundosAte(iso);
 
 export default function CheckoutScreen() {
   const { id: eventId, candidateId } = useLocalSearchParams<{ id: string; candidateId: string }>();
@@ -31,20 +32,33 @@ export default function CheckoutScreen() {
   const [cancelError, setCancelError] = useState("");
   const [cancelled, setCancelled] = useState(false);
 
-  const load = useCallback(
-    () =>
-      startCheckout(eventId, candidateId)
-        .then((created) => { setCheckout(created); setSeconds(secondsUntil(created.expiraEm)); })
+  const show = useCallback(
+    (request: Promise<Checkout>) =>
+      request
+        .then((current) => {
+          if (current.status === "PAGO") return router.replace(`/event/${eventId}/hiring`);
+          setCheckout(current);
+          setSeconds(secondsUntil(current.expiraEm));
+        })
         .catch((e: unknown) => setError(errorMessage(e)))
         .finally(() => setGenerating(false)),
-    [eventId, candidateId],
+    [eventId, router],
   );
+  const load = useCallback(() => show(openCheckout(eventId, candidateId)), [show, eventId, candidateId]);
   useEffect(() => { void load(); }, [load]);
 
-  function generate() {
+  function retry() {
+    if (generating) return;
     setGenerating(true);
     setError("");
     void load();
+  }
+
+  function generate() {
+    if (generating) return;
+    setGenerating(true);
+    setError("");
+    void show(startCheckout(eventId, candidateId));
   }
 
   const expiraEm = checkout?.expiraEm;
@@ -75,6 +89,27 @@ export default function CheckoutScreen() {
     return () => clearInterval(poll);
   }, [waiting, eventId, router]);
 
+  const situacao = checkout ? situacaoDaCobranca(checkout.status, seconds) : null;
+  const confirmandoPrazo = situacao === "confirmando-prazo";
+  useEffect(() => {
+    if (!confirmandoPrazo || !expiraEm) return;
+    let ativo = true;
+    fetchCheckoutStatus(eventId)
+      .then((latest) => {
+        if (!ativo || !latest) return;
+        setStatusError("");
+        if (latest.status === "PAGO") router.replace(`/event/${eventId}/hiring`);
+        else if (latest.status !== "PENDENTE" || latest.expiraEm !== expiraEm) {
+          setCheckout(latest);
+          setSeconds(secondsUntil(latest.expiraEm));
+        }
+      })
+      .catch((e: unknown) => ativo && setStatusError(errorMessage(e)));
+    return () => {
+      ativo = false;
+    };
+  }, [confirmandoPrazo, expiraEm, eventId, router]);
+
   async function copy() {
     if (!checkout?.pixCopiaCola) return;
     await Clipboard.setStringAsync(checkout.pixCopiaCola);
@@ -103,7 +138,7 @@ export default function CheckoutScreen() {
     });
   }
 
-  const expired = Boolean(checkout) && (seconds === 0 || checkout?.status !== "PENDENTE");
+  const expired = situacao === "encerrada";
   const total = checkout?.valor ?? (event.data ? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).total : null);
   const restante = Math.min(1, (seconds * 1000) / COBRANCA_VALIDADE_MS);
 
@@ -121,12 +156,12 @@ export default function CheckoutScreen() {
       </View></Reveal>
 
       {generating && <Loading label="Gerando cobrança Pix..." cards={1}/>}
-      {!generating && error ? <ErrorState message={error} onRetry={generate}/> : null}
+      {!generating && error ? <ErrorState message={error} onRetry={retry}/> : null}
       {!generating && !error && checkout && <Reveal index={1}><Surface destaque>
         <View style={styles.between}>
           {expired
             ? <Pill text="Cobrança expirada" tone="muted"/>
-            : <View style={[styles.row, { gap: space.sm }]}><PontoAoVivo/><Text style={[type.label, { color: colors.ink2 }]}>Aguardando pagamento</Text></View>}
+            : <View style={[styles.row, { gap: space.sm }]}><PontoAoVivo/><Text style={[type.label, { color: colors.ink2 }]}>{confirmandoPrazo ? "Confirmando o prazo" : "Aguardando pagamento"}</Text></View>}
           <View style={[styles.row, { gap: 6 }]}>
             <Icon name="time-outline" size={15} color={colors.ink3}/>
             <Text style={[type.label, { fontVariant: ["tabular-nums"] }]}>{formatCountdown(seconds)}</Text>

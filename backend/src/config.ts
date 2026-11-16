@@ -1,6 +1,11 @@
 export type AsaasEnvironment = "sandbox" | "production";
+export type FinancialRoutineSetting = "enabled" | "disabled" | "invalid";
+export type FinancialRoutineTrigger = { token: string; problema: null } | { token: null; problema: "ausente" | "invalido" };
+
+const TAMANHO_MINIMO_DO_TOKEN_DA_ROTINA = 32;
 
 export interface ServerConfig {
+  host: string;
   port: number;
   supabaseUrl: string;
   supabaseAnonKey: string;
@@ -12,6 +17,9 @@ export interface ServerConfig {
   allowedOrigins: string[];
   allowedRedirects: string[];
   smtp: { host: string; port: number; user: string; pass: string; from: string } | null;
+  financialRoutine: FinancialRoutineSetting;
+  financialRoutineTrigger: FinancialRoutineTrigger;
+  financialRoutineAllowed: boolean;
 }
 
 const ASAAS_URLS: Record<AsaasEnvironment, string> = {
@@ -67,6 +75,28 @@ function redirects(env: NodeJS.ProcessEnv, production: boolean): string[] {
   return allowed;
 }
 
+function financialRoutine(env: NodeJS.ProcessEnv): FinancialRoutineSetting {
+  const value = env.ENABLE_FINANCIAL_ROUTINE?.trim().toLowerCase();
+  if (!value || value === "false") return "disabled";
+  return value === "true" ? "enabled" : "invalid";
+}
+
+function financialRoutineTrigger(env: NodeJS.ProcessEnv): FinancialRoutineTrigger {
+  const token = env.FINANCIAL_ROUTINE_TOKEN?.trim();
+  if (!token) return { token: null, problema: "ausente" };
+  const valido = token.length >= TAMANHO_MINIMO_DO_TOKEN_DA_ROTINA && /^[A-Za-z0-9_-]+$/.test(token) && token !== env.ADMIN_TOKEN?.trim();
+  return valido ? { token, problema: null } : { token: null, problema: "invalido" };
+}
+
+function supabaseLocal(supabaseUrl: string): boolean {
+  const host = new URL(supabaseUrl).hostname;
+  return host === "localhost" || host === "[::1]" || /^127(\.\d{1,3}){3}$/.test(host);
+}
+
+export function shouldLoadEnvFile(env: NodeJS.ProcessEnv): boolean {
+  return env.NODE_ENV !== "production" && env.MUVE_IGNORAR_ARQUIVO_ENV !== "true";
+}
+
 export function readServerConfig(env: NodeJS.ProcessEnv, localHosts: string[] = []): ServerConfig {
   const production = env.NODE_ENV === "production";
   const rawOrigins = env.ALLOWED_ORIGINS?.trim() || (production ? "" : "http://localhost:8081");
@@ -78,10 +108,12 @@ export function readServerConfig(env: NodeJS.ProcessEnv, localHosts: string[] = 
   const asaasWebhookToken = env.ASAAS_WEBHOOK_TOKEN?.trim() || undefined;
   if (production && !asaasApiKey) throw new Error("Variável de ambiente ASAAS_API_KEY não definida. Consulte backend/.env.example.");
   if (production && !asaasWebhookToken) throw new Error("Variável de ambiente ASAAS_WEBHOOK_TOKEN não definida. Consulte backend/.env.example.");
+  const supabaseUrl = origin(required(env, "SUPABASE_URL"), "SUPABASE_URL", production);
 
   return {
+    host: env.HOST?.trim() || "0.0.0.0",
     port: validPort(env.PORT?.trim() || "3333", "PORT"),
-    supabaseUrl: origin(required(env, "SUPABASE_URL"), "SUPABASE_URL", production),
+    supabaseUrl,
     supabaseAnonKey: required(env, "SUPABASE_ANON_KEY"),
     supabaseServiceRoleKey: required(env, "SUPABASE_SERVICE_ROLE_KEY"),
     asaasApiUrl: asaasApiUrl(env, production),
@@ -99,5 +131,8 @@ export function readServerConfig(env: NodeJS.ProcessEnv, localHosts: string[] = 
           from: required(env, "SMTP_FROM"),
         }
       : null,
+    financialRoutine: financialRoutine(env),
+    financialRoutineTrigger: financialRoutineTrigger(env),
+    financialRoutineAllowed: production || supabaseLocal(supabaseUrl),
   };
 }

@@ -1,4 +1,4 @@
-import { formatCurrency, formatEventDateTime } from "./format.ts";
+import { formatCurrency, formatDateTime, formatEventDateTime } from "./format.ts";
 import type { Hiring } from "./events.ts";
 
 export type SituacaoEtapa = "feita" | "atual" | "pendente" | "problema";
@@ -34,10 +34,11 @@ function etapaPagamento(hiring: Hiring): EtapaContratacao {
 }
 
 function etapaConfirmacao(hiring: Hiring, comecou: boolean): EtapaContratacao {
-  const { evento, pagamento } = hiring;
+  const { evento, pagamento, contestacao } = hiring;
   const titulo = "Confirmação do show";
   if (evento.status === "CONCLUIDO") return { titulo, detalhe: "Show concluído", situacao: "feita" };
   if (pagamento?.refundStatus === "PROCESSANDO") return { titulo, detalhe: "Suspensa até a resolução do estorno", situacao: "problema" };
+  if (contestacao) return { titulo, detalhe: "Suspensa enquanto a contestação estiver com o suporte", situacao: "problema" };
   if (!comecou) return { titulo, detalhe: "Cada parte confirma depois do show", situacao: "pendente" };
   const contratante = evento.confirmacaoContratante ? "confirmou" : "aguardando";
   const musico = evento.confirmacaoMusico ? "confirmou" : "aguardando";
@@ -47,6 +48,7 @@ function etapaConfirmacao(hiring: Hiring, comecou: boolean): EtapaContratacao {
 function etapaRepasse(hiring: Hiring): EtapaContratacao {
   const { pagamento, contestacao } = hiring;
   const titulo = "Cachê repassado";
+  if (contestacao?.status === "AGUARDANDO_ESTORNO") return { titulo, detalhe: "Suspenso: o suporte decidiu devolver o valor, e o estorno aguarda confirmação", situacao: "problema" };
   if (contestacao) return { titulo, detalhe: "Suspenso enquanto o suporte analisa a contestação", situacao: "problema" };
   switch (pagamento?.repasseStatus) {
     case "REPASSADO":
@@ -91,4 +93,80 @@ export function situacaoDoCache(hiring: Hiring): string {
     default:
       return "A Muve guarda o cachê e libera ao músico depois do show.";
   }
+}
+
+export type ConfirmacaoDaParte =
+  | { situacao: "confirmada"; texto: string }
+  | { situacao: "aguardando-outra-parte"; texto: string }
+  | { situacao: "disponivel"; texto: string }
+  | { situacao: "indisponivel"; texto: string };
+
+export function confirmacaoDaParte(hiring: Hiring, parte: "contratante" | "musico", agora = new Date()): ConfirmacaoDaParte {
+  const { evento, pagamento, contestacao, papel } = hiring;
+  const confirmou = parte === "contratante" ? evento.confirmacaoContratante : evento.confirmacaoMusico;
+  if (confirmou) return { situacao: "confirmada", texto: "Confirmado" };
+  if (parte !== papel) return { situacao: "aguardando-outra-parte", texto: "Aguardando" };
+  if (pagamento?.refundStatus === "PROCESSANDO") return { situacao: "indisponivel", texto: "Suspensa" };
+  if (contestacao) return { situacao: "indisponivel", texto: "Suspensa" };
+  if (new Date(evento.inicio) > agora) return { situacao: "indisponivel", texto: "Após o início" };
+  return { situacao: "disponivel", texto: "Confirmar" };
+}
+
+export function motivoDaConfirmacaoSuspensa(hiring: Hiring): string | null {
+  if (hiring.pagamento?.refundStatus === "PROCESSANDO") return "A confirmação fica suspensa até a resolução do estorno.";
+  if (hiring.contestacao) return "A confirmação fica suspensa enquanto a contestação estiver com o suporte. As duas partes serão avisadas da decisão.";
+  return null;
+}
+
+export function avisoDoEstorno(hiring: Hiring): { tom: "info" | "error"; texto: string } | null {
+  const { pagamento, contestacao } = hiring;
+  if (pagamento?.refundStatus === "PROCESSANDO") {
+    return {
+      tom: "info",
+      texto: contestacao?.status === "AGUARDANDO_ESTORNO"
+        ? "O estorno decidido pelo suporte está em processamento no Asaas. A devolução ainda não foi confirmada."
+        : "Estorno em processamento no Asaas. A devolução ainda não foi confirmada.",
+    };
+  }
+  if (pagamento?.refundStatus === "NEGADO") {
+    return {
+      tom: "error",
+      texto: contestacao
+        ? "O Asaas não concluiu o estorno. A contestação continua com o suporte, e o show não pode ser confirmado nem o cachê repassado até a nova decisão."
+        : "O estorno solicitado não foi concluído pelo Asaas. A contratação continua ativa e pode ser confirmada ou cancelada normalmente.",
+    };
+  }
+  return null;
+}
+
+export interface HistoricoDaContestacao {
+  titulo: string;
+  resultado: string;
+  data: string | null;
+  aviso: string;
+}
+
+export function historicoDaContestacao(hiring: Hiring): HistoricoDaContestacao | null {
+  const resolvida = hiring.contestacaoResolvida;
+  if (hiring.contestacao || !resolvida) return null;
+  return {
+    titulo: "Contestação encerrada",
+    resultado: resolvida.decisao === "PAGAR_MUSICO" ? "Decisão do suporte: o cachê vai para o músico." : "Resultado: o valor foi devolvido ao contratante.",
+    data: resolvida.resolvidaEm && `Encerrada em ${formatDateTime(resolvida.resolvidaEm)}`,
+    aviso: "Este é o registro de uma decisão já tomada. Não há nada pendente sobre esta contestação.",
+  };
+}
+
+export interface AcaoDeContestacao {
+  botao: string;
+  explicacao: string | null;
+}
+
+export function acaoDeContestacao(hiring: Hiring): AcaoDeContestacao | null {
+  if (!hiring.podeContestar) return null;
+  if (!historicoDaContestacao(hiring)) return { botao: "Contestar o que aconteceu", explicacao: null };
+  return {
+    botao: "Abrir nova contestação",
+    explicacao: "A decisão anterior continua registrada e não muda. Se houver um problema novo, você pode abrir outra contestação, independente da anterior, para o suporte analisar.",
+  };
 }

@@ -346,3 +346,230 @@ describe("POST /api/events/:id/nao-comparecimento", () => {
     expect(events.reportNoShow).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1");
   });
 });
+
+describe("limites por usuário nas rotas", () => {
+  function setupLimites() {
+    const usuarios: Record<string, { id: string; email: string }> = {
+      "token-u1": { id: "u1", email: "u1@exemplo.com" },
+      "token-u2": { id: "u2", email: "u2@exemplo.com" },
+      "token-u3": { id: "u3", email: "u3@exemplo.com" },
+    };
+    const accounts = { deleteAccount: vi.fn(async () => {}) };
+    const events = { getHiring: vi.fn(async () => ({})), sendMessage: vi.fn(async () => ({})) };
+    const cobranca = {
+      id: "p1", eventId: "e1", candidateId: CANDIDATE_ID, asaasPaymentId: "pay_interno", valor: 550, valorComissao: 50, valorCache: 500,
+      repasseStatus: null, refundStatus: null, status: "PENDENTE" as const, pixCopiaCola: "000201...", pixQrCode: "base64", expiraEm: new Date("2030-01-01T12:15:00Z"),
+    };
+    const payments = {
+      startCheckout: vi.fn(async () => cobranca),
+      syncCheckout: vi.fn(async (): Promise<typeof cobranca | null> => cobranca),
+      cancelPendingCheckout: vi.fn(async () => {}),
+    };
+    const app = createApp({
+      accounts: accounts as unknown as AccountService,
+      events: events as unknown as EventService,
+      payments: payments as unknown as PaymentService,
+      asaasWebhookToken: WEBHOOK_TOKEN,
+      verifyToken: async (token) => usuarios[token] ?? null,
+      allowedOrigins: [ORIGIN],
+    });
+    const req = (method: string, path: string, token?: string, body?: object) => app.request(path, {
+      method,
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { req, accounts, events, payments };
+  }
+
+  const checkout = { candidateId: CANDIDATE_ID };
+
+  it("checkout: soma eventos diferentes no mesmo contador, bloqueia sem chamar o serviço e mantém outros usuários livres", async () => {
+    const { req, payments } = setupLimites();
+    for (let i = 0; i < 10; i++) expect((await req("POST", `/api/events/e${i}/checkout`, "token-u1", checkout)).status).toBe(201);
+
+    const bloqueada = await req("POST", "/api/events/e99/checkout", "token-u1", checkout);
+    expect(bloqueada.status).toBe(429);
+    expect(bloqueada.headers.get("Retry-After")).toBe("600");
+    expect(await bloqueada.json()).toEqual({ error: { code: "MUITAS_TENTATIVAS", message: "Muitas tentativas de pagamento em pouco tempo." } });
+    expect((await req("DELETE", "/api/events/e1/checkout", "token-u1")).status).toBe(429);
+    expect(payments.startCheckout).toHaveBeenCalledTimes(10);
+    expect(payments.cancelPendingCheckout).not.toHaveBeenCalled();
+
+    expect((await req("POST", "/api/events/e1/checkout", "token-u2", checkout)).status).toBe(201);
+  });
+
+  it("sem token responde 401 antes do limitador e não consome o limite", async () => {
+    const { req, payments } = setupLimites();
+    for (let i = 0; i < 15; i++) expect((await req("POST", "/api/events/e1/checkout", undefined, checkout)).status).toBe(401);
+    expect((await req("POST", "/api/events/e1/checkout", "token-invalido", checkout)).status).toBe(401);
+    expect(payments.startCheckout).not.toHaveBeenCalled();
+    expect((await req("POST", "/api/events/e1/checkout", "token-u1", checkout)).status).toBe(201);
+  });
+
+  it("GET do checkout responde a cobrança com 200 e, sem cobrança, 204 sem corpo", async () => {
+    const { req, payments } = setupLimites();
+    const comCobranca = await req("GET", "/api/events/e1/checkout", "token-u1");
+    expect(comCobranca.status).toBe(200);
+    expect(await comCobranca.json()).toMatchObject({ id: "p1", status: "PENDENTE", candidateId: CANDIDATE_ID, valor: 550 });
+
+    payments.syncCheckout.mockResolvedValueOnce(null);
+    const semCobranca = await req("GET", "/api/events/e1/checkout", "token-u1");
+    expect(semCobranca.status).toBe(204);
+    expect(await semCobranca.text()).toBe("");
+  });
+
+  it("a consulta do Pix a cada 5 segundos por 10 minutos não é bloqueada e não consome o limite do checkout", async () => {
+    const { req, payments } = setupLimites();
+    for (let i = 0; i < 120; i++) expect((await req("GET", "/api/events/e1/checkout", "token-u1")).status).toBe(200);
+    expect(payments.syncCheckout).toHaveBeenCalledTimes(120);
+    expect((await req("POST", "/api/events/e1/checkout", "token-u1", checkout)).status).toBe(201);
+  });
+
+  it("consulta da contratação: 30 por 10 minutos, sem executar o serviço quando bloqueada", async () => {
+    const { req, events } = setupLimites();
+    for (let i = 0; i < 30; i++) expect((await req("GET", `/api/events/e${i % 3}/contratacao`, "token-u1")).status).toBe(200);
+    const bloqueada = await req("GET", "/api/events/e1/contratacao", "token-u1");
+    expect(bloqueada.status).toBe(429);
+    expect(bloqueada.headers.get("Retry-After")).toBe("600");
+    expect(events.getHiring).toHaveBeenCalledTimes(30);
+    expect((await req("GET", "/api/events/e1/contratacao", "token-u2")).status).toBe(200);
+  });
+
+  it("grupos diferentes não interferem: esgotar a consulta da contratação não bloqueia mensagens nem checkout", async () => {
+    const { req, events } = setupLimites();
+    for (let i = 0; i < 31; i++) await req("GET", "/api/events/e1/contratacao", "token-u1");
+    expect((await req("POST", "/api/candidaturas/c1/mensagens", "token-u1", { texto: "Olá" })).status).toBe(201);
+    expect((await req("POST", "/api/events/e1/checkout", "token-u1", checkout)).status).toBe(201);
+    expect(events.sendMessage).toHaveBeenCalledOnce();
+  });
+
+  it("DELETE /me respeita ao mesmo tempo o limite por usuário e o limite por IP", async () => {
+    const { req, accounts } = setupLimites();
+    const corpo = (email: string) => ({ email, password: "senha" });
+
+    for (let i = 0; i < 5; i++) expect((await req("DELETE", "/api/me", "token-u1", corpo("u1@exemplo.com"))).status).toBe(204);
+    const porUsuario = await req("DELETE", "/api/me", "token-u1", corpo("u1@exemplo.com"));
+    expect(porUsuario.status).toBe(429);
+    expect(await porUsuario.json()).toEqual({ error: { code: "MUITAS_TENTATIVAS", message: "Muitas tentativas de excluir a conta em pouco tempo." } });
+
+    for (let i = 0; i < 4; i++) expect((await req("DELETE", "/api/me", "token-u2", corpo("u2@exemplo.com"))).status).toBe(204);
+    const porIp = await req("DELETE", "/api/me", "token-u3", corpo("u3@exemplo.com"));
+    expect(porIp.status).toBe(429);
+    expect(await porIp.json()).toEqual({ error: { code: "MUITAS_TENTATIVAS", message: "Limite temporário de tentativas atingido." } });
+
+    expect(accounts.deleteAccount).toHaveBeenCalledTimes(9);
+  });
+});
+
+describe("POST /api/admin/rotina-financeira", () => {
+  const TOKEN_DA_ROTINA = "token-da-rotina-".repeat(3);
+
+  function comRotina({ token = TOKEN_DA_ROTINA as string | null, permitida = true, iniciar = vi.fn(async () => ({ resultado: "INICIADA" as "INICIADA" | "EM_ANDAMENTO" })) } = {}) {
+    const { accounts, events, payments } = setup();
+    const app = createApp({
+      accounts: accounts as unknown as AccountService,
+      events: events as unknown as EventService,
+      payments: payments as unknown as PaymentService,
+      verifyToken: async () => ({ id: "u1", email: "bar@exemplo.com" }),
+      allowedOrigins: [ORIGIN],
+      asaasWebhookToken: WEBHOOK_TOKEN,
+      adminToken: "token-do-suporte",
+      rotinaFinanceira: { iniciar },
+      financialRoutineToken: token,
+      financialRoutineAllowed: permitida,
+    });
+    const disparar = async (headers: Record<string, string> = {}, body?: unknown): Promise<Response> =>
+      app.request("/api/admin/rotina-financeira", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    return { app, iniciar, disparar };
+  }
+
+  it("sem token ou com token errado responde 401 e não inicia a rotina", async () => {
+    const { disparar, iniciar } = comRotina();
+
+    const respostas = await Promise.all([
+      disparar(),
+      disparar({ "x-rotina-token": "errado" }),
+      disparar({ "x-rotina-token": TOKEN_DA_ROTINA.slice(0, -1) }),
+      disparar({ "x-admin-token": "token-do-suporte" }),
+      disparar({ Authorization: "Bearer sessao-de-usuario" }),
+    ]);
+
+    expect(respostas.map((r) => r.status)).toEqual([401, 401, 401, 401, 401]);
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  it("com o token certo inicia a rotina e responde 202 sem esperar o processamento", async () => {
+    const { disparar, iniciar } = comRotina();
+
+    const response = await disparar({ "x-rotina-token": TOKEN_DA_ROTINA });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ resultado: "INICIADA" });
+    expect(iniciar).toHaveBeenCalledTimes(1);
+  });
+
+  it("com uma execução em andamento responde 409 identificável e não inicia outra", async () => {
+    const { disparar, iniciar } = comRotina({ iniciar: vi.fn(async () => ({ resultado: "EM_ANDAMENTO" as const })) });
+
+    const response = await disparar({ "x-rotina-token": TOKEN_DA_ROTINA });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ resultado: "EM_ANDAMENTO" });
+    expect(iniciar).toHaveBeenCalledTimes(1);
+  });
+
+  it("falha ao iniciar responde 503, diferente de uma execução em andamento", async () => {
+    const { disparar } = comRotina({ iniciar: vi.fn(async () => Promise.reject(new Error("banco fora do ar"))) });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await disparar({ "x-rotina-token": TOKEN_DA_ROTINA });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "ROTINA_INDISPONIVEL" } });
+  });
+
+  it("sem segredo configurado, a rota recusa qualquer disparo", async () => {
+    const { disparar, iniciar } = comRotina({ token: null });
+
+    const respostas = await Promise.all([disparar({ "x-rotina-token": TOKEN_DA_ROTINA }), disparar({ "x-rotina-token": "" })]);
+
+    expect(respostas.map((r) => r.status)).toEqual([403, 403]);
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  it("em desenvolvimento com Supabase hospedado, recusa o disparo mesmo com o token certo", async () => {
+    const { disparar, iniciar } = comRotina({ permitida: false });
+
+    const response = await disparar({ "x-rotina-token": TOKEN_DA_ROTINA });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "ROTINA_BLOQUEADA_NO_AMBIENTE" } });
+    expect(iniciar).not.toHaveBeenCalled();
+  });
+
+  it("parâmetros enviados não mudam a execução", async () => {
+    const { disparar, iniciar } = comRotina();
+
+    await disparar({ "x-rotina-token": TOKEN_DA_ROTINA }, { etapas: ["repasse"], valor: 1, now: "2020-01-01" });
+
+    expect(iniciar).toHaveBeenCalledWith();
+  });
+
+  it("não expõe o segredo em respostas nem em logs", async () => {
+    const erros = vi.spyOn(console, "error").mockImplementation(() => {});
+    const avisos = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { disparar } = comRotina({ iniciar: vi.fn(async () => Promise.reject(new Error("falha"))) });
+
+    const textos = await Promise.all([
+      disparar({ "x-rotina-token": "errado" }).then((r) => r.text()),
+      disparar({ "x-rotina-token": TOKEN_DA_ROTINA }).then((r) => r.text()),
+    ]);
+
+    const tudo = JSON.stringify([textos, erros.mock.calls, avisos.mock.calls]);
+    expect(tudo).not.toContain(TOKEN_DA_ROTINA);
+  });
+});

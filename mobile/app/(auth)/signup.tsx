@@ -74,7 +74,7 @@ export default function SignupScreen() {
     </View>
   </Screen>;
 
-  return <Screen>
+  return <Screen evitarTeclado>
     <AuthHeader titulo="Vamos fazer música" subtitulo="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
     <View style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
@@ -84,7 +84,7 @@ export default function SignupScreen() {
     </View>
     <Field label={role === "MUSICIAN" ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={form.nome} onChangeText={(nome) => set({ nome })} autoComplete="name"/>
     <Field label="E-mail" value={form.email} onChangeText={(v) => set({ email: sanitizeEmail(v) })} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="voce@exemplo.com"/>
-    <PasswordField value={form.password} onChangeText={(password) => set({ password })}/>
+    <PasswordField nova value={form.password} onChangeText={(password) => set({ password })}/>
     <View>
       <Checkbox label="Li e aceito os Termos de Uso" checked={form.aceiteTermos} onChange={(aceiteTermos) => set({ aceiteTermos })}/>
       <Button title="Ler os Termos de Uso" variant="text" block={false} onPress={() => router.push("/terms")}/>

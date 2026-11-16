@@ -30,3 +30,7 @@ services:
         sync: false
       - key: ALLOWED_REDIRECTS
         value: muve://auth
+      - key: ENABLE_FINANCIAL_ROUTINE
+        value: "false"
+      - key: FINANCIAL_ROUTINE_TOKEN
+        sync: false

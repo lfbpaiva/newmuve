@@ -59,15 +59,49 @@ As imagens de `mobile/assets` ficam no **Git LFS**. A branch do redesign do grup
 
 ## Suporte
 
-Não há conta de administrador no app. Contestações são decididas por `scripts/resolver-contestacao.mjs` e repasses travados são liberados pela rota de suporte da API, as duas com o `ADMIN_TOKEN` de `backend/.env`. Um painel de suporte dentro do app (contestações, repasses e planos) fica como trabalho futuro e depende de decisão do grupo em `produto.md`.
+Não há conta de administrador no app. Contestações são decididas por `scripts/resolver-contestacao.mjs` e repasses travados são liberados por `scripts/resolver-repasse.mjs`, os dois com o `ADMIN_TOKEN` de `backend/.env`. Um painel de suporte dentro do app (contestações, repasses e planos) fica como trabalho futuro e depende de decisão do grupo em `produto.md`.
+
+### Repasses travados
+
+A liberação tem duas etapas (`verificar`, depois de 24 horas do pedido, e `confirmar`, pelo menos 1 hora depois), cada uma com busca completa e vazia na Asaas. O banco recusa qualquer etapa fora do prazo, fora de ordem ou com busca incompleta. Essas proteções reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência: confira o painel da Asaas antes de confirmar. O nome passado em `--operador` é registrado como informado; não há autenticação individual do suporte.
+
+Casos que só o suporte resolve, pela conferência no painel da Asaas:
+
+- tentativa `LEGADO` `INCONCLUSIVA` sem transferência (repasse `PROCESSANDO` do código antigo): `verificar` e `confirmar` buscam pela referência antiga, o id do pagamento; transferências antigas sem referência não aparecem na busca;
+- tentativa `LEGADO` `INCONCLUSIVA` com transferência registrada (repasse `FALHOU` antigo com id): `conferir` consulta a transferência pelo id e conclui ou encerra a tentativa;
+- alertas `POSSIVEL_DUPLICIDADE` e `RESPOSTA_TARDIA`: a transferência citada não é adotada; resolva no painel da Asaas;
+- multas quitadas em repasse que não terminou e ids que só estão em `repasse_asaas_id_anterior` (importados como tentativas `FALHOU`).
+
+Consulta de diagnóstico, só de leitura, para rodar antes e depois de aplicar a migration no banco compartilhado:
+
+```sql
+select 'falho com transferencia registrada' as caso, id, repasse_asaas_id from public.payments where repasse_status = 'FALHOU' and repasse_asaas_id is not null
+union all
+select 'processando sem transferencia', id, null from public.payments where repasse_status = 'PROCESSANDO' and repasse_asaas_id is null
+union all
+select 'transferencia anterior registrada', id, repasse_asaas_id_anterior from public.payments where repasse_asaas_id_anterior is not null
+union all
+select 'multa quitada sem repasse concluido', p.id, null from public.penalties pe join public.payments p on p.id = pe.payment_id where pe.quitada_em is not null and p.repasse_status is distinct from 'REPASSADO'
+union all
+select 'mesma transferencia em pagamentos diferentes', null, t.transferencia from (
+  select repasse_asaas_id as transferencia, id from public.payments where repasse_asaas_id is not null
+  union select repasse_asaas_id_anterior, id from public.payments where repasse_asaas_id_anterior is not null
+) t group by t.transferencia having count(distinct t.id) > 1;
+```
+
+O último caso interrompe a migration de propósito; resolva antes de aplicá-la.
 
 ## Cuidados
 
-- **Rotina financeira:** a API roda a rotina ao subir e a cada 5 minutos, contra o banco compartilhado. Em qualquer computador, ela pode concluir shows com mais de 7 dias, pedir repasses e tentar de novo os que falharam. Só uma transferência é criada por pagamento.
+- **Rotina financeira:** ainda não ativada em produção. Quando ativada, o GitHub Actions dispara `POST /api/admin/rotina-financeira` a cada 5 minutos e a trava no banco (`rotina_financeira_execucao`) garante uma execução por vez, em qualquer número de instâncias. Ela age sobre o banco compartilhado: conclui shows com mais de 7 dias, pede repasses, acompanha estornos e concilia tentativas. `ENABLE_FINANCIAL_ROUTINE` fica `false` na Render (o timer local é opcional e passa pela mesma trava). Só uma transferência é criada por pagamento.
+- **Ativar a rotina em produção:** (1) aplicar as migrations pendentes no Supabase, inclusive `20261116130000_trava_da_rotina_financeira`; (2) gerar um token aleatório de pelo menos 32 caracteres (por exemplo `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) e definir `FINANCIAL_ROUTINE_TOKEN` na Render; (3) publicar a API e conferir que `POST /api/admin/rotina-financeira` sem token responde `401`; (4) no GitHub, criar os secrets `MUVE_API_URL` (URL da API terminando em `/api`) e `FINANCIAL_ROUTINE_TOKEN`; (5) criar a variável de repositório `ROTINA_FINANCEIRA_ATIVA=true`, que libera o agendamento e o disparo manual (sem ela, nenhum dos dois chama a API); (6) rodar o workflow "Rotina financeira" à mão uma vez e conferir `select * from public.rotina_financeira_execucao;` (`ultimo_resultado = SUCESSO`). Para pausar, apague a variável ou mude para `false`.
+- **Limite de requisições:** pagamento, assinatura, estorno, mensagens, propostas, convites, inscrições, eventos, perfil, contestação, consulta da contratação e exclusão de conta têm limite por usuário (lista em `backend/src/http/app.ts`). Os contadores ficam na memória de cada API e zeram ao reiniciá-la; não valem entre notebooks diferentes. Se a demonstração esbarrar num limite, reinicie a API.
 - **Tela de pagamento:** abrir a tela de Pix de um candidato gera uma cobrança real no sandbox. Para só olhar o visual, use um evento de teste.
 - **Repositório público:** nunca coloque chaves em arquivos versionados. As contas de demonstração têm a senha no README, então não guarde nada real nelas.
 - **`pnpm test:db`:** as versões novas do Supabase CLI pedem confirmação para rodar SQL em projeto de produção e podem recusar a execução sem terminal interativo. Os testes foram feitos para não deixar dados, mas confira antes de autorizar.
 - **Eventos de outros integrantes:** o banco é compartilhado. Confira o dono antes de apagar qualquer coisa.
+- **Migrations novas:** `20261113120000_penalidade_no_estorno`, `20261113130000_reserva_de_multas` e `20261114120000_tentativas_de_repasse` foram testadas só no banco local (`npx supabase db reset --local`, `npx supabase test db` e `node scripts/test-db-concorrencia.mjs`). Aplicar no banco compartilhado depende de decisão do grupo.
+- **Teste E2E:** `pnpm test:e2e` roda só no Supabase local. O orquestrador (`scripts/e2e-local.mjs`) confere que a URL, o banco e as chaves são da instância local deste projeto (host da própria máquina, portas dos contêineres `supabase_*_muve`, chaves de demonstração assinadas pelo segredo local) antes de qualquer reset ou requisição; reseta o banco local antes e depois; sobe a API com `MUVE_IGNORAR_ARQUIVO_ENV=true`, sem Asaas, sem SMTP e sem rotina financeira, e nunca lê `backend/.env`. Se o Supabase local já estiver rodando, ele recusa, porque o reset apagaria os dados locais; para autorizar, use `pnpm test:e2e -- --reutilizar-instancia`. Os caminhos reais da Asaas (cobrança Pix, estorno e repasse no sandbox) não são cobertos pelo E2E e continuam sendo testados à mão.
 - **Dados de demonstração:** o evento "Noite acústica no terraço" foi marcado como repassado manualmente, porque a transferência original ficou na conta antiga da Asaas. O evento "Noite de MPB no Bar Teste" teve o repasse real concluído. "Sexta de MPB no Bar Teste" é em 14/11/2026; depois disso, crie outro evento para a demonstração.
 
 ## O que falta

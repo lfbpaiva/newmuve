@@ -36,7 +36,7 @@ export default function RecoverScreen() {
     }
   }
 
-  return <Screen>
+  return <Screen evitarTeclado>
     <AuthHeader titulo="Recupere seu acesso" subtitulo="Enviaremos um link de redefinição para o e-mail cadastrado. O link abre o app."/>
     {sent
       ? <Alert tone="success">Se este e-mail estiver cadastrado, você receberá as instruções em instantes.</Alert>

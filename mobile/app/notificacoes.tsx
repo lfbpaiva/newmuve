@@ -5,6 +5,7 @@ import { formatDateTime } from "../../shared/client/format.ts";
 import { fetchNotifications, markNotificationsRead, type AppNotification } from "../../shared/client/notifications.ts";
 import { useAsync } from "../../shared/client/useAsync.ts";
 import { EmptyState, ErrorState, Icon, Loading, Reveal, Screen, type IconName } from "../components/ui";
+import { destinoDaNotificacao } from "../lib/notificacaoLink";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
 
@@ -22,7 +23,7 @@ export default function NotificationsScreen() {
     <EmptyState title="Nada por aqui ainda" icon="notifications-outline"><Text style={[type.bodySmall, { textAlign: "center" }]}>Inscrições, mensagens, contratações e repasses aparecem aqui.</Text></EmptyState>
   </Screen>;
 
-  return <Screen onRefresh={notifications.reload}>
+  return <Screen onRefresh={notifications.reload} carregando={notifications.loading}>
     <View style={{ gap: space.sm }}>
       {notifications.data.map((notification, index) => <NotificationItem key={notification.id} notification={notification} index={index}/>)}
     </View>
@@ -40,12 +41,13 @@ function iconeDaNotificacao(link: string | null): IconName {
 function NotificationItem({ notification, index }: { notification: AppNotification; index: number }) {
   const router = useRouter();
   const { link } = notification;
+  const destino = destinoDaNotificacao(link);
   const nova = !notification.lida;
   return <Reveal index={index}><Pressable
-    accessibilityRole={link ? "button" : "text"}
+    accessibilityRole={destino ? "button" : "text"}
     accessibilityLabel={`${nova ? "Nova: " : ""}${notification.titulo}. ${notification.texto}`}
-    disabled={!link}
-    onPress={() => link && router.push(link as Href)}
+    disabled={!destino}
+    onPress={() => destino && router.push(destino as Href)}
     style={({ pressed }) => [styles.card, { flexDirection: "row", gap: space.md, backgroundColor: pressed ? colors.surface2 : nova ? "rgba(139,107,255,0.07)" : colors.surface, borderColor: nova ? "rgba(139,107,255,0.3)" : colors.hairline }]}
   >
     <View style={{ width: 38, height: 38, borderRadius: radius.md, backgroundColor: nova ? colors.accentSoft : colors.surface2, alignItems: "center", justifyContent: "center" }}>

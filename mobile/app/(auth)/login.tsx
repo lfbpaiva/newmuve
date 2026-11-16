@@ -56,7 +56,7 @@ export default function LoginScreen() {
     }
   }
 
-  return <Screen padded={false}>
+  return <Screen padded={false} evitarTeclado>
     <View style={{ width: "100%", maxWidth: 420, alignSelf: "center", paddingHorizontal: compact ? space.lg : space.xl, paddingBottom: space.xl }}>
       <AuthHeader grande titulo="A música nos" destaque="conecta." subtitulo="Encontre seu próximo show ou o talento certo para o seu evento."/>
     </View>

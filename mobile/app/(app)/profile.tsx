@@ -2,11 +2,10 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { fetchMyEvents } from "../../../shared/client/events.ts";
-import { formatEventDateTime } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts";
-import { EventStatusPill, ReviewsSection } from "../../components/events";
+import { EventPosterRow, EventStatusPill, ReviewsSection } from "../../components/events";
 import { Alert, Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Surface, Section, Tag, type IconName } from "../../components/ui";
 import { abrirLink } from "../../lib/links";
 import { TopBar } from "../../components/TopBar";
@@ -57,14 +56,12 @@ export default function ProfileScreen() {
 }
 
 function EventHistory({ contractorId }: { contractorId: string }) {
+  const router = useRouter();
   const events = useAsync(`history:${contractorId}`, () => fetchMyEvents(contractorId));
   useRefreshOnFocus(events.reload);
   return <Section title="Histórico de eventos">
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
     {events.data?.length === 0 && <Text style={type.bodySmall}>Nenhum evento criado até o momento.</Text>}
-    {events.data?.map((event) => <View key={event.id} style={styles.card}>
-      <View style={styles.between}><Text style={[type.titleSmall, { flex: 1 }]} numberOfLines={1}>{event.titulo}</Text><EventStatusPill status={event.status}/></View>
-      <Text style={type.bodySmall}>{formatEventDateTime(event.inicio, event.uf)} · {event.cidade}, {event.uf}</Text>
-    </View>)}
+    {events.data?.map((event) => <EventPosterRow key={event.id} event={event} status={<EventStatusPill status={event.status}/>} onPress={() => router.push(`/event/${event.id}`)}/>)}
   </Section>;
 }

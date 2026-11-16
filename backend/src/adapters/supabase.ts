@@ -95,11 +95,6 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       if (error) throw error;
     },
 
-    async reduceVisibility(musicianId, until) {
-      const { error } = await admin.from("musician_profiles").update({ visibilidade_reduzida_ate: until.toISOString() }).eq("user_id", musicianId);
-      if (error) throw error;
-    },
-
     async resetPaymentCustomer(userId) {
       const { error } = await admin.from("contractor_profiles").update({ asaas_customer_id: null }).eq("user_id", userId);
       if (error) throw error;

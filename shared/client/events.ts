@@ -122,7 +122,8 @@ export interface Hiring {
   musico: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
   pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null; multaDescontada: number } | null;
   avaliou: boolean;
-  contestacao: { motivo: string; abertaPorMim: boolean } | null;
+  contestacao: { motivo: string; abertaPorMim: boolean; status: "ABERTA" | "AGUARDANDO_ESTORNO" } | null;
+  contestacaoResolvida: { status: "RESOLVIDA"; decisao: "PAGAR_MUSICO" | "DEVOLVER_CONTRATANTE"; resolvidaEm: string | null } | null;
   podeContestar: boolean;
   naoComparecimento: { permitido: boolean };
   cancelamento: { permitido: boolean; reembolso: boolean };
@@ -366,7 +367,8 @@ export const confirmCompletion = (id: string) =>
 export const reviewEvent = (id: string, rating: number, comment: string) =>
   apiRequest(`/events/${id}/avaliacao`, { method: "POST", body: { rating, comment: comment.trim() || undefined } });
 
-export const fetchCheckoutStatus = (eventId: string) => apiRequest<Checkout | null>(`/events/${eventId}/checkout`);
+export const fetchCheckoutStatus = async (eventId: string): Promise<Checkout | null> =>
+  (await apiRequest<Checkout | undefined>(`/events/${eventId}/checkout`)) ?? null;
 
 const checkoutsInFlight = new Map<string, Promise<Checkout>>();
 
@@ -378,6 +380,23 @@ export function startCheckout(eventId: string, candidateId: string): Promise<Che
       checkoutsInFlight.delete(key),
     );
     checkoutsInFlight.set(key, request);
+  }
+  return request;
+}
+
+const checkoutAproveitavel = (atual: Checkout | null, candidateId: string): atual is Checkout =>
+  atual !== null && (atual.status === "PAGO" || (atual.status === "PENDENTE" && atual.candidateId === candidateId));
+
+const aberturasEmAndamento = new Map<string, Promise<Checkout>>();
+
+export function openCheckout(eventId: string, candidateId: string): Promise<Checkout> {
+  const key = `${eventId}:${candidateId}`;
+  let request = aberturasEmAndamento.get(key);
+  if (!request) {
+    request = fetchCheckoutStatus(eventId)
+      .then((atual) => (checkoutAproveitavel(atual, candidateId) ? atual : startCheckout(eventId, candidateId)))
+      .finally(() => aberturasEmAndamento.delete(key));
+    aberturasEmAndamento.set(key, request);
   }
   return request;
 }

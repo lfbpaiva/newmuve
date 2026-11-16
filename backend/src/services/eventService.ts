@@ -18,6 +18,9 @@ const podeContestar = (event: EventRecord, payment: { status: string; repasseSta
   && payment.refundStatus !== "PROCESSANDO";
 
 const musicoOcupado = () => new AppError(409, "MUSICO_OCUPADO", "O músico já tem um show contratado nesse horário.");
+const contestacaoPendente = () => new AppError(409, "CONTESTACAO_ABERTA", "Há uma contestação aberta; o suporte vai decidir o resultado do show.");
+const contestacaoIndisponivel = () =>
+  new AppError(409, "CONTESTACAO_INDISPONIVEL", "A contestação fica disponível depois do início do show e até o repasse do cachê.");
 
 const naoEncontrado = () => new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
 
@@ -173,6 +176,10 @@ export function createEventService(deps: {
     async apply(user: AuthUser, eventId: string, valorProposto: number | null = null, now = new Date()): Promise<void> {
       const musician = await requireRole(user, "MUSICIAN", "Apenas músicos podem se inscrever em eventos.");
       assertProfileComplete(musician, "candidatar");
+      if (musician.visibilidadeReduzidaAte && musician.visibilidadeReduzidaAte > now) {
+        const ate = formatDateTime(musician.visibilidadeReduzidaAte, musician.uf ?? undefined);
+        throw new AppError(403, "VISIBILIDADE_REDUZIDA", `Por causa de uma desistência em cima da hora ou de uma ausência, você não pode se inscrever em novos eventos até ${ate}.`);
+      }
       const event = await events.findEvent(eventId);
       if (!event) throw naoEncontrado();
       const convidado = await events.hasInvite(eventId, user.id);
@@ -196,10 +203,8 @@ export function createEventService(deps: {
     async openDispute(user: AuthUser, eventId: string, motivo: string, now = new Date()): Promise<void> {
       const { event, party } = await findEventAsParty(user, eventId);
       const payment = await payments.findPayment(eventId);
-      if (!podeContestar(event, payment, now)) {
-        throw new AppError(409, "CONTESTACAO_INDISPONIVEL", "A contestação fica disponível depois do início do show e até o repasse do cachê.");
-      }
-      await events.openDispute({ eventId, abertaPor: user.id, motivo });
+      if (!podeContestar(event, payment, now)) throw contestacaoIndisponivel();
+      if (!(await events.openDispute({ eventId, abertaPor: user.id, motivo }))) throw contestacaoIndisponivel();
       void notifier.disputeOpened(event, party, motivo);
     },
 
@@ -207,14 +212,22 @@ export function createEventService(deps: {
       const dispute = await events.findDispute(disputeId);
       const event = dispute && (await events.findEvent(dispute.eventId));
       if (!dispute || !event) throw new AppError(404, "CONTESTACAO_NAO_ENCONTRADA", "Contestação não encontrada.");
-      if (!(await events.resolveDispute(disputeId, decisao, observacao))) {
-        throw new AppError(409, "CONTESTACAO_RESOLVIDA", "Esta contestação já foi resolvida.");
-      }
+      const resultado = await events.decideDispute(disputeId, decisao, observacao);
+      if (resultado === "NAO_ENCONTRADA") throw new AppError(404, "CONTESTACAO_NAO_ENCONTRADA", "Contestação não encontrada.");
+      if (resultado === "JA_DECIDIDA") throw new AppError(409, "CONTESTACAO_RESOLVIDA", "Esta contestação já foi decidida.");
       if (decisao === "PAGAR_MUSICO") {
         if (event.status === "CONTRATADO") await events.concludeEvent(event.id);
         await payments.payout(event.id);
       } else {
-        await payments.refundHiring(event.id, "NAO_COMPARECIMENTO");
+        try {
+          await payments.refundHiring(event.id, "NAO_COMPARECIMENTO", disputeId);
+        } catch (error) {
+          await events.reopenDisputeWithoutRefund(disputeId).catch((falha: unknown) => console.error("Falha ao devolver a contestação para análise", disputeId, falha));
+          throw error;
+        }
+        if ((await events.findDispute(disputeId))?.status === "ABERTA") {
+          throw new AppError(409, "ESTORNO_RECUSADO", "A Asaas recusou o estorno, e a contestação voltou para análise.");
+        }
       }
       void notifier.disputeResolved(event, decisao, observacao);
     },
@@ -366,6 +379,7 @@ export function createEventService(deps: {
         payments.findPayment(eventId),
         events.hasReviewed(eventId, user.id),
       ]);
+      const contestacaoResolvida = payment ? await events.findLatestResolvedDispute(eventId, payment.id) : null;
       const antesDoInicio = event.inicio > now;
 
       return {
@@ -398,7 +412,8 @@ export function createEventService(deps: {
           multaDescontada: payment.multaDescontada,
         },
         avaliou,
-        contestacao: contestacao && { motivo: contestacao.motivo, abertaPorMim: contestacao.abertaPor === user.id },
+        contestacao: contestacao && { motivo: contestacao.motivo, abertaPorMim: contestacao.abertaPor === user.id, status: contestacao.status },
+        contestacaoResolvida: contestacaoResolvida && { status: "RESOLVIDA" as const, decisao: contestacaoResolvida.decisao, resolvidaEm: contestacaoResolvida.resolvidaEm?.toISOString() ?? null },
         podeContestar: !contestacao && podeContestar(event, payment, now),
         naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && !prazoEncerrado(event, now) && !contestacao && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
@@ -448,6 +463,7 @@ export function createEventService(deps: {
       if (prazoEncerrado(event, now)) {
         throw new AppError(409, "PRAZO_ENCERRADO", "O prazo de 7 dias para registrar o não comparecimento terminou.");
       }
+      if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
       const status = await payments.refundHiring(eventId, "NAO_COMPARECIMENTO");
       return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
     },
@@ -460,9 +476,7 @@ export function createEventService(deps: {
       if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO") {
         throw new AppError(409, "ESTORNO_PENDENTE", "A confirmação do show fica suspensa até a resolução do estorno.");
       }
-      if (await events.findOpenDispute(eventId)) {
-        throw new AppError(409, "CONTESTACAO_ABERTA", "Há uma contestação aberta; o suporte vai decidir o resultado do show.");
-      }
+      if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
 
       const updated = await events.setConfirmation(eventId, party);
       if (updated.status === "CONCLUIDO") await payments.payout(eventId);

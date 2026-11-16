@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, CandidateStatus, DisputeRecord, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus } from "../domain/event.ts";
+import type { CandidateRecord, CandidateStatus, DecisaoContestacao, DisputeRecord, EventInput, EventRecord, EventStatus, MessageRecord, MotivoRecusa, PayoutAttempt, PendingDisputeRecord, StatusProposta, PaymentRecord, PaymentStatus, PayoutStatus, RefundAction, RefundStatus, TipoPenalidade } from "../domain/event.ts";
 import type { Inbox } from "../services/notifications.ts";
-import type { ConfirmPaymentResult, EventStore, PaymentStore } from "../services/ports.ts";
+import type { ConfirmPaymentResult, EventStore, EvidenciaDeAusencia, PaymentStore, TravaDaRotina } from "../services/ports.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UNIQUE_VIOLATION = "23505";
@@ -107,7 +107,7 @@ interface DisputeRow {
   event_id: string;
   aberta_por: string | null;
   motivo: string;
-  status: "ABERTA" | "RESOLVIDA";
+  status: DisputeRecord["status"];
   decisao: DisputeRecord["decisao"];
   observacao: string | null;
   created_at: string;
@@ -134,6 +134,30 @@ const toMessage = (row: MessageRow): MessageRecord => ({
   statusProposta: row.status_proposta,
   createdAt: new Date(row.created_at),
 });
+
+type AttemptRow = {
+  id: string;
+  payment_id: string;
+  origem: PayoutAttempt["origem"];
+  estado: PayoutAttempt["estado"];
+  referencia_externa: string;
+  asaas_transfer_id: string | null;
+  solicitada_em: string;
+  verificacao_iniciada_em: string | null;
+};
+
+const toAttempt = (row: AttemptRow): PayoutAttempt => ({
+  id: row.id,
+  paymentId: row.payment_id,
+  origem: row.origem,
+  estado: row.estado,
+  referenciaExterna: row.referencia_externa,
+  asaasTransferId: row.asaas_transfer_id,
+  solicitadaEm: new Date(row.solicitada_em),
+  verificacaoIniciadaEm: row.verificacao_iniciada_em ? new Date(row.verificacao_iniciada_em) : null,
+});
+
+const TENTATIVA_ABERTA = ["SOLICITANDO", "PENDENTE", "INCONCLUSIVA", "EM_VERIFICACAO"];
 
 const toPayment = (row: PaymentRow): PaymentRecord => ({
   id: row.id,
@@ -282,19 +306,35 @@ export function createEventStore(admin: SupabaseClient): EventStore {
 
     async openDispute(dispute) {
       const { data, error } = await admin
-        .from("disputes")
-        .insert({ event_id: dispute.eventId, aberta_por: dispute.abertaPor, motivo: dispute.motivo })
-        .select()
-        .single();
-      if (error?.code === UNIQUE_VIOLATION) throw new AppError(409, "CONTESTACAO_EXISTENTE", "Já existe uma contestação aberta para este evento.");
+        .rpc("abrir_contestacao", { p_event_id: dispute.eventId, p_aberta_por: dispute.abertaPor, p_motivo: dispute.motivo })
+        .single<{ resultado: "ABERTA" | "REPASSE_INICIADO" | "ESTORNO_EM_ANDAMENTO" | "CONTESTACAO_EXISTENTE"; contestacao_id: string | null }>();
       if (error) throw error;
-      return toDispute(data);
+      if (data.resultado === "CONTESTACAO_EXISTENTE") throw new AppError(409, "CONTESTACAO_EXISTENTE", "Já existe uma contestação aberta para este evento.");
+      if (data.resultado === "REPASSE_INICIADO" || !data.contestacao_id) return null;
+      const aberta = await admin.from("disputes").select("*").eq("id", data.contestacao_id).single<DisputeRow>();
+      if (aberta.error) throw aberta.error;
+      return toDispute(aberta.data);
     },
 
     async findOpenDispute(eventId) {
-      const { data, error } = await admin.from("disputes").select("*").eq("event_id", eventId).eq("status", "ABERTA").maybeSingle();
+      const { data, error } = await admin.from("disputes").select("*").eq("event_id", eventId).in("status", ["ABERTA", "AGUARDANDO_ESTORNO"]).maybeSingle<DisputeRow>();
       if (error) throw error;
-      return data && toDispute(data);
+      return data && (toDispute(data) as PendingDisputeRecord);
+    },
+
+    async findLatestResolvedDispute(eventId, paymentId) {
+      const { data, error } = await admin
+        .from("disputes")
+        .select("decisao, resolvida_em")
+        .eq("event_id", eventId)
+        .eq("payment_id", paymentId)
+        .eq("status", "RESOLVIDA")
+        .order("resolvida_em", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ decisao: DecisaoContestacao; resolvida_em: string | null }>();
+      if (error) throw error;
+      return data && { decisao: data.decisao, resolvidaEm: data.resolvida_em ? new Date(data.resolvida_em) : null };
     },
 
     async findDispute(id) {
@@ -303,15 +343,17 @@ export function createEventStore(admin: SupabaseClient): EventStore {
       return data && toDispute(data);
     },
 
-    async resolveDispute(id, decisao, observacao) {
-      const { data, error } = await admin
-        .from("disputes")
-        .update({ status: "RESOLVIDA", decisao, observacao, resolvida_em: new Date().toISOString() })
-        .eq("id", id)
-        .eq("status", "ABERTA")
-        .select("id");
+    async decideDispute(id, decisao, observacao) {
+      if (!UUID.test(id)) return "NAO_ENCONTRADA";
+      const { data, error } = await admin.rpc("decidir_contestacao", { p_dispute_id: id, p_decisao: decisao, p_observacao: observacao });
       if (error) throw error;
-      return data.length > 0;
+      return data as Awaited<ReturnType<EventStore["decideDispute"]>>;
+    },
+
+    async reopenDisputeWithoutRefund(id) {
+      const { data, error } = await admin.rpc("reabrir_contestacao_sem_estorno", { p_dispute_id: id });
+      if (error) throw error;
+      return data === true;
     },
 
     async hasAppliedToContractor(musicianId, contractorId) {
@@ -419,6 +461,37 @@ export function createEventStore(admin: SupabaseClient): EventStore {
   };
 }
 
+const evidenciaParams = (evidencia: EvidenciaDeAusencia) => ({
+  p_operador: evidencia.operador,
+  p_referencia: evidencia.referencia,
+  p_busca_desde: evidencia.desde,
+  p_busca_iniciada_em: evidencia.iniciadaEm.toISOString(),
+  p_busca_completa: evidencia.completa,
+  p_paginas: evidencia.paginas,
+  p_listadas: evidencia.listadas,
+  p_encontradas: evidencia.encontradas,
+});
+
+export function createTravaDaRotina(admin: SupabaseClient): TravaDaRotina {
+  return {
+    async adquirir(dono, validadeSegundos) {
+      const { data, error } = await admin.rpc("adquirir_rotina_financeira", { p_dono: dono, p_validade_segundos: validadeSegundos });
+      if (error) throw error;
+      return data === null ? null : Number(data);
+    },
+    async renovar(dono, geracao, validadeSegundos) {
+      const { data, error } = await admin.rpc("renovar_rotina_financeira", { p_dono: dono, p_geracao: geracao, p_validade_segundos: validadeSegundos });
+      if (error) throw error;
+      return data === true;
+    },
+    async encerrar(dono, geracao, resultado, erro) {
+      const { data, error } = await admin.rpc("encerrar_rotina_financeira", { p_dono: dono, p_geracao: geracao, p_resultado: resultado, p_erro: erro });
+      if (error) throw error;
+      return data === true;
+    },
+  };
+}
+
 export function createPaymentStore(admin: SupabaseClient): PaymentStore {
   async function findOne(column: string, value: string): Promise<PaymentRecord | null> {
     const { data, error } = await admin.from("payments").select("*").eq(column, value).maybeSingle();
@@ -427,26 +500,15 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
   }
 
   return {
-    async addPenalty(penalty) {
-      const { error } = await admin.from("penalties").insert({ musician_id: penalty.musicianId, event_id: penalty.eventId, tipo: penalty.tipo, multa: penalty.multa });
+    async findRefundPenalty(paymentId) {
+      const { data, error } = await admin
+        .from("penalties")
+        .select("musician_id, tipo, multa, musician:musician_profiles!inner(visibilidade_reduzida_ate)")
+        .eq("estorno_payment_id", paymentId)
+        .maybeSingle<{ musician_id: string; tipo: TipoPenalidade; multa: number | string; musician: { visibilidade_reduzida_ate: string | null } }>();
       if (error) throw error;
-    },
-
-    async openFines(musicianId) {
-      const { data, error } = await admin.from("penalties").select("*").eq("musician_id", musicianId).is("quitada_em", null).gt("multa", 0).order("created_at");
-      if (error) throw error;
-      return data.map((row) => ({ id: row.id, musicianId: row.musician_id, eventId: row.event_id, tipo: row.tipo, multa: Number(row.multa) }));
-    },
-
-    async settleFines(ids, paymentId) {
-      if (ids.length === 0) return;
-      const { error } = await admin.from("penalties").update({ quitada_em: new Date().toISOString(), payment_id: paymentId }).in("id", ids).is("quitada_em", null);
-      if (error) throw error;
-    },
-
-    async setPayoutDiscount(paymentId, valor) {
-      const { error } = await admin.from("payments").update({ multa_descontada: valor }).eq("id", paymentId);
-      if (error) throw error;
+      if (!data?.musician.visibilidade_reduzida_ate) return null;
+      return { musicianId: data.musician_id, tipo: data.tipo, multa: Number(data.multa), visibilidadeReduzidaAte: new Date(data.musician.visibilidade_reduzida_ate) };
     },
 
     async findPendingPayment(eventId) {
@@ -468,7 +530,6 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     },
 
     findPaymentByAsaasId: (asaasPaymentId) => findOne("asaas_payment_id", asaasPaymentId),
-    findPaymentByTransferId: (asaasTransferId) => findOne("repasse_asaas_id", asaasTransferId),
 
     async findPaymentById(id) {
       if (!UUID.test(id)) return null;
@@ -533,24 +594,22 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       if (error) throw error;
     },
 
-    async claimRefund(id, action) {
-      const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action });
+    async claimRefund(id, action, contestacaoId = null) {
+      const { data, error } = await admin.rpc("claim_asaas_refund", { p_payment_id: id, p_refund_action: action, p_contestacao_id: contestacaoId });
       if (error) throw error;
       return data === true;
     },
 
-    async setRefundStatus(id, status) {
-      const { error } = await admin.from("payments").update({ refund_status: status }).eq("id", id).eq("refund_status", "PROCESSANDO");
+    async denyRefund(id) {
+      const { data, error } = await admin.rpc("negar_estorno", { p_payment_id: id });
       if (error) throw error;
+      return (data as string | null) ?? null;
     },
 
     async releaseRefund(id, previous) {
-      const { error } = await admin
-        .from("payments")
-        .update({ refund_status: previous.refundStatus, refund_action: previous.refundAction })
-        .eq("id", id)
-        .eq("refund_status", "PROCESSANDO");
+      const { data, error } = await admin.rpc("liberar_estorno", { p_payment_id: id, p_refund_status: previous.refundStatus, p_refund_action: previous.refundAction });
       if (error) throw error;
+      return (data as string | null) ?? null;
     },
 
     async finalizeRefund(id) {
@@ -566,28 +625,99 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
     },
 
     async claimPayout(id) {
-      const { data, error } = await admin
-        .from("payments")
-        .update({ repasse_status: "PROCESSANDO", repasse_asaas_id: null })
-        .eq("id", id)
-        .eq("status", "PAGO")
-        .or("refund_status.is.null,refund_status.neq.PROCESSANDO")
-        .in("repasse_status", ["RETIDO", "FALHOU"])
-        .select("id");
+      const { data, error } = await admin.rpc("claim_payout", { p_payment_id: id }).single<{ tentativa_id: string | null; desconto: number | string }>();
       if (error) throw error;
-      return data.length === 1;
+      return { tentativaId: data.tentativa_id, desconto: Number(data.desconto) };
     },
 
-    async setPayout(id, payout) {
-      const { error } = await admin
-        .from("payments")
-        .update({
-          repasse_status: payout.status,
-          ...(payout.asaasTransferId ? { repasse_asaas_id: payout.asaasTransferId } : {}),
-          ...(payout.status === "REPASSADO" ? { repassado_em: new Date().toISOString() } : {}),
-        })
-        .eq("id", id);
+    async findOpenAttempt(paymentId) {
+      const { data, error } = await admin.from("repasse_tentativas").select("*").eq("payment_id", paymentId).in("estado", TENTATIVA_ABERTA).maybeSingle<AttemptRow>();
       if (error) throw error;
+      return data && toAttempt(data);
+    },
+
+    async findOpenAttempts() {
+      const { data, error } = await admin.from("repasse_tentativas").select("*").in("estado", TENTATIVA_ABERTA).order("solicitada_em");
+      if (error) throw error;
+      return (data as AttemptRow[]).map(toAttempt);
+    },
+
+    async findAttempt(id) {
+      if (!UUID.test(id)) return null;
+      const { data, error } = await admin.from("repasse_tentativas").select("*").eq("id", id).maybeSingle<AttemptRow>();
+      if (error) throw error;
+      return data && toAttempt(data);
+    },
+
+    async findAttemptByTransferId(asaasTransferId) {
+      const { data, error } = await admin.from("repasse_tentativas").select("*").eq("asaas_transfer_id", asaasTransferId).maybeSingle<AttemptRow>();
+      if (error) throw error;
+      return data && toAttempt(data);
+    },
+
+    async registerTransfer(attemptId, asaasTransferId) {
+      const { data, error } = await admin.rpc("registrar_transferencia", { p_tentativa_id: attemptId, p_transfer_id: asaasTransferId });
+      if (error) throw error;
+      return data as Awaited<ReturnType<PaymentStore["registerTransfer"]>>;
+    },
+
+    async markAttemptInconclusive(attemptId) {
+      const { data, error } = await admin.rpc("marcar_tentativa_inconclusiva", { p_tentativa_id: attemptId });
+      if (error) throw error;
+      return data === true;
+    },
+
+    async registerRequestSent(attemptId) {
+      const { data, error } = await admin.rpc("registrar_pedido_enviado", { p_tentativa_id: attemptId });
+      if (error) throw error;
+      return data === true;
+    },
+
+    async markStaleAttempt(attemptId) {
+      const { data, error } = await admin.rpc("marcar_tentativa_parada", { p_tentativa_id: attemptId });
+      if (error) throw error;
+      return data as Awaited<ReturnType<PaymentStore["markStaleAttempt"]>>;
+    },
+
+    async markStaleAttempts() {
+      const { data, error } = await admin.rpc("marcar_solicitacoes_paradas");
+      if (error) throw error;
+      return Number(data);
+    },
+
+    async completeAttempt(attemptId, asaasTransferId) {
+      const { data, error } = await admin.rpc("concluir_tentativa", { p_tentativa_id: attemptId, p_transfer_id: asaasTransferId });
+      if (error) throw error;
+      return data as Awaited<ReturnType<PaymentStore["completeAttempt"]>>;
+    },
+
+    async failAttempt(attemptId, asaasTransferId) {
+      const { data, error } = await admin.rpc("falhar_tentativa", { p_tentativa_id: attemptId, p_transfer_id: asaasTransferId });
+      if (error) throw error;
+      return data === true;
+    },
+
+    async recordAttemptAlert(attemptId, tipo, asaasTransferId, status) {
+      const { error } = await admin.rpc("registrar_alerta_repasse", { p_tentativa_id: attemptId, p_tipo: tipo, p_transfer_id: asaasTransferId, p_status: status });
+      if (error) throw error;
+    },
+
+    async absenceDeclaration() {
+      const { data, error } = await admin.rpc("declaracao_ausencia_repasse");
+      if (error) throw error;
+      return String(data);
+    },
+
+    async startAbsenceCheck(attemptId, evidencia) {
+      const { data, error } = await admin.rpc("iniciar_verificacao_ausencia", { p_tentativa_id: attemptId, ...evidenciaParams(evidencia) });
+      if (error) throw error;
+      return String(data);
+    },
+
+    async confirmAbsence(attemptId, evidencia, declaracao) {
+      const { data, error } = await admin.rpc("confirmar_ausencia", { p_tentativa_id: attemptId, p_declaracao: declaracao, ...evidenciaParams(evidencia) });
+      if (error) throw error;
+      return String(data);
     },
 
     async getAsaasCustomerId(contractorId) {

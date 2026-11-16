@@ -4,8 +4,10 @@ import { useRouter, type Href } from "expo-router";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { registerDevice, unregisterDevice } from "../../shared/client/account.ts";
+import { chaveDaAbertura, criarRegistroDeAberturas, destinoDaNotificacao } from "./notificacaoLink";
 
 let registeredToken: string | null = null;
+const primeiraAbertura = criarRegistroDeAberturas();
 
 async function loadNotifications() {
   if (Platform.OS === "web" || !Device.isDevice) return null;
@@ -60,15 +62,26 @@ export function usePushNotifications(signedIn: boolean) {
   }, [signedIn]);
 
   useEffect(() => {
+    if (!signedIn) return;
+    let active = true;
     let remove: (() => void) | null = null;
-    void loadNotifications().then((Notifications) => {
-      if (!Notifications) return;
-      const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        const link = response.notification.request.content.data?.link;
-        if (typeof link === "string" && link.startsWith("/")) router.push(link as Href);
-      });
+    void loadNotifications().then(async (Notifications) => {
+      if (!Notifications || !active) return;
+      const abrir = (response: Awaited<ReturnType<typeof Notifications.getLastNotificationResponseAsync>>) => {
+        if (!active || !response || !primeiraAbertura(chaveDaAbertura(response))) return;
+        const destino = destinoDaNotificacao(response.notification.request.content.data?.link);
+        if (destino) router.push(destino as Href);
+      };
+      const subscription = Notifications.addNotificationResponseReceivedListener(abrir);
       remove = () => subscription.remove();
+      const ultima = await Notifications.getLastNotificationResponseAsync().catch(() => null);
+      if (!ultima || !active) return;
+      abrir(ultima);
+      await Notifications.clearLastNotificationResponseAsync().catch(() => {});
     });
-    return () => remove?.();
-  }, [router]);
+    return () => {
+      active = false;
+      remove?.();
+    };
+  }, [signedIn, router]);
 }
