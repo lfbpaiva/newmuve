@@ -169,7 +169,7 @@ function Dashboard() {
         <View style={[styles.row, { alignItems: "stretch" }]}>
           {indicadores.map(({ valor, rotulo, icone }, index) => <View key={rotulo} style={{ flex: 1, gap: space.sm, paddingLeft: index ? space.md : 0, borderLeftWidth: index ? 1 : 0, borderLeftColor: colors.hairline }}>
             <Icon name={icone} size={16} color={colors.accentText}/>
-            {events.data ? <NumeroAnimado valor={valor} style={[type.stat, { fontSize: 34, lineHeight: 38 }]}/> : <Skeleton width={36} height={34}/>}
+            {events.data ? <NumeroAnimado valor={valor} style={[type.stat, { fontSize: 34, lineHeight: 38 }]}/> : events.error ? <Text style={[type.stat, { fontSize: 34, lineHeight: 38, color: colors.ink3 }]} accessibilityLabel="Indisponível">—</Text> : <Skeleton width={36} height={34}/>}
             <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{rotulo}</Text>
           </View>)}
         </View>

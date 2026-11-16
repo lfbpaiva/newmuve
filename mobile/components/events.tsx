@@ -178,6 +178,7 @@ export function ReviewsSection({ userId, empty }: { userId: string; empty: strin
     {reviews.data?.length === 0 && <Text style={type.bodySmall}>{empty}</Text>}
     {reviews.data?.map((review) => <View key={review.id} style={styles.card}>
       <View style={styles.between}><Stars rating={review.rating}/><Text style={type.bodySmall}>{new Date(review.createdAt).toLocaleDateString("pt-BR")}</Text></View>
+      <Text style={type.bodySmall} numberOfLines={2}>{[review.autor ?? "Usuário do Muve", review.evento].filter(Boolean).join(" · ")}</Text>
       {review.comment ? <Text style={type.body}>{review.comment}</Text> : null}
     </View>)}
   </Section>;

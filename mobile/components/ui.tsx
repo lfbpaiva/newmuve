@@ -165,7 +165,7 @@ export function TituloCompacto({ titulo }: { titulo: string }) {
 
 const ATUALIZACAO_LIMITE_MS = 15_000;
 
-function EvitaTeclado({ children }: { children: ReactNode }) {
+export function EvitaTeclado({ children }: { children: ReactNode }) {
   const caixa = useRef<ViewInstance>(null);
   const [deslocamento, setDeslocamento] = useState(0);
   if (Platform.OS === "web") return children;

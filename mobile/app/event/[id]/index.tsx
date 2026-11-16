@@ -74,8 +74,9 @@ function Opportunity({ eventId }: { eventId: string }) {
   const cancellable = hasCancellationNotice(new Date(event.inicio), new Date());
   const faltando = camposFaltantes(me, "candidatar");
   const conversar = application ? () => router.push(`/conversa/${application.id}`) : null;
+  const aguardandoResposta = application?.status === "PENDENTE" && event.status === "ABERTO" && new Date(event.inicio) > new Date();
 
-  return <Screen onRefresh={details.reload} carregando={details.loading} cabecalho={<EventStickyHeader titulo={event.titulo} valor={event.cache}/>}>
+  return <Screen onRefresh={details.reload} carregando={details.loading} evitarTeclado cabecalho={<EventStickyHeader titulo={event.titulo} valor={event.cache}/>}>
     <EventHero event={event}/>
     <Reveal index={1}><CachePoster rotulo="Cachê oferecido" valor={event.cache}>
       <Text style={type.bodySmall}>Pago a você após o show, sem taxa de candidatura.</Text>
@@ -99,17 +100,17 @@ function Opportunity({ eventId }: { eventId: string }) {
           : <ProposalForm cacheOferecido={event.cache} valorAtual={null} submitLabel="Inscrever-se" icon="paper-plane-outline" busy={busy} onSubmit={(valor) => run(() => applyToEvent(event.id, valor))}/>
         : <Alert tone="info">As inscrições para este evento estão encerradas.</Alert>)}
       {!hired && application && <>
-        <Alert tone={application.status === "RECUSADO" ? "info" : "success"}>{application.status === "RECUSADO" ? "Sua inscrição não foi selecionada para este evento." : "Inscrição enviada. Você recebe uma notificação quando o contratante responder."}</Alert>
+        <Alert tone={aguardandoResposta ? "success" : "info"}>{application.status === "RECUSADO" ? "Sua inscrição não foi selecionada para este evento." : aguardandoResposta ? "Inscrição enviada. Você recebe uma notificação quando o contratante responder." : "Este evento não recebe mais respostas: ele já começou ou foi encerrado sem a sua contratação."}</Alert>
         {application.status === "PENDENTE" && <>
           <View style={[styles.card, { gap: space.xs }]}>
             <Text style={type.bodySmall}>{application.valorProposto === null ? "Você aceitou o cachê oferecido" : "Sua proposta"}</Text>
             <Text style={type.titleSmall}>{formatCurrency(application.valorProposto ?? event.cache)}</Text>
           </View>
-          {editingProposal
+          {aguardandoResposta && (editingProposal
             ? <ProposalForm cacheOferecido={event.cache} valorAtual={application.valorProposto} submitLabel="Salvar valor" icon="checkmark" busy={busy} onSubmit={(valor) => run(async () => { await updateProposal(event.id, valor); setEditingProposal(false); })}/>
-            : <Button variant="text" title="Alterar valor" onPress={() => setEditingProposal(true)}/>}
+            : <Button variant="text" title="Alterar valor" onPress={() => setEditingProposal(true)}/>)}
           {conversar && <Button title="Conversar com o contratante" variant="outlined" icon="chatbubbles-outline" onPress={conversar}/>}
-          <Button variant="outlined" title={cancellable ? "Cancelar inscrição" : "Cancelamento indisponível (menos de 24h)"} disabled={!cancellable} loading={busy} onPress={() => run(() => cancelApplication(event.id))}/>
+          {aguardandoResposta && <Button variant="outlined" title={cancellable ? "Cancelar inscrição" : "Cancelamento indisponível (menos de 24h)"} disabled={!cancellable} loading={busy} onPress={() => run(() => cancelApplication(event.id))}/>}
         </>}
       </>}
       {error ? <Alert tone="error">{error}</Alert> : null}

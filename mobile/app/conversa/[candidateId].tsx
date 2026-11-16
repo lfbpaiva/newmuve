@@ -1,13 +1,13 @@
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View, type ScrollViewInstance } from "react-native";
+import { AppState, Pressable, ScrollView, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { answerProposal, fetchConversation, fetchMessages, proposeValue, sendMessage, subscribeToMessages, type Message } from "../../../shared/client/conversation.ts";
 import { formatCurrency, parseValor } from "../../../shared/client/format.ts";
 import { isValidCache } from "../../../shared/dominio.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
-import { Alert, Avatar, Button, ErrorState, Icon, Loading, Pill, Reveal, Screen, Tag } from "../../components/ui";
+import { Alert, Avatar, Button, ErrorState, EvitaTeclado, Icon, Loading, Pill, Reveal, Screen, Tag } from "../../components/ui";
 import { colors, radius, space, styles, type } from "../../lib/theme";
 import { denunciar } from "../../lib/suporte";
 import { useMe } from "../../lib/useMe";
@@ -153,7 +153,7 @@ export default function ConversationScreen() {
   const negotiable = status === "PENDENTE" && event.status === "ABERTO";
 
   return <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
+    <EvitaTeclado>
       <View style={{ paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.md, borderBottomWidth: 1, borderBottomColor: colors.hairline, backgroundColor: colors.surface }}>
         <View style={[styles.row, { gap: 12 }]}>
           <View style={{ borderRadius: radius.pill, padding: 2, borderWidth: 1, borderColor: colors.hairline }}><Avatar uri={other.fotoPerfilUrl} name={other.nome} size={40}/></View>
@@ -223,7 +223,7 @@ export default function ConversationScreen() {
           </View>
         </View>
         : <View style={{ padding: space.lg }}><Alert tone="info">Esta conversa está encerrada.</Alert></View>}
-    </KeyboardAvoidingView>
+    </EvitaTeclado>
   </SafeAreaView>;
 }
 

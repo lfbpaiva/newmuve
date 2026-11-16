@@ -85,6 +85,8 @@ export interface Review {
   rating: number;
   comment: string | null;
   createdAt: string;
+  autor: string | null;
+  evento: string | null;
 }
 
 export interface Checkout {
@@ -317,13 +319,42 @@ export async function fetchCandidateProfile(eventId: string, candidateId: string
   return data?.musician ? toCandidate(data) : null;
 }
 
+interface ReviewRow {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  author_id: string | null;
+  event: { titulo: string } | null;
+}
+
+async function nomesDosAutores(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const [musicos, contratantes] = await Promise.all([
+    supabase().from("musician_profiles").select("user_id, nome_completo").in("user_id", ids),
+    supabase().from("contractor_profiles").select("user_id, nome_fantasia").in("user_id", ids),
+  ]);
+  const nomes = new Map<string, string>();
+  for (const row of unwrap<{ user_id: string; nome_completo: string }[]>(musicos)) nomes.set(row.user_id, row.nome_completo);
+  for (const row of unwrap<{ user_id: string; nome_fantasia: string }[]>(contratantes)) nomes.set(row.user_id, row.nome_fantasia);
+  return nomes;
+}
+
 export async function fetchReviewsOf(userId: string): Promise<Review[]> {
-  const result = await supabase().from("reviews").select("id, rating, comment, created_at").eq("reviewed_id", userId).order("created_at", { ascending: false });
-  return unwrap<{ id: string; rating: number; comment: string | null; created_at: string }[]>(result).map((row) => ({
+  const result = await supabase()
+    .from("reviews")
+    .select("id, rating, comment, created_at, author_id, event:events(titulo)")
+    .eq("reviewed_id", userId)
+    .order("created_at", { ascending: false });
+  const rows = unwrap<ReviewRow[]>(result);
+  const nomes = await nomesDosAutores([...new Set(rows.flatMap((row) => (row.author_id ? [row.author_id] : [])))]);
+  return rows.map((row) => ({
     id: row.id,
     rating: row.rating,
     comment: row.comment,
     createdAt: row.created_at,
+    autor: row.author_id ? nomes.get(row.author_id) ?? null : null,
+    evento: row.event?.titulo ?? null,
   }));
 }
 
