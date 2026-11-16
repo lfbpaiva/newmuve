@@ -71,3 +71,95 @@ describe("apiRequest", () => {
     await result;
   });
 });
+
+describe("envio de formulários com arquivos", () => {
+  class XhrFalso {
+    static ultimo: XhrFalso | undefined;
+    metodo = "";
+    url = "";
+    cabecalhos: Record<string, string> = {};
+    corpo: unknown = null;
+    status = 0;
+    responseText = "";
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    constructor() {
+      XhrFalso.ultimo = this;
+    }
+    open(metodo: string, url: string) {
+      this.metodo = metodo;
+      this.url = url;
+    }
+    setRequestHeader(nome: string, valor: string) {
+      this.cabecalhos[nome] = valor;
+    }
+    getResponseHeader() {
+      return null;
+    }
+    send(corpo: unknown) {
+      this.corpo = corpo;
+    }
+    abort() {
+      this.onabort?.();
+    }
+    responder(status: number, texto: string) {
+      this.status = status;
+      this.responseText = texto;
+      this.onload?.();
+    }
+  }
+
+  const criado = async () => {
+    await vi.waitFor(() => {
+      if (!XhrFalso.ultimo) throw new Error("XMLHttpRequest ainda não criado");
+    });
+    return XhrFalso.ultimo!;
+  };
+
+  afterEach(() => {
+    XhrFalso.ultimo = undefined;
+  });
+
+  it("envia FormData por XMLHttpRequest, sem passar pelo fetch, e lê a resposta", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const form = new FormData();
+    form.append("dados", "{}");
+
+    const pedido = apiRequest<{ id: string }>("/events", { method: "POST", body: form });
+    (await criado()).responder(201, JSON.stringify({ id: "e1" }));
+
+    await expect(pedido).resolves.toEqual({ id: "e1" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await criado()).toMatchObject({ metodo: "POST", url: "/api/events", corpo: form });
+    expect((await criado()).cabecalhos["Content-Type"]).toBeUndefined();
+  });
+
+  it("preserva o erro HTTP devolvido pela API no envio do formulário", async () => {
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const pedido = apiRequest("/events", { method: "POST", body: new FormData() });
+    (await criado()).responder(422, JSON.stringify({ error: { code: "DADOS_INVALIDOS", message: "Imagem inválida." } }));
+
+    await expect(pedido).rejects.toMatchObject({ status: 422, code: "DADOS_INVALIDOS", message: "Imagem inválida." });
+  });
+
+  it("falha de rede no envio do formulário vira erro de conexão", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const pedido = apiRequest("/events", { method: "POST", body: new FormData() });
+    (await criado()).onerror?.();
+
+    await expect(pedido).rejects.toMatchObject({ status: 0, code: "SEM_CONEXAO" });
+  });
+
+  it("requisição JSON continua usando o fetch", async () => {
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest("/me", { method: "POST", body: { a: 1 } })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
