@@ -99,6 +99,14 @@ Registro vivo da execução que finaliza o PR #6 (`integracao/redesign-lote1` �
 - Testes: typecheck e lint limpos; 897 testes; exports Android e web sem erro.
 - API (3333) e Expo (8081, Expo Go) abertos em terminais visíveis para o teste no celular.
 - Bloqueado por migration: Ver contratação, avaliar, estorno, contestação e repasse.
+- Complemento: matriz dos 51 tópicos com testes, pendências, Expo Go e dependência de migration em cada linha; roteiro ordenado em "PRÓXIMA ETAPA — TESTES MANUAIS NO EXPO GO" (seção 7 da auditoria); bloqueados na seção 10; como continuar na seção 11.
+- pnpm: o efetivo é 12.18.0 (`packageManager`, CI e Render); o `.mise.toml` com 10.34.3 só afeta quem usa `mise` e não foi alterado.
+- `docs/continuidade.md` (guia geral do projeto) ainda não reflete esta etapa; revisar depois do teste no aparelho.
+
+## Estado em que esta etapa terminou
+
+- Nenhuma migration aplicada no hospedado (21 migrations); nenhum deploy; Render intocado; PR #6 aberto e sem merge; rotina financeira desligada; nenhuma operação financeira executada.
+- **Próximo passo:** o usuário executa o roteiro da seção 7 de `docs/AUDITORIA_EXPO_GO.md` no celular.
 
 ## Pendências que dependem de pessoas
 
