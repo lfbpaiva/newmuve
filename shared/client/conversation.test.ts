@@ -100,4 +100,3 @@ describe("evento encerrado na conversa", () => {
     expect(mostraEstimativaParaContratante({ ...base, statusProposta: "ABERTA" })).toBe(false);
   });
 });
-

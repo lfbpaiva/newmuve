@@ -385,4 +385,3 @@ describe("aparência do coração no detalhe do evento", () => {
     expect(aparenciaDoCoracao({ favorito: depois.favorito })).toEqual({ preenchido: false, opacidade: 1 });
   });
 });
-
