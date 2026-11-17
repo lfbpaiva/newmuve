@@ -97,6 +97,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 |---|---|
 | Cachê mínimo | R$ 100,00 |
 | Taxa da plataforma | 10%, somada ao cachê e paga pelo contratante; o músico recebe o cachê inteiro |
+| Total mostrado ao contratante | No cartão do candidato e no topo do chat: "Você paga R$ X se aprovar agora" (cachê da inscrição + taxa vigente hoje, com a validade da taxa do Muve Casa quando houver). Na contraproposta aberta: "Se esta proposta for aceita, você pagará R$ X ao aprovar". O valor final é o calculado no pagamento. O músico vê só o cachê. Apresentação aprovada pelo usuário em 16/11/2026; a regra financeira não mudou |
 | Valor cobrado | Proposta do músico, se houver; senão, o cachê oferecido. Sempre lido do banco. |
 | Revisão da proposta | Só com a inscrição pendente, sem cobrança em andamento e antes da data do evento |
 | Cachê alterado pelo contratante | Quem tinha aceitado o valor antigo continua com ele; a proposta de quem pediu outro valor não muda |

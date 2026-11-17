@@ -10,7 +10,7 @@ O fluxo completo funciona no sandbox da Asaas e foi testado de ponta a ponta com
 - **PR #6 (`integracao/redesign-lote1`):** reúne o trabalho das branches `cloudflare`, `feature/redesign-muve` e `fix/lote1-estabilidade-mobile` (PRs #3, #4 e #5) e o redesign visual. Essas branches começavam num histórico próprio, sem ancestral comum com o `main`, por isso os arquivos foram trazidos sobre o `main` em vez de mesclados. Depois do merge do #6, feche o #3 e o #5.
 - **PRs 1 e 2:** partem de uma versão antiga e desfazem regras atuais (show duplo, multa, contestação). Não faça merge deles.
 - **Banco:** 21 migrations aplicadas no projeto Supabase do grupo, iguais às de `supabase/migrations/`. O redesign não mudou o banco nem a API.
-- **Verificação:** o GitHub Actions roda `pnpm typecheck`, `pnpm lint` e `pnpm test` a cada push e pull request.
+- **Verificação:** o GitHub Actions roda `pnpm typecheck`, `pnpm lint` e `pnpm test` a cada push e pull request. O `pnpm lint` ignora a pasta `mobile/` (ver a seção 19 da auditoria).
 
 ## Visual
 
@@ -107,6 +107,17 @@ O último caso interrompe a migration de propósito; resolva antes de aplicá-la
 ## O que falta
 
 ### Para a entrega do TCC
+- [ ] Corrigir os defeitos da rodada de testes no Expo Go de 16/11/2026, conforme o plano em [AUDITORIA_EXPO_GO.md](AUDITORIA_EXPO_GO.md), seções 13 e 16. Os de maior prioridade: o falso erro ao convidar, a exclusão de evento que apaga conversas e o "Aprovar e pagar" sem confirmação.
+- [x] Testar no celular a primeira etapa de correções (D9, D12, D13, D14, D20; seções 18 e 19 da auditoria): validada pelo usuário em 17/11. D1 continua pendente no hospedado.
+- [ ] Analisar e autorizar as correções dos complementos A a L da rodada de testes de 17/11 (seção 24 da auditoria e tabela de complementos do roteiro oficial).
+- [ ] Testar no celular a rodada de 17/11 (checklist na seção 25 da auditoria): H, C e F já validados pelo usuário; faltam A e E. Em seguida: B com o texto decidido ("Para aprovar a inscrição de R$ Y, você paga R$ X"); D, I, J, K e L continuam fora do escopo.
+- [x] Testar no celular a Etapa 2 (seção 30 da auditoria): D4, D5 (confirmação), D6 e D11 validados pelo usuário em 17/11; D15 testado. A conversa no cancelamento voluntário (D5) e o cancelamento depois de contratado (D7) dependem de migrations.
+- [ ] Consultar o documento mestre de continuidade (17/11/2026) em [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md) antes de qualquer nova rodada. Próximos marcos: revisar o PR #6, montar o inventário e o plano de migrations (incluindo D5 e D8), tratar Avaliações e D19, e fazer a revisão abrangente.
+- [ ] Seguir o roteiro oficial das três etapas, registrado em [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md), seção "Roteiro oficial de continuidade". Etapas 1 e 2 executadas e registradas no Git (Lote 1, 17/11); a Etapa 3 não começou.
+- [x] Testar no celular a Etapa 1 (seção 22 da auditoria): total para o contratante (D12), favoritos (D13) e saída da conta, validados pelo usuário em 17/11. D1 no hospedado depende de autorização para gravar um convite.
+- [ ] Rever as "Melhorias futuras" registradas no fim da auditoria. Não entram na entrega de 24/11.
+- [ ] Decidir se o evento com convite deve aparecer no feed do músico convidado durante o acesso antecipado (seção 21 da auditoria: hoje a inscrição é liberada, mas o evento só aparece por notificação ou link).
+- [ ] Decidir os pontos de produto da seção 20 da auditoria: total com taxa nas propostas, raio do feed por conta, visibilidade de eventos pela tela do evento e aviso de acesso antecipado. A API não registra requisições; o roteiro de teste foi corrigido nessa seção.
 - [ ] Revisar e fazer o merge do PR #6; depois fechar os PRs #1, #2, #3 e #5.
 - [ ] Testar no celular pelo Expo Go (Expo SDK 58): abertura, transições, barra inferior e puxar para atualizar.
 - [ ] Ensaiar a apresentação no computador e no celular reais, com o fluxo completo.
