@@ -47,7 +47,7 @@ interface RespostaDaApi {
   status: number;
   ok: boolean;
   cabecalho(nome: string): string | null;
-  json(): Promise<unknown>;
+  texto(): Promise<string>;
 }
 
 interface CorpoDaResposta {
@@ -63,7 +63,7 @@ interface Envio {
 
 async function enviarPorFetch(url: string, envio: Envio): Promise<RespostaDaApi> {
   const response = await fetch(url, envio);
-  return { status: response.status, ok: response.ok, cabecalho: (nome) => response.headers.get(nome), json: () => response.json() };
+  return { status: response.status, ok: response.ok, cabecalho: (nome) => response.headers.get(nome), texto: () => response.text() };
 }
 
 function enviarFormularioPorXhr(url: string, envio: Envio): Promise<RespostaDaApi> {
@@ -75,13 +75,21 @@ function enviarFormularioPorXhr(url: string, envio: Envio): Promise<RespostaDaAp
       status: xhr.status,
       ok: xhr.status >= 200 && xhr.status < 300,
       cabecalho: (nome) => xhr.getResponseHeader(nome),
-      json: async () => JSON.parse(xhr.responseText),
+      texto: async () => xhr.responseText,
     });
     xhr.onerror = () => reject(new TypeError("Falha de rede no envio do formulário."));
     xhr.onabort = () => reject(new Error("Envio do formulário cancelado."));
     envio.signal.addEventListener("abort", () => xhr.abort());
     xhr.send(envio.body ?? null);
   });
+}
+
+function lerJson(texto: string): CorpoDaResposta | null {
+  try {
+    return JSON.parse(texto) as CorpoDaResposta;
+  } catch {
+    return null;
+  }
 }
 
 const deveEnviarPorXhr = (body: unknown) => body instanceof FormData && typeof XMLHttpRequest !== "undefined";
@@ -96,6 +104,7 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
 
   let response: RespostaDaApi;
   let payload: CorpoDaResposta | null = null;
+  let corpoVazio = false;
   const controller = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -107,11 +116,9 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
     const url = `${clientConfig().apiUrl}${path}`;
     response = deveEnviarPorXhr(body) ? await enviarFormularioPorXhr(url, envio) : await enviarPorFetch(url, envio);
     if (response.status !== 204) {
-      try {
-        payload = (await response.json()) as CorpoDaResposta;
-      } catch (error) {
-        if (!(error instanceof SyntaxError) || timedOut) throw error;
-      }
+      const texto = await response.texto();
+      corpoVazio = texto.trim() === "";
+      payload = corpoVazio ? null : lerJson(texto);
     }
   } catch (error) {
     if (timedOut) throw new ApiError("O servidor demorou para responder. Tente novamente.", 0, "TEMPO_ESGOTADO");
@@ -121,7 +128,7 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
     clearTimeout(timeout);
   }
 
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204 || (response.ok && corpoVazio)) return undefined as T;
 
   if (!response.ok) {
     throw new ApiError(

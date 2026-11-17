@@ -43,6 +43,30 @@ describe("apiRequest", () => {
     await expect(apiRequest("/health")).rejects.toMatchObject({ status: 200, code: "RESPOSTA_INVALIDA" });
   });
 
+  it.each([201, 200, 202])("aceita HTTP %i sem corpo como sucesso sem dados", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: { musicianId: "m1" } })).resolves.toBeUndefined();
+  });
+
+  it("corpo só com espaços em 2xx também é sucesso sem dados", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("  \n", { status: 201 })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: {} })).resolves.toBeUndefined();
+  });
+
+  it("HTTP de erro sem corpo continua sendo erro", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 409 })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: {} })).rejects.toMatchObject({ status: 409, code: "ERRO_DESCONHECIDO" });
+  });
+
+  it("2xx com corpo que não é JSON continua sendo resposta inválida", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("ok", { status: 201 })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: {} })).rejects.toMatchObject({ status: 201, code: "RESPOSTA_INVALIDA" });
+  });
+
   it("distingue timeout de outras falhas de rede", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
@@ -60,7 +84,7 @@ describe("apiRequest", () => {
     vi.stubGlobal("fetch", vi.fn((_url: string, options: RequestInit) => Promise.resolve({
       status: 200,
       ok: true,
-      json: () => new Promise((_resolve, reject) => {
+      text: () => new Promise((_resolve, reject) => {
         options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       }),
     })));
@@ -135,6 +159,14 @@ describe("envio de formulários com arquivos", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await criado()).toMatchObject({ metodo: "POST", url: "/api/events", corpo: form });
     expect((await criado()).cabecalhos["Content-Type"]).toBeUndefined();
+  });
+
+  it("aceita resposta 201 sem corpo no envio do formulário", async () => {
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const pedido = apiRequest("/events", { method: "POST", body: new FormData() });
+    (await criado()).responder(201, "");
+
+    await expect(pedido).resolves.toBeUndefined();
   });
 
   it("preserva o erro HTTP devolvido pela API no envio do formulário", async () => {

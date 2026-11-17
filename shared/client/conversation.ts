@@ -19,7 +19,7 @@ export interface Conversation {
   candidateId: string;
   status: CandidateStatus;
   valorProposto: number | null;
-  event: { id: string; titulo: string; cache: number; status: EventStatus; contractorId: string };
+  event: { id: string; titulo: string; cache: number; status: EventStatus; contractorId: string; inicio: string };
   musician: { id: string; nome: string; fotoPerfilUrl: string | null };
   contractor: { id: string; nome: string; fotoPerfilUrl: string | null };
 }
@@ -40,7 +40,7 @@ interface ConversationRow {
   status: CandidateStatus;
   valor_proposto: number | string | null;
   musician: { user_id: string; nome_completo: string; foto_perfil_url: string | null };
-  event: { id: string; titulo: string; cache: number | string; status: EventStatus; contractor_id: string };
+  event: { id: string; titulo: string; cache: number | string; status: EventStatus; contractor_id: string; inicio: string };
 }
 
 const toMessage = (row: MessageRow): Message => ({
@@ -58,7 +58,7 @@ export async function fetchConversation(candidateId: string): Promise<Conversati
   const row = unwrap<ConversationRow>(
     await supabase()
       .from("event_candidates")
-      .select("id, status, valor_proposto, musician:musician_profiles(user_id, nome_completo, foto_perfil_url), event:events(id, titulo, cache, status, contractor_id)")
+      .select("id, status, valor_proposto, musician:musician_profiles(user_id, nome_completo, foto_perfil_url), event:events(id, titulo, cache, status, contractor_id, inicio)")
       .eq("id", candidateId)
       .single(),
   );
@@ -69,7 +69,7 @@ export async function fetchConversation(candidateId: string): Promise<Conversati
     candidateId: row.id,
     status: row.status,
     valorProposto: row.valor_proposto === null ? null : Number(row.valor_proposto),
-    event: { id: row.event.id, titulo: row.event.titulo, cache: Number(row.event.cache), status: row.event.status, contractorId: row.event.contractor_id },
+    event: { id: row.event.id, titulo: row.event.titulo, cache: Number(row.event.cache), status: row.event.status, contractorId: row.event.contractor_id, inicio: row.event.inicio },
     musician: { id: row.musician.user_id, nome: row.musician.nome_completo, fotoPerfilUrl: row.musician.foto_perfil_url },
     contractor: { id: contractor.user_id, nome: contractor.nome_fantasia, fotoPerfilUrl: contractor.foto_perfil_url },
   };
@@ -78,6 +78,44 @@ export async function fetchConversation(candidateId: string): Promise<Conversati
 export async function fetchMessages(candidateId: string): Promise<Message[]> {
   const result = await supabase().from("candidate_messages").select("*").eq("candidate_id", candidateId).order("created_at");
   return unwrap<MessageRow[]>(result).map(toMessage);
+}
+
+export function situacaoDaConversa({ inscricao, evento, inicio, agora = new Date() }: { inscricao: CandidateStatus; evento: EventStatus; inicio: string; agora?: Date }) {
+  const encerrado = evento === "ABERTO" && new Date(inicio).getTime() <= agora.getTime();
+  return {
+    encerrado,
+    aberta: inscricao !== "RECUSADO" && ((evento === "ABERTO" && !encerrado) || evento === "CONTRATADO"),
+    negociavel: inscricao === "PENDENTE" && evento === "ABERTO" && !encerrado,
+  };
+}
+
+export function mostraEstimativaParaContratante({ souContratante, inscricao, evento, eventoEncerrado, statusProposta }: {
+  souContratante: boolean;
+  inscricao: CandidateStatus;
+  evento: EventStatus;
+  eventoEncerrado: boolean;
+  statusProposta?: StatusProposta | null;
+}): boolean {
+  if (!souContratante || inscricao !== "PENDENTE" || evento !== "ABERTO" || eventoEncerrado) return false;
+  return statusProposta === undefined || statusProposta === "ABERTA";
+}
+
+const propostaRespondida = (message: Message) => message.statusProposta !== null && message.statusProposta !== "ABERTA";
+
+export function mesclarMensagens(atuais: Message[], recebidas: Message[]): Message[] {
+  const porId = new Map(atuais.map((message) => [message.id, message]));
+  for (const message of recebidas) {
+    const conhecida = porId.get(message.id);
+    porId.set(message.id, conhecida && propostaRespondida(conhecida) && !propostaRespondida(message) ? conhecida : message);
+  }
+  return [...porId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export function aplicarNovaProposta(atuais: Message[], nova: Message): Message[] {
+  const substituidas = atuais.map((message) =>
+    message.id !== nova.id && message.candidateId === nova.candidateId && message.statusProposta === "ABERTA" ? { ...message, statusProposta: "SUBSTITUIDA" as const } : message,
+  );
+  return mesclarMensagens(substituidas, [nova]);
 }
 
 export const sendMessage = (candidateId: string, texto: string) =>

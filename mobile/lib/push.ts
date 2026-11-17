@@ -1,3 +1,4 @@
+import { isRunningInExpoGo } from "expo";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import { useRouter, type Href } from "expo-router";
@@ -5,12 +6,13 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 import { registerDevice, unregisterDevice } from "../../shared/client/account.ts";
 import { chaveDaAbertura, criarRegistroDeAberturas, destinoDaNotificacao } from "./notificacaoLink";
+import { pushRemotoDisponivel } from "./pushRemoto";
 
 let registeredToken: string | null = null;
 const primeiraAbertura = criarRegistroDeAberturas();
 
 async function loadNotifications() {
-  if (Platform.OS === "web" || !Device.isDevice) return null;
+  if (!pushRemotoDisponivel({ plataforma: Platform.OS, dispositivoFisico: Device.isDevice, expoGo: isRunningInExpoGo() })) return null;
   try {
     const Notifications = await import("expo-notifications");
     Notifications.setNotificationHandler({

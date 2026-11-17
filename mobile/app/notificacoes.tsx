@@ -1,10 +1,10 @@
 import { useRouter, type Href } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { formatDateTime } from "../../shared/client/format.ts";
-import { fetchNotifications, markNotificationsRead, type AppNotification } from "../../shared/client/notifications.ts";
+import { aplicarLeitura, fetchNotifications, markNotificationsRead, type AppNotification } from "../../shared/client/notifications.ts";
 import { useAsync } from "../../shared/client/useAsync.ts";
-import { EmptyState, ErrorState, Icon, Loading, Reveal, Screen, type IconName } from "../components/ui";
+import { BlocoMedido, EmptyState, ErrorState, Icon, Loading, Reveal, Screen, type IconName } from "../components/ui";
 import { destinoDaNotificacao } from "../lib/notificacaoLink";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
@@ -12,9 +12,21 @@ import { useMe } from "../lib/useMe";
 export default function NotificationsScreen() {
   const me = useMe();
   const notifications = useAsync(`notificacoes:${me.id}`, fetchNotifications);
+  const [lidas, setLidas] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
-    if (notifications.data?.some((n) => !n.lida)) void markNotificationsRead().catch(() => {});
+    const naoLidas = (notifications.data ?? []).filter((n) => !n.lida).map((n) => n.id);
+    if (naoLidas.length === 0) return;
+    let ativa = true;
+    markNotificationsRead().then(
+      () => {
+        if (ativa) setLidas((atual) => new Set([...atual, ...naoLidas]));
+      },
+      () => {},
+    );
+    return () => {
+      ativa = false;
+    };
   }, [notifications.data]);
 
   if (notifications.error) return <Screen><ErrorState message={notifications.error} onRetry={notifications.reload}/></Screen>;
@@ -24,9 +36,9 @@ export default function NotificationsScreen() {
   </Screen>;
 
   return <Screen onRefresh={notifications.reload} carregando={notifications.loading}>
-    <View style={{ gap: space.sm }}>
-      {notifications.data.map((notification, index) => <NotificationItem key={notification.id} notification={notification} index={index}/>)}
-    </View>
+    <BlocoMedido style={{ gap: space.sm }}>
+      {aplicarLeitura(notifications.data, lidas).map((notification, index) => <NotificationItem key={notification.id} notification={notification} index={index}/>)}
+    </BlocoMedido>
   </Screen>;
 }
 

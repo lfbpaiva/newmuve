@@ -76,4 +76,30 @@ describe("rotas do aplicativo", () => {
     expect(push).toContain("destinoDaNotificacao(");
     expect(push).toContain("getLastNotificationResponseAsync");
   });
+
+  it("ao sair da conta, o grupo de entrada abre direto no login, sem a tela intermediária \"index\"", () => {
+    const layout = readFileSync(join(raizDoApp, "(auth)", "_layout.tsx"), "utf8");
+    expect(layout).toMatch(/export const unstable_settings = \{ anchor: "login" \}/);
+    expect(layout).toMatch(/<Stack\.Screen name="index" options=\{\{ headerShown: false, animation: "none" \}\}\/>/);
+    expect(existeRota("/login")).toBe(true);
+    const indice = readFileSync(join(raizDoApp, "(auth)", "index.tsx"), "utf8");
+    expect(indice).toContain("<Redirect href=\"/(auth)/login\" />");
+  });
+
+  it("a sessão é encerrada antes da troca de telas: o logout não navega por conta própria", () => {
+    const ajustes = readFileSync(join(raizDoApp, "(app)", "settings.tsx"), "utf8");
+    const raiz = readFileSync(join(raizDoApp, "_layout.tsx"), "utf8");
+    expect(ajustes).toMatch(/forgetPushToken\(\)\.finally\(\(\) => signOut\(\)\)/);
+    expect(ajustes).not.toMatch(/router\.(push|replace)\([^)]*login/);
+    expect(raiz).toContain("<Stack.Protected guard={!signedIn}>");
+  });
+
+  it("a navegação usa o fundo escuro do tema do app, sem o fundo claro padrão aparecendo na troca de abas", () => {
+    const raiz = readFileSync(join(raizDoApp, "_layout.tsx"), "utf8");
+    const tema = readFileSync(join(raizDoMobile, "lib", "theme.ts"), "utf8");
+    expect(raiz).toMatch(/import \{[^}]*ThemeProvider[^}]*\} from "expo-router"/);
+    expect(raiz).toMatch(/background: colors\.bg/);
+    expect(raiz).toContain("<ThemeProvider value={temaDaNavegacao}>");
+    expect(tema).toMatch(/bg: "#09090d"/);
+  });
 });

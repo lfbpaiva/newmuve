@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Pressable, ScrollView, Text, TextInput, View, type ScrollViewInstance } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { errorMessage } from "../../../shared/client/api.ts";
-import { answerProposal, fetchConversation, fetchMessages, proposeValue, sendMessage, subscribeToMessages, type Message } from "../../../shared/client/conversation.ts";
-import { formatCurrency, parseValor } from "../../../shared/client/format.ts";
-import { isValidCache } from "../../../shared/dominio.ts";
+import { aplicarNovaProposta, answerProposal, fetchConversation, fetchMessages, mesclarMensagens, mostraEstimativaParaContratante, proposeValue, sendMessage, situacaoDaConversa, subscribeToMessages, type Conversation, type Message } from "../../../shared/client/conversation.ts";
+import { detalharTotalDoContratante, formatCurrency, formatTotalDoContratante, formatTotalSeAceita, parseValor } from "../../../shared/client/format.ts";
+import { estimarCobrancaDoContratante, isValidCache, valorDaInscricao, type EstimativaDoContratante } from "../../../shared/dominio.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { Alert, Avatar, Button, ErrorState, EvitaTeclado, Icon, Loading, Pill, Reveal, Screen, Tag } from "../../components/ui";
 import { colors, radius, space, styles, type } from "../../lib/theme";
@@ -33,13 +33,14 @@ export default function ConversationScreen() {
   const [sendError, setSendError] = useState("");
   const [proposing, setProposing] = useState(false);
   const [valorProposta, setValorProposta] = useState("");
+  const [valorAceito, setValorAceito] = useState<{ valor: number | null; base: Conversation } | null>(null);
   const scroll = useRef<ScrollViewInstance>(null);
   const recebidasDuranteBusca = useRef<Map<string, Message> | null>(null);
 
   const aplicarMensagens = useCallback((incoming: Message[]) => {
     const recebidas = recebidasDuranteBusca.current;
     if (recebidas) for (const message of incoming) recebidas.set(message.id, message);
-    setMessages((current) => mergeMessages(current, incoming));
+    setMessages((current) => mesclarMensagens(current, incoming));
   }, []);
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function ConversationScreen() {
         .then(
           (loaded) => {
             if (!active) return;
-            setMessages((current) => mergeMessages(mergeMessages(current, loaded), [...recebidas.values()]));
+            setMessages((current) => mesclarMensagens(mesclarMensagens(current, loaded), [...recebidas.values()]));
             setLoadError("");
           },
           (error: unknown) => {
@@ -98,12 +99,11 @@ export default function ConversationScreen() {
     };
   }, [candidateId, reloadConversation, aplicarMensagens]);
 
-  async function run(action: () => Promise<Message>) {
+  async function run(action: () => Promise<Message>, aplicar: (message: Message) => void = (message) => aplicarMensagens([message])) {
     setSending(true);
     setSendError("");
     try {
-      const message = await action();
-      aplicarMensagens([message]);
+      aplicar(await action());
       return true;
     } catch (error) {
       setSendError(errorMessage(error));
@@ -116,7 +116,11 @@ export default function ConversationScreen() {
   async function sendProposal() {
     const valor = parseValor(valorProposta);
     if (!isValidCache(valor)) return setSendError("O valor mínimo é de R$ 100,00.");
-    if (await run(() => proposeValue(candidateId, valor))) {
+    const aplicarProposta = (message: Message) => {
+      aplicarMensagens([message]);
+      setMessages((current) => aplicarNovaProposta(current, message));
+    };
+    if (await run(() => proposeValue(candidateId, valor), aplicarProposta)) {
       setProposing(false);
       setValorProposta("");
     }
@@ -125,6 +129,7 @@ export default function ConversationScreen() {
   async function answer(message: Message, aceitar: boolean) {
     if (await run(() => answerProposal(candidateId, message.id, aceitar))) {
       aplicarMensagens([{ ...message, statusProposta: aceitar ? "ACEITA" : "RECUSADA" }]);
+      if (aceitar && message.valor !== null && conversation.data) setValorAceito({ valor: valorDaInscricao(message.valor, conversation.data.event.cache), base: conversation.data });
       conversation.reload();
     }
   }
@@ -147,10 +152,16 @@ export default function ConversationScreen() {
 
   if (conversation.error) return <Screen><ErrorState message={conversation.error} onRetry={conversation.reload}/></Screen>;
   if (!conversation.data) return <Screen><Loading cards={1}/></Screen>;
-  const { event, musician, contractor, status, valorProposto } = conversation.data;
+  const { event, musician, contractor, status } = conversation.data;
+  const valorProposto = valorAceito?.base === conversation.data ? valorAceito.valor : conversation.data.valorProposto;
   const other = me.id === musician.id ? contractor : musician;
-  const open = status !== "RECUSADO" && (event.status === "ABERTO" || event.status === "CONTRATADO");
-  const negotiable = status === "PENDENTE" && event.status === "ABERTO";
+  const situacao = situacaoDaConversa({ inscricao: status, evento: event.status, inicio: event.inicio });
+  const open = situacao.aberta;
+  const negotiable = situacao.negociavel;
+  const souContratante = me.id === contractor.id;
+  const estimativaDaInscricao = mostraEstimativaParaContratante({ souContratante, inscricao: status, evento: event.status, eventoEncerrado: situacao.encerrado }) ? estimarCobrancaDoContratante(valorProposto ?? event.cache, me.casaAte) : null;
+  const estimativaDaProposta = (message: Message) =>
+    mostraEstimativaParaContratante({ souContratante, inscricao: status, evento: event.status, eventoEncerrado: situacao.encerrado, statusProposta: message.statusProposta ?? "ABERTA" }) ? estimarCobrancaDoContratante(message.valor, me.casaAte) : null;
 
   return <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
     <EvitaTeclado>
@@ -169,6 +180,7 @@ export default function ConversationScreen() {
           <Tag text={`Cachê oferecido ${formatCurrency(event.cache)}`}/>
           <View style={{ borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.accentSoft }}><Text style={[type.label, { fontSize: 12, lineHeight: 16, color: colors.accentText }]}>Inscrição {formatCurrency(valorProposto ?? event.cache)}</Text></View>
         </View>
+        {estimativaDaInscricao && <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{formatTotalDoContratante(estimativaDaInscricao)}. {detalharTotalDoContratante(estimativaDaInscricao)}</Text>}
       </View>
 
       <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, gap: space.sm, flexGrow: 1 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
@@ -180,7 +192,7 @@ export default function ConversationScreen() {
           <Text style={[type.bodySmall, { textAlign: "center" }]}>Combinem aqui repertório, horário e valor. Pagamentos feitos fora da Muve ficam sem a garantia do cachê retido.</Text>
         </View>}
         {messages.map((message) => message.tipo === "PROPOSTA"
-          ? <ProposalBubble key={message.id} message={message} mine={message.authorId === me.id} canAnswer={negotiable && !sending} onAnswer={(aceitar) => void answer(message, aceitar)}/>
+          ? <ProposalBubble key={message.id} message={message} mine={message.authorId === me.id} estimativa={estimativaDaProposta(message)} canAnswer={negotiable && !sending} onAnswer={(aceitar) => void answer(message, aceitar)}/>
           : <Bubble key={message.id} message={message} mine={message.authorId === me.id}/>)}
       </ScrollView>
 
@@ -227,20 +239,9 @@ export default function ConversationScreen() {
   </SafeAreaView>;
 }
 
-const propostaRespondida = (message: Message) => message.statusProposta !== null && message.statusProposta !== "ABERTA";
-
-const mergeMessages = (current: Message[], incoming: Message[]) => {
-  const byId = new Map(current.map((message) => [message.id, message]));
-  for (const message of incoming) {
-    const known = byId.get(message.id);
-    byId.set(message.id, known && propostaRespondida(known) && !propostaRespondida(message) ? known : message);
-  }
-  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-};
-
 const statusLabels = { ACEITA: "Aceita", RECUSADA: "Recusada", SUBSTITUIDA: "Substituída por outra proposta", ABERTA: "Aguardando resposta" } as const;
 
-function ProposalBubble({ message, mine, canAnswer, onAnswer }: { message: Message; mine: boolean; canAnswer: boolean; onAnswer: (aceitar: boolean) => void }) {
+function ProposalBubble({ message, mine, estimativa, canAnswer, onAnswer }: { message: Message; mine: boolean; estimativa: EstimativaDoContratante | null; canAnswer: boolean; onAnswer: (aceitar: boolean) => void }) {
   const status = message.statusProposta ?? "ABERTA";
   const tom = status === "ACEITA" ? "success" : status === "ABERTA" ? "accent" : "muted";
   return <Reveal><View style={{ alignSelf: mine ? "flex-end" : "flex-start", width: "82%", borderRadius: radius.lg, borderWidth: 1, borderColor: status === "ACEITA" ? "rgba(110,231,160,0.4)" : status === "ABERTA" ? "rgba(139,107,255,0.45)" : colors.hairline, backgroundColor: colors.surface, padding: space.lg, gap: space.sm }}>
@@ -249,6 +250,10 @@ function ProposalBubble({ message, mine, canAnswer, onAnswer }: { message: Messa
       <Text style={[type.label, { color: colors.ink2 }]}>{mine ? "Sua proposta" : "Proposta recebida"}</Text>
     </View>
     <Text style={[type.stat, { fontSize: 30, lineHeight: 34 }]}>{formatCurrency(message.valor ?? 0)}</Text>
+    {estimativa && <View style={{ gap: 2 }}>
+      <Text style={[type.titleSmall, { color: colors.accentText }]}>{formatTotalSeAceita(estimativa)}</Text>
+      <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{detalharTotalDoContratante(estimativa)}</Text>
+    </View>}
     <Pill text={statusLabels[status]} tone={tom}/>
     {!mine && status === "ABERTA" && canAnswer && <View style={{ flexDirection: "row", gap: space.sm, marginTop: space.xs }}>
       <View style={{ flex: 1 }}><Button title="Aceitar" icon="checkmark" onPress={() => onAnswer(true)}/></View>

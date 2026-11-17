@@ -191,6 +191,60 @@ describe("consulta ativa da cobrança (sem depender do webhook)", () => {
 
     await expect(t.service.syncCheckout(outroContratante, t.event.id, NOW)).rejects.toMatchObject({ status: 404 });
   });
+
+  it("lê evento, estornos atrasados e último pagamento ao mesmo tempo, antes de falar com a Asaas", async () => {
+    await checkout();
+    let liberarEvento!: () => void;
+    const eventoOriginal = t.world.stores.events.findEvent;
+    vi.spyOn(t.world.stores.events, "findEvent").mockImplementation((id) => new Promise((resolve) => { liberarEvento = () => resolve(eventoOriginal(id)); }));
+    const ultimo = vi.spyOn(t.world.stores.payments, "findLatestPayment");
+    const atrasados = vi.spyOn(t.world.stores.payments, "findLateRefundsToRetry");
+    const consultaNaAsaas = vi.spyOn(t.world.stores.asaas, "getPayment");
+
+    const pedido = t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(atrasados).toHaveBeenCalledWith(t.event.id);
+    expect(ultimo).toHaveBeenCalledWith(t.event.id);
+    expect(consultaNaAsaas).not.toHaveBeenCalled();
+    liberarEvento();
+    await expect(pedido).resolves.toMatchObject({ status: "PENDENTE" });
+    expect(consultaNaAsaas).toHaveBeenCalledTimes(1);
+  });
+
+  it("quem não é dono recebe 404 sem nenhuma chamada à Asaas nem estorno, mesmo que as outras leituras falhem", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    vi.spyOn(t.world.stores.payments, "findLateRefundsToRetry").mockRejectedValue(new Error("falha de banco"));
+    vi.spyOn(t.world.stores.payments, "findLatestPayment").mockRejectedValue(new Error("falha de banco"));
+    const estornos = t.world.asaasCalls.refundPayment.length;
+    const consultaNaAsaas = vi.spyOn(t.world.stores.asaas, "getPayment");
+
+    await expect(t.service.syncCheckout(outroContratante, t.event.id, minutesLater(1))).rejects.toMatchObject({ status: 404, code: "EVENTO_NAO_ENCONTRADO" });
+    expect(t.world.asaasCalls.refundPayment.length).toBe(estornos);
+    expect(consultaNaAsaas).not.toHaveBeenCalled();
+    expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
+  });
+
+  it("dono do evento: falha na leitura do pagamento continua sendo erro, sem inventar situação", async () => {
+    await checkout();
+    vi.spyOn(t.world.stores.payments, "findLatestPayment").mockRejectedValue(new Error("falha de banco"));
+
+    await expect(t.service.syncCheckout(contratante, t.event.id, minutesLater(1))).rejects.toThrow("falha de banco");
+  });
+
+  it("com estorno atrasado a processar, segue o caminho de antes: estorna e só então relê o último pagamento", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(1));
+    const registro = t.world.payments.get(payment.id)!;
+    vi.spyOn(t.world.stores.payments, "findLateRefundsToRetry").mockResolvedValueOnce([{ ...registro, refundAction: "NENHUMA", refundStatus: null }]);
+    const ultimo = vi.spyOn(t.world.stores.payments, "findLatestPayment");
+
+    await t.service.syncCheckout(contratante, t.event.id, minutesLater(2));
+
+    expect(ultimo).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("webhook da Asaas", () => {

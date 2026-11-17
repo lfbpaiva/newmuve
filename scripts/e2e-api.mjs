@@ -197,6 +197,35 @@ export async function executarE2E({ apiIniciada, executar, lerArquivo, criarClie
   check("contratante vê os 2 candidatos com perfil", cands.data?.length === 2 && cands.data.every((x) => x.musician?.nome_completo), JSON.stringify(cands.error ?? cands.data));
   const candidateId = cands.data.find((x) => x.musician.user_id === m.id).id;
 
+  r = await api(c, "POST", `/me/favoritos/${m.id}`);
+  check("favorito sem Muve Casa: 403", r.code === "RECURSO_CASA", JSON.stringify(r));
+  await admin.from("contractor_profiles").update({ casa_ate: new Date(Date.now() + 30 * 864e5).toISOString() }).eq("user_id", c.id).throwOnError();
+  r = await api(c, "POST", `/me/favoritos/${m.id}`);
+  check("favorito de músico inscrito: 204", r.status === 204, JSON.stringify(r));
+  const favoritado = await admin.from("contractor_favorites").select("musician_id").eq("contractor_id", c.id);
+  check("favorito gravado no banco local", favoritado.data?.length === 1 && favoritado.data[0].musician_id === m.id, JSON.stringify(favoritado.error ?? favoritado.data));
+  r = await api(c, "POST", `/me/favoritos/${randomUUID()}`);
+  check("favorito de músico que não se inscreveu: 404", r.code === "MUSICO_NAO_ENCONTRADO", JSON.stringify(r));
+  r = await api(m, "POST", `/me/favoritos/${m2.id}`);
+  check("músico não favorita: 403", r.code === "PERFIL_NAO_AUTORIZADO", JSON.stringify(r));
+  r = await api(c, "POST", "/events", eventForm({ titulo: "Convite (teste)" }));
+  const conviteEventId = r.json.id;
+  const convite = await fetch(`${API}/events/${conviteEventId}/convites`, {
+    method: "POST",
+    headers: { Origin: "http://localhost:8443", Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ musicianId: m.id }),
+  });
+  const corpoDoConvite = await convite.text();
+  check("convite responde 204 sem corpo", convite.status === 204 && corpoDoConvite === "", `${convite.status} ${corpoDoConvite}`);
+  const convites = await admin.from("event_invites").select("musician_id").eq("event_id", conviteEventId);
+  check("convite gravado uma vez no banco local", convites.data?.length === 1 && convites.data[0].musician_id === m.id, JSON.stringify(convites.error ?? convites.data));
+  r = await api(c, "DELETE", `/me/favoritos/${m.id}`);
+  check("remover favorito: 204", r.status === 204, JSON.stringify(r));
+  const favoritos = await admin.from("contractor_favorites").select("musician_id").eq("contractor_id", c.id);
+  check("favorito removido no banco local", favoritos.data?.length === 0, JSON.stringify(favoritos.error ?? favoritos.data));
+  await admin.from("events").delete().eq("id", conviteEventId).throwOnError();
+  await admin.from("contractor_profiles").update({ casa_ate: null }).eq("user_id", c.id).throwOnError();
+
   r = await api(m, "POST", `/events/${eventId}/checkout`, { candidateId });
   check("músico não aprova candidato: 404", r.status === 404, JSON.stringify(r));
   r = await api(c, "POST", `/events/${eventId}/checkout`, { candidateId });

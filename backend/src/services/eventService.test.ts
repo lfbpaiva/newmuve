@@ -220,6 +220,17 @@ describe("cancelamento de inscrição (regra das 24h)", () => {
     expect(t.world.candidates.size).toBe(1);
   });
 
+  it("inscrição de evento cancelado ou já recusada não pode ser apagada pelo músico: o histórico fica", async () => {
+    const cancelado = t.world.seedEvent({ status: "CANCELADO" });
+    t.world.seedCandidate(cancelado.id, "m1");
+    const aberto = t.world.seedEvent();
+    t.world.seedCandidate(aberto.id, "m1", "RECUSADO");
+
+    await expect(t.service.cancelApplication(musico, cancelado.id, NOW)).rejects.toMatchObject({ code: "INSCRICAO_ENCERRADA" });
+    await expect(t.service.cancelApplication(musico, aberto.id, NOW)).rejects.toMatchObject({ code: "INSCRICAO_ENCERRADA" });
+    expect(t.world.candidates.size).toBe(2);
+  });
+
   it("músico contratado não cancela, e ninguém cancela a inscrição de outro", async () => {
     const event = t.world.seedEvent();
     t.world.seedCandidate(event.id, "m1", "APROVADO");
@@ -770,6 +781,43 @@ describe("correções de fluxo", () => {
     expect(avisosDe("m3").some((n) => n.titulo.includes("voltou a concorrer"))).toBe(false);
   });
 
+  it("excluir evento com inscritos preserva o histórico: o evento é cancelado e inscrições, conversas e imagem continuam", async () => {
+    const event = await t.service.createEvent(contratante, novoEvento, banner(), NOW);
+    const candidate = t.world.seedCandidate(event.id, "m1");
+    t.world.seedCandidate(event.id, "m2", "RECUSADO");
+    const mensagem = await t.service.sendMessage(musico, candidate.id, "Tenho repertório de MPB.", NOW);
+    const remover = vi.spyOn(t.world.stores.events, "deleteEvent");
+
+    await t.service.deleteEvent(contratante, event.id, NOW);
+    await flush();
+
+    expect(remover).not.toHaveBeenCalled();
+    expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
+    expect([...t.world.candidates.values()].filter((c) => c.eventId === event.id)).toHaveLength(2);
+    expect(await t.world.stores.events.findMessage(mensagem.id)).toMatchObject({ candidateId: candidate.id, texto: "Tenho repertório de MPB." });
+    expect(t.world.images.has(event.imagemUrl)).toBe(true);
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("foi excluído")]);
+    expect(avisosDe("m2")).toHaveLength(0);
+  });
+
+  it("excluir evento sem nenhum inscrito continua apagando o evento e a imagem", async () => {
+    const event = await t.service.createEvent(contratante, novoEvento, banner(), NOW);
+
+    await t.service.deleteEvent(contratante, event.id, NOW);
+
+    expect(t.world.events.has(event.id)).toBe(false);
+    expect(t.world.images.has(event.imagemUrl)).toBe(false);
+  });
+
+  it("evento cancelado pela exclusão não aceita inscrição nem edição", async () => {
+    const event = t.world.seedEvent();
+    t.world.seedCandidate(event.id, "m2");
+    await t.service.deleteEvent(contratante, event.id, NOW);
+
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
+    await expect(t.service.updateEvent(contratante, event.id, novoEvento, null, NOW)).rejects.toMatchObject({ code: "EVENTO_BLOQUEADO" });
+  });
+
   it("excluir o evento avisa os inscritos", async () => {
     const event = t.world.seedEvent();
     t.world.seedCandidate(event.id, "m1");
@@ -1132,6 +1180,58 @@ describe("Muve Casa", () => {
     expect(inicios).toEqual([0, 1, 2].map((semana) => novoEvento.inicio.getTime() + semana * 7 * 24 * 60 * 60 * 1000));
   });
 
+  it("recorrência envia as imagens das semanas ao mesmo tempo, uma por evento, antes de gravar", async () => {
+    casa();
+    const liberar: (() => void)[] = [];
+    let contador = 0;
+    vi.spyOn(t.world.stores.images, "upload").mockImplementation(() => new Promise((resolve) => {
+      const url = `https://cdn.test/banner-${++contador}.png`;
+      liberar.push(() => resolve(url));
+    }));
+    const inserir = vi.spyOn(t.world.stores.events, "insertEvent");
+
+    const pedido = t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW);
+    await flush();
+
+    expect(liberar).toHaveLength(3);
+    expect(inserir).not.toHaveBeenCalled();
+    liberar.forEach((solta) => solta());
+    await pedido;
+    expect([...t.world.events.values()].map((e) => e.imagemUrl).sort()).toEqual(["https://cdn.test/banner-1.png", "https://cdn.test/banner-2.png", "https://cdn.test/banner-3.png"]);
+  });
+
+  it("recorrência: falha no envio de uma semana cria as anteriores, descarta as imagens das seguintes e para", async () => {
+    casa();
+    let contador = 0;
+    vi.spyOn(t.world.stores.images, "upload").mockImplementation(async () => {
+      contador += 1;
+      if (contador === 2) throw new Error("falha no Storage");
+      return `https://cdn.test/banner-${contador}.png`;
+    });
+    const remover = vi.spyOn(t.world.stores.images, "removeByUrl");
+
+    const primeiro = await t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW);
+
+    expect(primeiro.imagemUrl).toBe("https://cdn.test/banner-1.png");
+    expect(t.world.events.size).toBe(1);
+    expect(remover).toHaveBeenCalledWith("event-banners", "https://cdn.test/banner-3.png");
+  });
+
+  it("recorrência: se a primeira semana falhar no envio, nada é criado e o erro aparece", async () => {
+    casa();
+    let contador = 0;
+    vi.spyOn(t.world.stores.images, "upload").mockImplementation(async () => {
+      contador += 1;
+      if (contador === 1) throw new Error("falha no Storage");
+      return `https://cdn.test/banner-${contador}.png`;
+    });
+    const remover = vi.spyOn(t.world.stores.images, "removeByUrl");
+
+    await expect(t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW)).rejects.toThrow("falha no Storage");
+    expect(t.world.events.size).toBe(0);
+    expect(remover.mock.calls.map(([, url]) => url).sort()).toEqual(["https://cdn.test/banner-2.png", "https://cdn.test/banner-3.png"]);
+  });
+
   it("favoritar exige o Casa e um músico que já se inscreveu; o convite libera a inscrição fora do alcance", async () => {
     const antigo = t.world.seedEvent();
     t.world.seedCandidate(antigo.id, "m1");
@@ -1148,6 +1248,65 @@ describe("Muve Casa", () => {
 
     expect(avisosDe("m1").at(-1)?.titulo).toContain("convidou você");
     await expect(t.service.apply(musico, longe.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("favoritar consulta a conta e a inscrição ao mesmo tempo, antes de gravar", async () => {
+    casa();
+    t.world.seedCandidate(t.world.seedEvent().id, "m1");
+    let liberarConta!: () => void;
+    const contaOriginal = t.world.stores.accounts.findAccount;
+    vi.spyOn(t.world.stores.accounts, "findAccount").mockImplementation((id) => new Promise((resolve) => { liberarConta = () => resolve(contaOriginal(id)); }));
+    const inscricao = vi.spyOn(t.world.stores.events, "hasAppliedToContractor");
+    const gravar = vi.spyOn(t.world.stores.events, "setFavorite");
+
+    const pedido = t.service.setFavorite(contratante, "m1", true, NOW);
+    await flush();
+
+    expect(inscricao).toHaveBeenCalledWith("m1", "c1");
+    expect(gravar).not.toHaveBeenCalled();
+    liberarConta();
+    await pedido;
+    expect(gravar).toHaveBeenCalledWith("c1", "m1", true);
+  });
+
+  it("músico não favorita, mesmo que a verificação de inscrição falhe ao mesmo tempo", async () => {
+    vi.spyOn(t.world.stores.events, "hasAppliedToContractor").mockRejectedValue(new Error("falha de banco"));
+    const gravar = vi.spyOn(t.world.stores.events, "setFavorite");
+
+    await expect(t.service.setFavorite(musico, "m2", true, NOW)).rejects.toMatchObject({ status: 403, code: "PERFIL_NAO_AUTORIZADO" });
+    expect(gravar).not.toHaveBeenCalled();
+  });
+
+  it("sem o Casa a recusa continua sendo do plano, mesmo se a verificação de inscrição falhar", async () => {
+    vi.spyOn(t.world.stores.events, "hasAppliedToContractor").mockRejectedValue(new Error("falha de banco"));
+
+    await expect(t.service.setFavorite(contratante, "m1", true, NOW)).rejects.toMatchObject({ code: "RECURSO_CASA" });
+  });
+
+  it("falha na verificação de inscrição de um contratante válido não grava o favorito", async () => {
+    casa();
+    vi.spyOn(t.world.stores.events, "hasAppliedToContractor").mockRejectedValue(new Error("falha de banco"));
+    const gravar = vi.spyOn(t.world.stores.events, "setFavorite");
+
+    await expect(t.service.setFavorite(contratante, "m1", true, NOW)).rejects.toThrow("falha de banco");
+    expect(gravar).not.toHaveBeenCalled();
+  });
+
+  it("remover não consulta inscrição e funciona mesmo depois do Casa vencer", async () => {
+    casa();
+    t.world.seedCandidate(t.world.seedEvent().id, "m1");
+    await t.service.setFavorite(contratante, "m1", true, NOW);
+    t.world.accounts.get("c1")!.casaAte = hoursFromNow(-1);
+    const inscricao = vi.spyOn(t.world.stores.events, "hasAppliedToContractor");
+
+    await t.service.setFavorite(contratante, "m1", false, NOW);
+
+    expect(inscricao).not.toHaveBeenCalled();
+    expect(await t.world.stores.events.isFavorite("c1", "m1")).toBe(false);
+  });
+
+  it("músico não remove favorito de ninguém", async () => {
+    await expect(t.service.setFavorite(musico, "m2", false, NOW)).rejects.toMatchObject({ code: "PERFIL_NAO_AUTORIZADO" });
   });
 });
 

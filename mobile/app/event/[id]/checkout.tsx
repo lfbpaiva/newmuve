@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { cancelPendingCheckout, fetchCheckoutStatus, fetchEvent, openCheckout, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
+import { cancelPendingCheckout, consultarCobrancaAproveitavel, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
 import { formatCountdown, formatCurrency, formatEventDateTime } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, COBRANCA_VALIDADE_MS, comissaoPercentual } from "../../../../shared/dominio.ts";
@@ -31,6 +31,8 @@ export default function CheckoutScreen() {
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const [cancelled, setCancelled] = useState(false);
+  const [confirmar, setConfirmar] = useState(false);
+  const [gerandoPix, setGerandoPix] = useState(false);
 
   const show = useCallback(
     (request: Promise<Checkout>) =>
@@ -44,7 +46,15 @@ export default function CheckoutScreen() {
         .finally(() => setGenerating(false)),
     [eventId, router],
   );
-  const load = useCallback(() => show(openCheckout(eventId, candidateId)), [show, eventId, candidateId]);
+  const load = useCallback(() => consultarCobrancaAproveitavel(eventId, candidateId)
+    .then((atual) => {
+      if (!atual) return setConfirmar(true);
+      if (atual.status === "PAGO") return router.replace(`/event/${eventId}/hiring`);
+      setCheckout(atual);
+      setSeconds(secondsUntil(atual.expiraEm));
+    })
+    .catch((e: unknown) => setError(errorMessage(e)))
+    .finally(() => setGenerating(false)), [eventId, candidateId, router]);
   useEffect(() => { void load(); }, [load]);
 
   function retry() {
@@ -56,6 +66,8 @@ export default function CheckoutScreen() {
 
   function generate() {
     if (generating) return;
+    setConfirmar(false);
+    setGerandoPix(true);
     setGenerating(true);
     setError("");
     void show(startCheckout(eventId, candidateId));
@@ -155,8 +167,14 @@ export default function CheckoutScreen() {
         {event.data ? <Text style={type.bodySmall} numberOfLines={2}>{event.data.titulo} · {formatEventDateTime(event.data.inicio, event.data.uf)}</Text> : null}
       </View></Reveal>
 
-      {generating && <Loading label="Gerando cobrança Pix..." cards={1}/>}
-      {!generating && error ? <ErrorState message={error} onRetry={retry}/> : null}
+      {generating && <Loading label={gerandoPix ? "Gerando cobrança Pix..." : "Consultando a cobrança..."} cards={1}/>}
+      {!generating && error ? <ErrorState message={error} onRetry={gerandoPix ? generate : retry}/> : null}
+      {!generating && !error && !checkout && confirmar && <Reveal index={1}><Surface destaque>
+        <Text style={type.title}>Confirmar a cobrança</Text>
+        <Text style={type.bodySmall}>O Pix só é gerado quando você confirmar. Ele vale por 15 minutos e pode ser cancelado enquanto não for pago. Ao gerar, outra cobrança pendente deste evento é cancelada.</Text>
+        <Button title="Gerar cobrança Pix" icon="flash" onPress={generate}/>
+        <Button title="Voltar sem gerar" variant="text" onPress={() => router.back()}/>
+      </Surface></Reveal>}
       {!generating && !error && checkout && <Reveal index={1}><Surface destaque>
         <View style={styles.between}>
           {expired

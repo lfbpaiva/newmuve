@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { filterFeed, FILTROS_VAZIOS, type EventItem } from "./events.ts";
+import { supabase } from "./config.ts";
+import { fetchFeed, filterFeed, FILTROS_VAZIOS, type EventItem } from "./events.ts";
 
 vi.mock("./config.ts", () => ({ supabase: vi.fn() }));
 
@@ -55,5 +56,54 @@ describe("filtros do feed", () => {
 
   it("sem filtros mostra tudo", () => {
     expect(ids({})).toEqual(["rock", "casamento", "empresa"]);
+  });
+});
+
+describe("feed sem eventos em que o músico foi recusado", () => {
+  const linha = (id: string) => ({ id, contractor_id: "c1", musico_contratado_id: null, titulo: "Evento " + id, tipo_evento: "Bar e restaurante", inicio: daysFromNow(3), duracao_minutos: 120, uf: "PR", cidade: "Cascavel", estilos_musicais: ["Rock"], formacao: "Indiferente", som_disponivel: false, cache: "500", imagem_url: "https://x/e.png", descricao: null, status: "ABERTO", confirmacao_musico: false, confirmacao_contratante: false, inscricoes_encerradas: false, created_at: daysFromNow(-5) });
+
+  function montarSupabase(recusados: string[], erroNasRecusas = false) {
+    const consultas: { tabela: string; filtros: unknown[][] }[] = [];
+    const cliente = {
+      rpc: vi.fn().mockResolvedValue({ data: [{ event_id: "a", distancia_km: 0 }, { event_id: "b", distancia_km: 12 }, { event_id: "c", distancia_km: 30 }], error: null }),
+      from: vi.fn((tabela: string) => {
+        const registro = { tabela, filtros: [] as unknown[][] };
+        consultas.push(registro);
+        const consulta = {
+          select: vi.fn(() => consulta),
+          in: vi.fn((...args: unknown[]) => {
+            registro.filtros.push(["in", ...args]);
+            return tabela === "events" ? Promise.resolve({ data: ["a", "b", "c"].map(linha), error: null }) : consulta;
+          }),
+          eq: vi.fn((...args: unknown[]) => {
+            registro.filtros.push(["eq", ...args]);
+            return Promise.resolve(erroNasRecusas ? { data: null, error: { message: "falha" } } : { data: recusados.map((event_id) => ({ event_id })), error: null });
+          }),
+        };
+        return consulta;
+      }),
+    };
+    vi.mocked(supabase).mockReturnValue(cliente as never);
+    return { consultas };
+  }
+
+  it("tira do feed só os eventos com inscrição recusada deste músico, mantendo a ordem e a distância dos demais", async () => {
+    const { consultas } = montarSupabase(["b"]);
+
+    const feed = await fetchFeed(50);
+
+    expect(feed.map((e) => [e.id, e.distanciaKm])).toEqual([["a", 0], ["c", 30]]);
+    const recusas = consultas.find((c) => c.tabela === "event_candidates")!;
+    expect(recusas.filtros).toEqual([["in", "event_id", ["a", "b", "c"]], ["eq", "status", "RECUSADO"]]);
+  });
+
+  it("inscrição pendente ou aprovada não esconde o evento", async () => {
+    montarSupabase([]);
+    expect((await fetchFeed(50)).map((e) => e.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("se a consulta das recusas falhar, o feed mostra erro em vez de exibir eventos recusados", async () => {
+    montarSupabase([], true);
+    await expect(fetchFeed(50)).rejects.toMatchObject({ code: "FALHA_DE_LEITURA" });
   });
 });

@@ -1,12 +1,12 @@
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
-import { errorMessage } from "../../../../../shared/client/api.ts";
-import { fetchCandidateProfile, fetchFavoriteIds, setFavorite, type CandidateStatus } from "../../../../../shared/client/events.ts";
+import { fetchCandidateProfile, type CandidateStatus } from "../../../../../shared/client/events.ts";
 import { useAsync } from "../../../../../shared/client/useAsync.ts";
 import { isPro, isValidUrl } from "../../../../../shared/dominio.ts";
 import { ReviewsSection } from "../../../../components/events";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Surface, Section, Tag } from "../../../../components/ui";
+import { useFavoritos } from "../../../../lib/useFavoritos";
 import { space, styles, type } from "../../../../lib/theme";
 import { abrirLink } from "../../../../lib/links";
 import { denunciar } from "../../../../lib/suporte";
@@ -23,7 +23,7 @@ export default function CandidateProfileScreen() {
   const profile = useAsync(`candidate-profile:${eventId}:${candidateId}`, () => fetchCandidateProfile(eventId, candidateId));
   const me = useMe();
   const casa = isPro(me.casaAte);
-  const favoritos = useAsync(`favoritos-ids:${me.id}`, () => (casa ? fetchFavoriteIds(me.id) : Promise.resolve([])));
+  const favoritos = useFavoritos(me.id, casa);
   const [error, setError] = useState("");
 
   if (profile.error) return <Screen><ErrorState message={profile.error} onRetry={profile.reload}/></Screen>;
@@ -36,8 +36,9 @@ export default function CandidateProfileScreen() {
   const pill = statusPill[status];
   const favoritar = (favorito: boolean) => {
     setError("");
-    setFavorite(musician.id, favorito).then(favoritos.reload, (e: unknown) => setError(errorMessage(e)));
+    void favoritos.alternar(musician.id, favorito);
   };
+  const botaoFavorito = favoritos.botao(musician.id);
   return <Screen>
     <Surface destaque>
       <View style={[styles.row, { gap: space.lg }]}>
@@ -49,11 +50,12 @@ export default function CandidateProfileScreen() {
           <RatingSummary media={musician.avaliacaoMedia} total={musician.totalAvaliacoes}/>
         </View>
       </View>
-      {casa && favoritos.data && (favoritos.data.includes(musician.id)
-        ? <Button title="Nos favoritos" variant="tonal" icon="heart" onPress={() => favoritar(false)}/>
-        : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" onPress={() => favoritar(true)}/>)}
+      {botaoFavorito.visivel && (botaoFavorito.favorito
+        ? <Button title="Nos favoritos" variant="tonal" icon="heart" pendente={botaoFavorito.salvando} onPress={() => favoritar(false)}/>
+        : <Button title="Salvar nos favoritos" variant="outlined" icon="heart-outline" pendente={botaoFavorito.salvando} onPress={() => favoritar(true)}/>)}
     </Surface>
-    {error ? <Alert tone="error">{error}</Alert> : null}
+    {error || favoritos.erro ? <Alert tone="error">{error || favoritos.erro}</Alert> : null}
+    {!error && favoritos.erro && favoritos.podeTentarDeNovo ? <Button title="Tentar novamente" variant="text" icon="refresh" block={false} onPress={favoritos.tentarDeNovo}/> : null}
     <Button title={`Denunciar ${musician.nome}`} variant="text" icon="flag-outline" onPress={() => { setError(""); denunciar(musician.nome, "perfil de candidato", me.email, setError); }}/>
     <Section title="Apresentação">
       <Text style={musician.bio ? type.body : type.bodySmall}>{musician.bio || "Descrição não informada."}</Text>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, medidaDoReveal, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques } from "./reveal.ts";
+import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, medidaDoReveal, posicaoNaRolagem, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques, revelaAoRolar, somarDeslocamento } from "./reveal.ts";
 
 const janela = 800;
 
@@ -10,17 +10,25 @@ describe("Reveal: quem recebe toques", () => {
     expect(revealRecebeToques({ posicao: 0, caixa, alturaDaJanela: janela, empilhar: false })).toBe(true);
   });
 
-  it("cartão abaixo da dobra, ainda transparente, não recebe toques", () => {
+  it("item de lista (sem empilhamento) recebe toques em qualquer ponto da rolagem, inclusive durante o embalo", () => {
     const caixa = { y: 1400, altura: 200 };
-    expect(precisaAcompanharRolagem(caixa, janela, false)).toBe(true);
-    expect(revealRecebeToques({ posicao: 0, caixa, alturaDaJanela: janela, empilhar: false })).toBe(false);
-    expect(revealRecebeToques({ posicao: caixa.y - janela + REVEAL_FAIXA_DE_ENTRADA * 0.4, caixa, alturaDaJanela: janela, empilhar: false })).toBe(false);
+    expect(precisaAcompanharRolagem(caixa, janela, false)).toBe(false);
+    for (const posicao of [0, caixa.y - janela + REVEAL_FAIXA_DE_ENTRADA * 0.1, caixa.y - janela + REVEAL_FAIXA_DE_ENTRADA * 0.4, caixa.y, caixa.y + 600]) {
+      expect(revealRecebeToques({ posicao, caixa, alturaDaJanela: janela, empilhar: false })).toBe(true);
+    }
   });
 
-  it("cartão abaixo da dobra passa a receber toques quando já está mais da metade revelado", () => {
+  it("cartão do feed (empilhado) abaixo da dobra, ainda transparente, não recebe toques", () => {
     const caixa = { y: 1400, altura: 200 };
-    expect(revealRecebeToques({ posicao: caixa.y - janela + REVEAL_FAIXA_DE_ENTRADA * 0.5, caixa, alturaDaJanela: janela, empilhar: false })).toBe(true);
-    expect(revealRecebeToques({ posicao: caixa.y, caixa, alturaDaJanela: janela, empilhar: false })).toBe(true);
+    expect(precisaAcompanharRolagem(caixa, janela, true)).toBe(true);
+    expect(revealRecebeToques({ posicao: 0, caixa, alturaDaJanela: janela, empilhar: true })).toBe(false);
+    expect(revealRecebeToques({ posicao: caixa.y - janela + REVEAL_FAIXA_DE_ENTRADA * 0.4, caixa, alturaDaJanela: janela, empilhar: true })).toBe(false);
+  });
+
+  it("cartão do feed abaixo da dobra passa a receber toques quando já está mais da metade revelado", () => {
+    const caixa = { y: 1400, altura: 200 };
+    expect(revealRecebeToques({ posicao: caixa.y - janela + REVEAL_FAIXA_DE_ENTRADA * 0.5, caixa, alturaDaJanela: janela, empilhar: true })).toBe(true);
+    expect(revealRecebeToques({ posicao: caixa.y - 1, caixa, alturaDaJanela: janela, empilhar: true })).toBe(true);
   });
 
   it("cartão empilhado sob o seguinte deixa de receber toques quando está mais da metade coberto", () => {
@@ -115,5 +123,31 @@ describe("Reveal: medida do cartão", () => {
 
   it("mudança real de altura, como uma imagem que terminou de carregar, continua mudando a medida", () => {
     expect(medidaDoReveal(300, 200)).not.toEqual(medidaDoReveal(300, 260));
+  });
+});
+
+describe("Reveal: posição dentro de listas", () => {
+  const janela = 800;
+
+  it("soma o deslocamento dos contêineres à posição medida no pai", () => {
+    const secao = somarDeslocamento(0, 1200.4);
+    const lista = somarDeslocamento(secao, 48.6);
+
+    expect(lista).toBe(1249);
+    expect(posicaoNaRolagem({ y: 300, altura: 120 }, lista)).toEqual({ y: 1549, altura: 120 });
+  });
+
+  it("item abaixo da primeira tela dentro de uma lista passa a entrar ao rolar", () => {
+    const medidaNoPai = { y: 300, altura: 120 };
+    const naRolagem = posicaoNaRolagem(medidaNoPai, 900);
+
+    expect(revelaAoRolar(medidaNoPai, janela)).toBe(false);
+    expect(revelaAoRolar(naRolagem, janela)).toBe(true);
+    expect(revealRecebeToques({ posicao: 0, caixa: naRolagem, alturaDaJanela: janela, empilhar: false })).toBe(true);
+    expect(revealRecebeToques({ posicao: naRolagem.y - janela + REVEAL_FAIXA_DE_ENTRADA, caixa: naRolagem, alturaDaJanela: janela, empilhar: false })).toBe(true);
+  });
+
+  it("sem contêiner medido a posição continua a mesma (feed e blocos diretos)", () => {
+    expect(posicaoNaRolagem({ y: 420, altura: 200 }, 0)).toEqual({ y: 420, altura: 200 });
   });
 });

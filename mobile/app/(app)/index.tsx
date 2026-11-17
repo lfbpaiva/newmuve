@@ -2,12 +2,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import { fetchFeed, fetchMyEvents, fetchOpenFines, filterFeed, filtrosAtivos, FILTROS_VAZIOS, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
+import { fetchFeed, fetchMyEvents, fetchOpenFines, filterFeed, filtrosAtivos, FILTROS_VAZIOS, SEM_CONEXAO_MENSAGEM, type FeedFilters, type PeriodoFeed } from "../../../shared/client/events.ts";
 import { formatCurrency } from "../../../shared/client/format.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { CASA_PRECO, camposFaltantes, descreverFaltantes, emAcessoAntecipado, isPro, PRO_PRECO, RAIOS_FEED_KM, RAIOS_FEED_PRO_KM, TIPOS_EVENTO } from "../../../shared/dominio.ts";
 import { ActiveEventCard, OpportunityCard, withEncerrado } from "../../components/events";
-import { Alert, Button, NumeroAnimado, Surface, Chips, EmptyState, ErrorState, Icon, Reveal, Screen, Section, Skeleton, TituloGrande, type IconName } from "../../components/ui";
+import { Alert, BlocoMedido, Button, NumeroAnimado, Surface, Chips, EmptyState, ErrorState, Icon, Reveal, Screen, Section, Skeleton, TituloGrande, type IconName } from "../../components/ui";
 import { TopBar } from "../../components/TopBar";
 import { colors, radius, radius as cantos, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
@@ -173,6 +173,11 @@ function Dashboard() {
             <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{rotulo}</Text>
           </View>)}
         </View>
+        {events.error && <View accessibilityRole="alert" style={[styles.row, { gap: space.sm, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline }]}>
+          <Icon name={events.error === SEM_CONEXAO_MENSAGEM ? "cloud-offline-outline" : "alert-circle-outline"} size={16} color={colors.ink2}/>
+          <Text style={[type.bodySmall, { flex: 1 }]}>{events.error}</Text>
+          <Button title="Tentar novamente" variant="text" icon="refresh" block={false} onPress={events.reload}/>
+        </View>}
         {investido > 0 && <View style={[styles.between, { paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline }]}>
           <Text style={type.bodySmall}>Pago a músicos até hoje</Text>
           <NumeroAnimado valor={investido} formatar={formatCurrency} style={[type.titleSmall, { color: colors.accentText }]}/>
@@ -190,14 +195,13 @@ function Dashboard() {
         <Icon name="chevron-forward" size={18} color={colors.ink3}/>
       </Pressable></Reveal>}
       <Section title="Em andamento" action={all.length > 0 ? <Button title="Ver todos" variant="text" block={false} onPress={() => router.push("/(app)/events")}/> : undefined}>
-        {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
         {!events.error && !events.data && <HomeLoading label="Buscando seus eventos..."/>}
         {events.data && active.length === 0 && <EmptyState title={all.length ? "Nenhum evento em andamento" : "Publique seu primeiro evento"}>
           <Text style={[type.bodySmall, { textAlign: "center" }]}>Descreva o show, o cachê e o estilo. Músicos da região se candidatam e você escolhe quem aprovar.</Text>
         </EmptyState>}
-        <View style={{ gap: space.sm }}>
+        <BlocoMedido style={{ gap: space.sm }}>
           {active.map((event, index) => <Reveal key={event.id} index={index}><ActiveEventCard event={event} onPress={() => router.push(`/event/${event.id}`)}/></Reveal>)}
-        </View>
+        </BlocoMedido>
       </Section>
       {isPro(me.casaAte)
         ? <View style={{ flexDirection: "row", gap: space.sm }}>

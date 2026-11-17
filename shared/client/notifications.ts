@@ -25,6 +25,9 @@ export async function fetchNotifications(): Promise<AppNotification[]> {
   return unwrap<NotificationRow[]>(result).map((row) => ({ id: row.id, titulo: row.titulo, texto: row.texto, link: row.link, lida: row.lida, createdAt: row.created_at }));
 }
 
+export const aplicarLeitura = (notificacoes: AppNotification[], lidas: ReadonlySet<string>): AppNotification[] =>
+  notificacoes.map((notificacao) => (!notificacao.lida && lidas.has(notificacao.id) ? { ...notificacao, lida: true } : notificacao));
+
 export async function countUnreadNotifications(): Promise<number> {
   const { count, error } = await supabase().from("notifications").select("id", { count: "exact", head: true }).eq("lida", false);
   if (error) unwrap({ data: null, error });

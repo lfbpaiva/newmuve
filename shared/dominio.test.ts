@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   calcularCobranca,
+  comissaoPercentual,
+  estimarCobrancaDoContratante,
   estilosCompativeis,
   hasCancellationNotice,
   imageProblem,
@@ -10,6 +12,7 @@ import {
   isValidDocumento,
   isValidTelefone,
   normalizeChavePix,
+  valorDaInscricao,
 } from "./dominio.ts";
 
 describe("isValidCPF", () => {
@@ -114,5 +117,46 @@ describe("estilosCompativeis", () => {
     expect(estilosCompativeis(["Forró"], ["Sertanejo", "Pop"])).toBe(false);
     expect(estilosCompativeis(["Qualquer estilo"], ["Outros"])).toBe(true);
     expect(estilosCompativeis(["Rock"], [])).toBe(false);
+  });
+});
+
+describe("valorDaInscricao", () => {
+  it("guarda nulo quando o valor é igual ao cachê oferecido", () => {
+    expect(valorDaInscricao(500, 500)).toBeNull();
+    expect(valorDaInscricao(null, 500)).toBeNull();
+  });
+
+  it("guarda a proposta quando o valor é diferente do cachê", () => {
+    expect(valorDaInscricao(650, 500)).toBe(650);
+    expect(valorDaInscricao(400, 500)).toBe(400);
+  });
+});
+
+describe("estimarCobrancaDoContratante", () => {
+  const agora = new Date("2026-11-16T20:00:00Z");
+
+  it("sem Muve Casa usa a taxa de 10% sobre o valor pedido", () => {
+    expect(estimarCobrancaDoContratante(650, null, agora)).toEqual({ cache: 650, comissao: 65, total: 715, percentual: 10, casaAte: null });
+  });
+
+  it("com Muve Casa ativo usa 6% e informa até quando vale", () => {
+    const estimativa = estimarCobrancaDoContratante(650, "2026-12-12T18:52:49Z", agora);
+
+    expect(estimativa).toMatchObject({ cache: 650, comissao: 39, total: 689, percentual: 6 });
+    expect(estimativa?.casaAte?.toISOString()).toBe("2026-12-12T18:52:49.000Z");
+  });
+
+  it("Muve Casa vencido volta para 10% e não informa validade", () => {
+    expect(estimarCobrancaDoContratante(650, "2026-11-01T00:00:00Z", agora)).toMatchObject({ total: 715, percentual: 10, casaAte: null });
+  });
+
+  it("é o mesmo cálculo usado na cobrança", () => {
+    for (const [valor, casaAte] of [[500, null], [733.33, "2026-12-12T00:00:00Z"], [100, null]] as const) {
+      expect(estimarCobrancaDoContratante(valor, casaAte, agora)?.total).toBe(calcularCobranca(valor, comissaoPercentual(casaAte, agora)).total);
+    }
+  });
+
+  it.each([null, undefined, 0, -10, Number.NaN, Number.POSITIVE_INFINITY])("valor ausente ou inválido (%s) não gera estimativa", (valor) => {
+    expect(estimarCobrancaDoContratante(valor, null, agora)).toBeNull();
   });
 });

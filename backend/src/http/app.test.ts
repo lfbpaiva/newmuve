@@ -22,6 +22,8 @@ function setup() {
     apply: vi.fn(async () => {}),
     reportNoShow: vi.fn(async () => {}),
     sendMessage: vi.fn(async () => ({})),
+    inviteMusician: vi.fn(async () => {}),
+    openDispute: vi.fn(async () => {}),
   };
   const payments = {
     startCheckout: vi.fn(async () => ({
@@ -251,6 +253,41 @@ describe("eventos e checkout", () => {
     expect(events.apply).toHaveBeenNthCalledWith(1, expect.anything(), "e1", null);
     expect(events.apply).toHaveBeenNthCalledWith(2, expect.anything(), "e1", 800);
     expect(await abaixo.json()).toEqual({ error: { code: "DADOS_INVALIDOS", message: "O cachê mínimo é de R$ 100,00." } });
+  });
+
+  it("POST /api/events/:id/convites responde 204 sem corpo depois de gravar o convite", async () => {
+    const { app, events } = setup();
+    const musicianId = "0f2bbfb1-d9d1-4bc5-a89e-d8fe00a4fe5f";
+
+    const response = await app.request("/api/events/e1/convites", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ musicianId }) });
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(events.inviteMusician).toHaveBeenCalledWith(expect.objectContaining({ id: "u1" }), "e1", musicianId);
+  });
+
+  it("POST /api/events/:id/convites devolve o erro do serviço com corpo JSON", async () => {
+    const { app, events } = setup();
+    events.inviteMusician.mockRejectedValueOnce(new AppError(409, "NAO_FAVORITO", "Salve o músico nos favoritos antes de convidar."));
+
+    const response = await app.request("/api/events/e1/convites", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ musicianId: "0f2bbfb1-d9d1-4bc5-a89e-d8fe00a4fe5f" }) });
+    const invalido = await app.request("/api/events/e1/convites", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ musicianId: "m1" }) });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: { code: "NAO_FAVORITO", message: "Salve o músico nos favoritos antes de convidar." } });
+    expect(invalido.status).toBe(400);
+    expect(events.inviteMusician).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /api/events/:id/contestacao responde 204 sem corpo depois de abrir a contestação", async () => {
+    const { app, events } = setup();
+    const motivo = "O músico não apareceu no bar.";
+
+    const response = await app.request("/api/events/e1/contestacao", { method: "POST", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ motivo }) });
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(events.openDispute).toHaveBeenCalledWith(expect.objectContaining({ id: "u1" }), "e1", motivo);
   });
 
   it("POST /api/events rejeita cachê abaixo do mínimo antes de chegar ao serviço", async () => {

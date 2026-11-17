@@ -315,13 +315,13 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   app.post("/events/:id/convites", limites.convites, async (c) => {
     const { musicianId } = conviteSchema.parse(await readJson(c));
     await events.inviteMusician(c.get("user"), c.req.param("id"), musicianId);
-    return c.body(null, 201);
+    return c.body(null, 204);
   });
 
   app.post("/events/:id/contestacao", limites.contestacao, async (c) => {
     const { motivo } = contestacaoSchema.parse(await readJson(c));
     await events.openDispute(c.get("user"), c.req.param("id"), motivo);
-    return c.body(null, 201);
+    return c.body(null, 204);
   });
 
   app.post("/admin/contestacoes/:id/resolucao", async (c) => {

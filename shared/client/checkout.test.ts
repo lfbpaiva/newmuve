@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { openCheckout, startCheckout, type Checkout } from "./events.ts";
+import { consultarCobrancaAproveitavel, startCheckout, type Checkout } from "./events.ts";
 
 vi.mock("./config.ts", () => ({
   clientConfig: () => ({ apiUrl: "/api" }),
@@ -35,70 +35,68 @@ function servidor(get: () => Response | Promise<Response>, post: () => Response 
 beforeEach(() => vi.unstubAllGlobals());
 afterEach(() => vi.unstubAllGlobals());
 
-describe("abertura da tela do Pix", () => {
+describe("abertura da tela do Pix: só consulta, nunca cria cobrança", () => {
   it("com cobrança pendente do mesmo candidato, devolve a cobrança e não faz POST", async () => {
     const { metodos } = servidor(() => json(cobranca()));
 
-    await expect(openCheckout("e1", "c1")).resolves.toEqual(cobranca());
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).resolves.toEqual(cobranca());
     expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
-  it("sem cobrança, consulta e depois faz um único POST", async () => {
+  it("sem cobrança, não cria nada: a tela pede confirmação antes de gerar", async () => {
     const { metodos } = servidor(() => semCobranca());
 
-    await expect(openCheckout("e1", "c1")).resolves.toEqual(nova);
-    expect(metodos()).toEqual(["GET /api/events/e1/checkout", "POST /api/events/e1/checkout"]);
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).resolves.toBeNull();
+    expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
-  it.each(["EXPIRADO", "CANCELADO", "ESTORNADO"] as const)("com a última cobrança %s, gera uma nova em vez de mostrar o QR antigo", async (status) => {
+  it.each(["EXPIRADO", "CANCELADO", "ESTORNADO"] as const)("com a última cobrança %s, não mostra o QR antigo nem gera outra sozinha", async (status) => {
     const { metodos } = servidor(() => json(cobranca({ status, pixQrCode: "qr-invalido" })));
 
-    const aberta = await openCheckout("e1", "c1");
-    expect(aberta).toEqual(nova);
-    expect(aberta.pixQrCode).not.toBe("qr-invalido");
-    expect(metodos()).toEqual(["GET /api/events/e1/checkout", "POST /api/events/e1/checkout"]);
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).resolves.toBeNull();
+    expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
   it("com o pagamento já concluído, devolve PAGO sem criar cobrança", async () => {
     const { metodos } = servidor(() => json(cobranca({ status: "PAGO" })));
 
-    await expect(openCheckout("e1", "c1")).resolves.toMatchObject({ status: "PAGO" });
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).resolves.toMatchObject({ status: "PAGO" });
     expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
-  it("com cobrança pendente de outro candidato, faz o POST para este candidato", async () => {
+  it("com cobrança pendente de outro candidato, não cancela nem cria nada sem confirmação", async () => {
     const { metodos } = servidor(() => json(cobranca({ candidateId: "c2" })));
 
-    await expect(openCheckout("e1", "c1")).resolves.toEqual(nova);
-    expect(metodos()).toEqual(["GET /api/events/e1/checkout", "POST /api/events/e1/checkout"]);
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).resolves.toBeNull();
+    expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
   it("reabrir a tela com a cobrança ainda pendente não cria outra", async () => {
     const { metodos } = servidor(() => json(cobranca()));
 
-    await openCheckout("e1", "c1");
-    await openCheckout("e1", "c1");
-    await openCheckout("e1", "c1");
+    await consultarCobrancaAproveitavel("e1", "c1");
+    await consultarCobrancaAproveitavel("e1", "c1");
+    await consultarCobrancaAproveitavel("e1", "c1");
     expect(metodos()).toEqual(Array(3).fill("GET /api/events/e1/checkout"));
   });
 
-  it("aberturas simultâneas fazem uma única consulta e um único POST", async () => {
+  it("aberturas simultâneas fazem uma única consulta e nenhum POST", async () => {
     let liberar: (resposta: Response) => void = () => {};
     const { metodos } = servidor(() => new Promise<Response>((resolve) => { liberar = resolve; }));
 
-    const aberturas = [openCheckout("e1", "c1"), openCheckout("e1", "c1"), openCheckout("e1", "c1")];
+    const aberturas = [consultarCobrancaAproveitavel("e1", "c1"), consultarCobrancaAproveitavel("e1", "c1"), consultarCobrancaAproveitavel("e1", "c1")];
     await vi.waitFor(() => expect(metodos()).toHaveLength(1));
     liberar(semCobranca());
     const resultados = await Promise.all(aberturas);
 
-    expect(resultados).toEqual([nova, nova, nova]);
-    expect(metodos()).toEqual(["GET /api/events/e1/checkout", "POST /api/events/e1/checkout"]);
+    expect(resultados).toEqual([null, null, null]);
+    expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
   it("falha na consulta não cria cobrança e repassa o erro", async () => {
     const { metodos } = servidor(() => json({ error: { code: "ERRO_INTERNO", message: "Falhou." } }, 500));
 
-    await expect(openCheckout("e1", "c1")).rejects.toMatchObject({ status: 500, message: "Falhou." });
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).rejects.toMatchObject({ status: 500, message: "Falhou." });
     expect(metodos()).toEqual(["GET /api/events/e1/checkout"]);
   });
 
@@ -106,7 +104,7 @@ describe("abertura da tela do Pix", () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(openCheckout("e1", "c1")).rejects.toMatchObject({ code: "SEM_CONEXAO" });
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).rejects.toMatchObject({ code: "SEM_CONEXAO" });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
@@ -114,14 +112,14 @@ describe("abertura da tela do Pix", () => {
     let falhar = true;
     const { metodos } = servidor(() => (falhar ? json({ error: { code: "ERRO_INTERNO", message: "Falhou." } }, 500) : json(cobranca())));
 
-    await openCheckout("e1", "c1").catch(() => {});
+    await consultarCobrancaAproveitavel("e1", "c1").catch(() => {});
     falhar = false;
-    await expect(openCheckout("e1", "c1")).resolves.toEqual(cobranca());
+    await expect(consultarCobrancaAproveitavel("e1", "c1")).resolves.toEqual(cobranca());
     expect(metodos()).toEqual(["GET /api/events/e1/checkout", "GET /api/events/e1/checkout"]);
   });
 });
 
-describe("botão Gerar nova cobrança", () => {
+describe("botões Gerar cobrança Pix e Gerar nova cobrança (ação explícita)", () => {
   it("faz o POST diretamente, sem depender da consulta", async () => {
     const { metodos } = servidor(() => json(cobranca({ status: "EXPIRADO" })));
 

@@ -34,13 +34,12 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
     },
 
     async findAccount(userId) {
-      const base = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
+      const base = await admin.from("profiles").select("role, contractor_profiles(*), musician_profiles(*)").eq("id", userId).maybeSingle();
       if (base.error) throw base.error;
       if (!base.data) return null;
       const role = base.data.role as Role;
-
-      const { data, error } = await admin.from(detailTable(role)).select("*").eq("user_id", userId).maybeSingle();
-      if (error) throw error;
+      const detalhe = base.data[detailTable(role)];
+      const data = Array.isArray(detalhe) ? detalhe[0] : detalhe;
       if (!data) return null;
 
       const account: Account = {

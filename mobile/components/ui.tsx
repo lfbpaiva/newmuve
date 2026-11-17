@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   ArrowRight, Banknote, Bell, BellRing, Building2, Calendar, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleAlert, CircleCheck, CircleHelp, CircleMinus, CirclePlay,
-  Clock, Copy, CreditCard, Eye, EyeOff, FileText, Flag, Heart, House, Image as ImagemIcone, Info, Lock, LockOpen, LogOut, Mail, MailOpen, Map as MapaIcone, MapPin, Megaphone, MessagesSquare, Music,
+  Clock, CloudOff, Copy, CreditCard, Eye, EyeOff, FileText, Flag, Heart, House, Image as ImagemIcone, Info, Lock, LockOpen, LogOut, Mail, MailOpen, Map as MapaIcone, MapPin, Megaphone, MessagesSquare, Music,
   Navigation, Phone, Plus, RefreshCw, Repeat, Save, Search, Send, SendHorizontal, Settings, ShieldCheck, SlidersHorizontal, SquarePen, Star, Store, Tag as TagIcone, Trash2, TrendingUp, User, Users, Volume2, X, Zap,
   type LucideIcon,
 } from "lucide-react-native";
@@ -25,12 +25,13 @@ import {
   View,
   type TextInputProps,
   type TextStyle,
+  type StyleProp,
   type ViewInstance,
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, EMPILHAR_DESLOCAMENTO, medidaDoReveal, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques, type AvisoDeFimDaRolagem } from "../lib/reveal";
+import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, EMPILHAR_DESLOCAMENTO, medidaDoReveal, posicaoNaRolagem, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques, somarDeslocamento, type AvisoDeFimDaRolagem } from "../lib/reveal";
 import { colors, fonts, gradients, motion, radius, space, styles, type } from "../lib/theme";
 
 const icones = {
@@ -53,6 +54,7 @@ const icones = {
   "chevron-down": ChevronDown,
   "chevron-forward": ChevronRight,
   "close": X,
+  "cloud-offline-outline": CloudOff,
   "copy-outline": Copy,
   "create-outline": SquarePen,
   "document-text-outline": FileText,
@@ -121,6 +123,18 @@ export function Icon({ name, size = 20, color = colors.ink }: { name: IconName; 
 const nativeDriver = Platform.OS !== "web";
 const ScrollYContext = createContext<Animated.Value | null>(null);
 const FimDaRolagemContext = createContext<AvisoDeFimDaRolagem | null>(null);
+const DeslocamentoNaRolagemContext = createContext(0);
+
+export function BlocoMedido({ style, children }: { style?: StyleProp<ViewStyle>; children: ReactNode }) {
+  const deslocamentoDoPai = useContext(DeslocamentoNaRolagemContext);
+  const [yNoPai, setYNoPai] = useState(0);
+  return <View style={style} onLayout={(event) => {
+    const y = Math.round(event.nativeEvent.layout.y);
+    setYNoPai((atual) => (atual === y ? atual : y));
+  }}>
+    <DeslocamentoNaRolagemContext.Provider value={somarDeslocamento(deslocamentoDoPai, yNoPai)}>{children}</DeslocamentoNaRolagemContext.Provider>
+  </View>;
+}
 
 export const useScrollY = () => useContext(ScrollYContext);
 
@@ -214,11 +228,12 @@ const posicaoAtual = (valor: Animated.Value) => (valor as unknown as { __getValu
 export function Reveal({ children, index = 0, empilhar = false }: { children: ReactNode; index?: number; empilhar?: boolean }) {
   const scrollY = useScrollY();
   const fimDaRolagem = useContext(FimDaRolagemContext);
+  const deslocamentoDoContainer = useContext(DeslocamentoNaRolagemContext);
   const reduce = useReduceMotion();
   const { height } = useWindowDimensions();
   const entrada = useRef(new Animated.Value(0)).current;
   const [medida, setMedida] = useState<{ y: number; altura: number; index: number } | null>(null);
-  const caixa = medida?.index === index ? medida : null;
+  const caixa = medida?.index === index ? posicaoNaRolagem(medida, deslocamentoDoContainer) : null;
   const [recebeToques, setRecebeToques] = useState(true);
   const recebeToquesRef = useRef(true);
   const caixaY = caixa?.y;
@@ -309,10 +324,10 @@ export function Heading({ title, subtitle, size = "headline" }: { title: string;
 }
 
 export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
-  return <View style={styles.section}>
+  return <BlocoMedido style={styles.section}>
     <View style={[styles.between, { minHeight: 32 }]}><Text style={type.title} accessibilityRole="header">{title}</Text>{action}</View>
     {children}
-  </View>;
+  </BlocoMedido>;
 }
 
 type ButtonVariant = "filled" | "tonal" | "outlined" | "text" | "danger";
@@ -333,16 +348,16 @@ export function usePressao() {
   return { escala, aoPressionar: () => animar(0.97), aoSoltar: () => animar(1) };
 }
 
-export function Button({ title, onPress, variant = "filled", icon, disabled, loading, block = true }: {
-  title: string; onPress: () => void; variant?: ButtonVariant; icon?: IconName; disabled?: boolean; loading?: boolean; block?: boolean;
+export function Button({ title, onPress, variant = "filled", icon, disabled, loading, pendente = false, block = true }: {
+  title: string; onPress: () => void; variant?: ButtonVariant; icon?: IconName; disabled?: boolean; loading?: boolean; pendente?: boolean; block?: boolean;
 }) {
   const c = buttonColors[variant];
   const off = disabled || loading;
   const { escala, aoPressionar, aoSoltar } = usePressao();
-  return <Animated.View style={[{ transform: [{ scale: escala }] }, block ? null : { alignSelf: "flex-start" }]}>
+  return <Animated.View style={[{ transform: [{ scale: escala }], opacity: pendente ? 0.6 : 1 }, block ? null : { alignSelf: "flex-start" }]}>
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled: off, busy: loading }}
+      accessibilityState={{ disabled: off, busy: loading || pendente }}
       disabled={off}
       onPress={onPress}
       onPressIn={aoPressionar}
@@ -354,7 +369,7 @@ export function Button({ title, onPress, variant = "filled", icon, disabled, loa
     >
       {loading ? <ActivityIndicator color={c.fg}/> : <>
         <Text style={[type.label, { fontFamily: fonts.semibold, color: c.fg }]}>{title}</Text>
-        {icon && <Icon name={icon} size={17} color={c.fg}/>}
+        {pendente ? <ActivityIndicator size="small" color={c.fg}/> : icon && <Icon name={icon} size={17} color={c.fg}/>}
       </>}
     </Pressable>
   </Animated.View>;

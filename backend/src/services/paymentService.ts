@@ -321,7 +321,10 @@ export function createPaymentService(deps: {
   }
 
   async function syncPending(eventId: string, now = new Date()): Promise<PaymentRecord | null> {
-    const latest = await payments.findLatestPayment(eventId);
+    return sincronizarUltimoPagamento(eventId, await payments.findLatestPayment(eventId), now);
+  }
+
+  async function sincronizarUltimoPagamento(eventId: string, latest: PaymentRecord | null, now: Date): Promise<PaymentRecord | null> {
     if (latest?.status !== "PENDENTE") return latest;
 
     const remote = await asaas.getPayment(latest.asaasPaymentId);
@@ -388,9 +391,16 @@ export function createPaymentService(deps: {
     },
 
     async syncCheckout(user: AuthUser, eventId: string, now = new Date()): Promise<PaymentRecord | null> {
-      await findOwnedEvent(user, eventId);
-      for (const late of await payments.findLateRefundsToRetry(eventId)) await refundLatePayment(late).catch(() => {});
-      return syncPending(eventId, now);
+      const [evento, atrasados, ultimo] = await Promise.allSettled([events.findEvent(eventId), payments.findLateRefundsToRetry(eventId), payments.findLatestPayment(eventId)]);
+      if (evento.status === "rejected") throw evento.reason;
+      if (!evento.value || evento.value.contractorId !== user.id) throw new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
+      if (atrasados.status === "rejected") throw atrasados.reason;
+      if (atrasados.value.length > 0) {
+        for (const late of atrasados.value) await refundLatePayment(late).catch(() => {});
+        return syncPending(eventId, now);
+      }
+      if (ultimo.status === "rejected") throw ultimo.reason;
+      return sincronizarUltimoPagamento(eventId, ultimo.value, now);
     },
 
     syncPending,

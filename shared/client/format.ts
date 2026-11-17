@@ -1,4 +1,4 @@
-import { fusoDaUf } from "../dominio.ts";
+import { fusoDaUf, type EstimativaDoContratante } from "../dominio.ts";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -8,6 +8,17 @@ export const formatCurrency = (value: number) => currency.format(value);
 export const parseValor = (input: string) => Number(input.replace(/\./g, "").replace(",", "."));
 
 export const toValorInput = (value: number) => String(value).replace(".", ",");
+
+const dataCurta = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+
+export const formatTotalDoContratante = (estimativa: EstimativaDoContratante) => `Você paga ${formatCurrency(estimativa.total)} se aprovar agora`;
+
+export const formatTotalSeAceita = (estimativa: EstimativaDoContratante) => `Se esta proposta for aceita, você pagará ${formatCurrency(estimativa.total)} ao aprovar`;
+
+export function detalharTotalDoContratante(estimativa: EstimativaDoContratante): string {
+  const taxa = estimativa.casaAte ? `taxa de ${estimativa.percentual}% do Muve Casa, válida até ${dataCurta.format(estimativa.casaAte)}` : `taxa de ${estimativa.percentual}%`;
+  return `${formatCurrency(estimativa.cache)} de cachê + ${formatCurrency(estimativa.comissao)} de ${taxa}. O valor final é calculado no pagamento.`;
+}
 
 export const formatDateTime = (iso: string) => dateTime.format(new Date(iso)).replace(", ", " às ");
 

@@ -1,34 +1,40 @@
 import "../lib/client";
 import { Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold, useFonts } from "@expo-google-fonts/geist";
 import * as Linking from "expo-linking";
-import { Stack, useRouter } from "expo-router";
+import { DarkTheme, Stack, ThemeProvider, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { Abertura } from "../components/Abertura";
+import { telasLiberadas } from "../lib/abertura";
 import { consumeAuthLink } from "../lib/authLinks";
 import { usePushNotifications } from "../lib/push";
 import { colors, stackOptions } from "../lib/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+const temaDaNavegacao = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, primary: colors.accent, background: colors.bg, card: colors.bg, text: colors.ink, border: colors.line },
+};
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Geist_400Regular, Geist_500Medium, Geist_600SemiBold, Geist_700Bold });
   const [abrindo, setAbrindo] = useState(true);
+  const [desenhoConcluido, setDesenhoConcluido] = useState(false);
   const encerrarAbertura = useCallback(() => setAbrindo(false), []);
-  useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded]);
+  const concluirDesenho = useCallback(() => setDesenhoConcluido(true), []);
   return <AuthProvider>
-    {fontsLoaded && <>
+    <LinksDeAutenticacao/>
+    {fontsLoaded && <ThemeProvider value={temaDaNavegacao}>
       <StatusBar style="light"/>
       <WebFrame>
-        <AuthGate/>
-        {abrindo && <Abertura onFim={encerrarAbertura}/>}
+        {telasLiberadas({ abrindo, desenhoConcluido }) && <AuthGate/>}
+        {abrindo && <Abertura onFim={encerrarAbertura} onDesenhoConcluido={concluirDesenho}/>}
       </WebFrame>
-    </>}
+    </ThemeProvider>}
   </AuthProvider>;
 }
 
@@ -41,7 +47,7 @@ function WebFrame({ children }: { children: ReactNode }) {
   </View>;
 }
 
-function useAuthLinks() {
+function LinksDeAutenticacao() {
   const { beginPasswordRecovery } = useAuth();
   useEffect(() => {
     const handle = (url: string | null) => consumeAuthLink(url, beginPasswordRecovery);
@@ -49,12 +55,12 @@ function useAuthLinks() {
     const subscription = Linking.addEventListener("url", (event) => handle(event.url));
     return () => subscription.remove();
   }, [beginPasswordRecovery]);
+  return null;
 }
 
 function AuthGate() {
   const { state, recoveringPassword, retrySession } = useAuth();
   const router = useRouter();
-  useAuthLinks();
   usePushNotifications(state.status === "signedIn");
   const loading = state.status === "loading";
   const signedIn = state.status === "signedIn" && !recoveringPassword;
