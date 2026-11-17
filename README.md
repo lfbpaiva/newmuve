@@ -158,7 +158,7 @@ só é aceito 24 horas depois do pedido e com uma busca completa e vazia na Asaa
 node scripts/resolver-repasse.mjs confirmar <tentativa> --operador "Seu nome" --declaro
 ```
 
-refaz a busca, registra a declaração e envia uma nova tentativa. Os prazos e as buscas reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência; o nome informado não é uma identidade autenticada. Tentativas antigas com transferência registrada usam `node scripts/resolver-repasse.mjs conferir <tentativa>`.
+refaz a busca, registra a declaração e encerra a tentativa; o repasse fica como falho e não é reenviado. Os prazos e as buscas reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência; o nome informado não é uma identidade autenticada. Tentativas antigas com transferência registrada usam `node scripts/resolver-repasse.mjs conferir <tentativa>`.
 
 **Contestações:** defina `ADMIN_TOKEN` em `backend/.env` (um texto longo e aleatório). Com a API rodando:
 

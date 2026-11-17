@@ -14,7 +14,8 @@ function setup() {
   const notifier = createNotifier({ ...world.stores, appUrl: "http://localhost:8443" });
   const payments = createPaymentService({ ...world.stores, notifier });
   const service = createEventService({ ...world.stores, payments, notifier });
-  return { world, service, payments };
+  const rotina = createRotinaFinanceira({ paymentStore: world.stores.payments, eventStore: world.stores.events, payments, events: service, trava: world.stores.trava });
+  return { world, service, payments, rotina };
 }
 
 const banner = () => new File(["x"], "banner.png", { type: "image/png" });
@@ -363,7 +364,7 @@ describe("cancelamento da contratação", () => {
     expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
   });
 
-  it("estorno negado fica visível, mas não impede a confirmação nem o repasse", async () => {
+  it("estorno negado fica visível, mas não impede a confirmação nem o repasse pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(1));
     t.world.stores.asaas.refundPayment = async () => {
       throw new AppError(409, "ESTORNO_RECUSADO", "Estorno recusado.");
@@ -376,6 +377,8 @@ describe("cancelamento da contratação", () => {
     const concluido = await t.service.confirmCompletion(musico, event.id, hoursFromNow(3));
 
     expect(concluido.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(4));
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500 })]);
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", repasseStatus: "PROCESSANDO", refundStatus: "NEGADO" });
   });
@@ -388,6 +391,8 @@ describe("cancelamento da contratação", () => {
     const comprovante = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8));
 
     expect(comprovante.evento.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(24 * 8));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
@@ -396,20 +401,25 @@ describe("cancelamento da contratação", () => {
     t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
 
     await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(NOW);
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
-  it("repasse de cancelamento em cima da hora é tentado de novo ao abrir o comprovante", async () => {
+  it("repasse falho de cancelamento em cima da hora não é tentado de novo ao abrir o comprovante nem pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(12));
     t.world.failures.transfer = true;
     await t.service.cancelHiring(contratante, event.id, undefined, NOW);
+    await t.rotina.run(NOW);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
 
     t.world.failures.transfer = false;
-    await t.service.getHiring(musico, event.id, NOW);
+    for (let vez = 0; vez < 5; vez++) await t.service.getHiring(vez % 2 === 0 ? musico : contratante, event.id, NOW);
+    await t.rotina.run(hoursFromNow(1));
 
-    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(1);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
   });
 
   it("registra recusa por saldo sem desfazer o contrato e permite nova tentativa segura", async () => {
@@ -457,10 +467,16 @@ describe("cancelamento da contratação", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
   });
 
-  it("contratante com menos de 24h: sem estorno, o cachê vai para o músico", async () => {
+  it("contratante com menos de 24h: sem estorno, o cachê vai para o músico pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(12));
 
     await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    const consultas = await Promise.all([t.service.getHiring(musico, event.id, NOW), t.service.getHiring(contratante, event.id, NOW)]);
+    expect(consultas.map((consulta) => consulta.evento.status)).toEqual(["CANCELADO", "CANCELADO"]);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("RETIDO");
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(0);
+    await t.rotina.run(NOW);
 
     expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500, pixAddressKey: "m1@exemplo.com" })]);
@@ -521,7 +537,7 @@ describe("cancelamento da contratação", () => {
 });
 
 describe("liberação do valor retido", () => {
-  it("a segunda confirmação conclui o show e dispara o repasse ao músico", async () => {
+  it("a segunda confirmação conclui o show sem transferir; o repasse sai pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(1));
     const depois = hoursFromNow(5);
 
@@ -529,31 +545,73 @@ describe("liberação do valor retido", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
     await t.service.confirmCompletion(musico, event.id, depois);
+    expect(t.world.events.get(event.id)?.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("RETIDO");
+
+    await t.rotina.run(depois);
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500 })]);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("com uma só confirmação, conclui e repassa automaticamente após 7 dias", async () => {
-    const { event } = await hired(hoursFromNow(1));
+  it("com uma só confirmação, a consulta conclui após 7 dias sem transferir; o repasse sai pela rotina", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
     await t.service.confirmCompletion(musico, event.id, hoursFromNow(5));
 
     const antes = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 6));
     expect(antes.evento.status).toBe("CONTRATADO");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
     const depois = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 7 + 2));
     expect(depois.evento.status).toBe("CONCLUIDO");
+    expect(depois.pagamento?.repasseStatus).toBe("RETIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    await t.rotina.run(hoursFromNow(24 * 7 + 3));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("sem nenhuma confirmação nem ausência registrada, o show é dado como realizado após 7 dias", async () => {
+  it("sem nenhuma confirmação nem ausência registrada, o show é dado como realizado após 7 dias, sem transferir na consulta", async () => {
     const { event } = await hired(hoursFromNow(1));
 
     expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 6))).evento.status).toBe("CONTRATADO");
     const view = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8 + 1));
 
     expect(view.evento.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+
+  it("consultas repetidas e simultâneas da contratação não transferem, não criam tentativas nem avisos", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(5));
+    await t.service.confirmCompletion(musico, event.id, hoursFromNow(5));
+    const avisosAntes = t.world.notifications.length;
+
+    const consultas = await Promise.all([
+      t.service.getHiring(contratante, event.id, hoursFromNow(6)),
+      t.service.getHiring(musico, event.id, hoursFromNow(6)),
+      t.service.getHiring(contratante, event.id, hoursFromNow(6)),
+    ]);
+    for (let vez = 0; vez < 5; vez++) await t.service.getHiring(musico, event.id, hoursFromNow(7));
+
+    expect(consultas.map((consulta) => consulta.evento.status)).toEqual(["CONCLUIDO", "CONCLUIDO", "CONCLUIDO"]);
+    expect(consultas[0]).toMatchObject({ papel: "contratante", pagamento: { repasseStatus: "RETIDO" } });
+    expect(consultas[1]).toMatchObject({ papel: "musico", pagamento: { repasseStatus: "RETIDO" } });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(0);
+    expect(t.world.notifications.length).toBe(avisosAntes);
+  });
+
+  it("execuções simultâneas da rotina geram uma única transferência", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(5));
+    await t.service.confirmCompletion(musico, event.id, hoursFromNow(5));
+
+    await Promise.all([t.rotina.run(hoursFromNow(6)), t.rotina.run(hoursFromNow(6)), t.payments.payout(event.id)]);
+    await t.rotina.run(hoursFromNow(7));
+
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(1);
   });
 
   it("o não comparecimento só pode ser registrado até 7 dias após o show", async () => {
@@ -919,6 +977,8 @@ describe("penalidades do músico", () => {
     const proximo = await hired(hoursFromNow(48));
     await t.service.confirmCompletion(contratante, proximo.event.id, hoursFromNow(50));
     await t.service.confirmCompletion(musico, proximo.event.id, hoursFromNow(50));
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(50));
 
     expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(400);
     expect(t.world.payments.get(proximo.payment.id)?.multaDescontada).toBe(100);
@@ -992,6 +1052,7 @@ describe("penalidades do músico", () => {
     const proximo = await hired(hoursFromNow(48));
     await t.service.confirmCompletion(contratante, proximo.event.id, hoursFromNow(50));
     await t.service.confirmCompletion(musico, proximo.event.id, hoursFromNow(50));
+    await t.rotina.run(hoursFromNow(50));
 
     expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(350);
     expect(t.world.payments.get(proximo.payment.id)?.multaDescontada).toBe(150);
@@ -1004,7 +1065,7 @@ describe("penalidades do músico", () => {
 });
 
 describe("contestação", () => {
-  it("congela o repasse até o suporte decidir, e a decisão paga o músico", async () => {
+  it("congela o repasse até o suporte decidir, e a decisão libera o pagamento ao músico pela rotina", async () => {
     const { event } = await hired(hoursFromNow(1));
     await t.service.confirmCompletion(musico, event.id, hoursFromNow(3));
 
@@ -1017,6 +1078,8 @@ describe("contestação", () => {
     await t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", "Fotos do show enviadas pelo músico.");
 
     expect(t.world.events.get(event.id)?.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(24 * 9));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
     await expect(t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA" });
   });
@@ -1405,13 +1468,15 @@ describe("estorno com repasse em conferência", () => {
     expect(avisosDeDecisao()).toHaveLength(2);
   });
 
-  it("decisão a favor do músico continua encerrando a contestação e repassando", async () => {
+  it("decisão a favor do músico continua encerrando a contestação e o repasse sai pela rotina", async () => {
     const { event } = await hired(hoursFromNow(1));
     await t.service.openDispute(contratante, event.id, "O músico chegou atrasado.", hoursFromNow(3));
 
     await t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", null);
 
     expect(t.world.disputes[0]).toMatchObject({ status: "RESOLVIDA", decisao: "PAGAR_MUSICO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(4));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
     expect(avisosDeDecisao()).toHaveLength(2);
   });

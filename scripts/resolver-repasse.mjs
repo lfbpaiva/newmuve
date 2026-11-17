@@ -19,6 +19,8 @@ const admin = () => createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY
 const LIMITES = `Atenção: a espera de 24 horas e as duas buscas completas na Asaas reduzem o risco de Pix duplicado, mas não comprovam que a transferência não existe.
 O nome informado fica registrado como declaração de quem conferiu; ele não é uma identidade autenticada.`;
 
+const REPASSE_FALHO = "Repasses falhos: o cachê NÃO foi pago ao músico e nenhuma nova tentativa é feita nesta versão, nem pela API nem por este script. O caso continua pendente até a decisão do grupo sobre a recuperação.";
+
 async function listar() {
   const banco = admin();
   const { data, error } = await banco
@@ -28,6 +30,11 @@ async function listar() {
     .order("solicitada_em");
   if (error) throw error;
   if (data.length === 0) console.log("Nenhuma tentativa de repasse aguardando conferência.");
+  const falhos = await banco.from("payments").select("id, valor_cache, event:events(titulo, inicio)").eq("status", "PAGO").eq("repasse_status", "FALHOU").order("updated_at");
+  if (falhos.error) throw falhos.error;
+  if (falhos.data.length) console.log(`
+${REPASSE_FALHO}`);
+  for (const p of falhos.data) console.log(`  Pagamento ${p.id}: R$ ${p.valor_cache}, evento ${p.event?.titulo} (${new Date(p.event?.inicio).toLocaleString("pt-BR")})`);
   for (const t of data) {
     console.log(`\nTentativa ${t.id} (${t.origem}, ${t.estado})\n  Pagamento: ${t.payment_id} (${t.payment?.status})\n  Evento: ${t.payment?.event?.titulo} (${new Date(t.payment?.event?.inicio).toLocaleString("pt-BR")})\n  Cachê: R$ ${t.payment?.valor_cache}, multa reservada: R$ ${t.payment?.multa_descontada ?? 0}\n  Solicitada em: ${new Date(t.solicitada_em).toLocaleString("pt-BR")}${t.asaas_transfer_id ? `\n  Transferência registrada: ${t.asaas_transfer_id}` : ""}${t.verificacao_iniciada_em ? `\n  Verificação iniciada em: ${new Date(t.verificacao_iniciada_em).toLocaleString("pt-BR")}` : ""}`);
   }
@@ -77,6 +84,7 @@ if (!comando) {
 } else if (comando === "conferir") {
   const resposta = await chamar("conferencia");
   if (resposta) console.log(`Conferência da transferência registrada: ${resposta.resultado}.`);
+  if (resposta?.resultado === "FALHOU") console.log(REPASSE_FALHO);
 } else if (!operador) {
   console.error("Informe --operador \"Seu nome\". O nome fica registrado como informado, sem autenticação individual.");
   process.exitCode = 1;
@@ -98,5 +106,6 @@ if (!comando) {
   console.log(LIMITES);
   const resposta = await chamar("confirmacao", { operador, declaracao });
   if (resposta?.resultado === "TRANSFERENCIA_ENCONTRADA") console.log("A segunda busca encontrou transferência para esta tentativa; nada foi liberado.");
-  if (resposta?.resultado === "AUSENCIA_CONFIRMADA") console.log("Ausência confirmada com a segunda busca vazia. Uma nova tentativa de repasse foi solicitada.");
+  if (resposta?.resultado === "AUSENCIA_CONFIRMADA") console.log(`Ausência confirmada com a segunda busca vazia. A tentativa foi encerrada e o repasse ficou como falho.
+${REPASSE_FALHO}`);
 }

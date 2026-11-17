@@ -544,12 +544,13 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
         if (error) throw error;
         return (data ?? []).flatMap((row) => (row.event_id ? [row.event_id] : []));
       };
-      const [expiredCharges, refunds, payouts] = await Promise.all([
+      const [expiredCharges, refunds, emProcessamento, retidos] = await Promise.all([
         eventIds(admin.from("payments").select("event_id").eq("status", "PENDENTE").lte("expira_em", now.toISOString())),
         eventIds(admin.from("payments").select("event_id").eq("refund_status", "PROCESSANDO")),
         eventIds(admin.from("payments").select("event_id").eq("status", "PAGO").eq("repasse_status", "PROCESSANDO")),
+        eventIds(admin.from("payments").select("event_id, event:events!inner(status)").eq("status", "PAGO").eq("repasse_status", "RETIDO").in("event.status", ["CONCLUIDO", "CANCELADO"])),
       ]);
-      return { expiredCharges, refunds, payouts };
+      return { expiredCharges, refunds, payouts: [...emProcessamento, ...retidos] };
     },
 
     async findLateRefundsToRetry(eventId) {

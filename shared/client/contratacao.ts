@@ -56,7 +56,7 @@ function etapaRepasse(hiring: Hiring): EtapaContratacao {
     case "PROCESSANDO":
       return { titulo, detalhe: "Pix ao músico em processamento", situacao: "atual" };
     case "FALHOU":
-      return { titulo, detalhe: "O Pix falhou. A Muve tenta de novo automaticamente", situacao: "problema" };
+      return { titulo, detalhe: "O Pix falhou. Fale com o suporte da Muve", situacao: "problema" };
     default:
       return { titulo, detalhe: "Liberado depois da confirmação do show", situacao: "pendente" };
   }
@@ -89,7 +89,7 @@ export function situacaoDoCache(hiring: Hiring): string {
     case "PROCESSANDO":
       return "A Muve está repassando o cachê ao músico.";
     case "FALHOU":
-      return "O repasse falhou. A Muve tenta de novo automaticamente.";
+      return "O repasse falhou. Fale com o suporte da Muve.";
     default:
       return "A Muve guarda o cachê e libera ao músico depois do show.";
   }

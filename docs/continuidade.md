@@ -63,7 +63,7 @@ Não há conta de administrador no app. Contestações são decididas por `scrip
 
 ### Repasses travados
 
-A liberação tem duas etapas (`verificar`, depois de 24 horas do pedido, e `confirmar`, pelo menos 1 hora depois), cada uma com busca completa e vazia na Asaas. O banco recusa qualquer etapa fora do prazo, fora de ordem ou com busca incompleta. Essas proteções reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência: confira o painel da Asaas antes de confirmar. O nome passado em `--operador` é registrado como informado; não há autenticação individual do suporte.
+A liberação tem duas etapas (`verificar`, depois de 24 horas do pedido, e `confirmar`, pelo menos 1 hora depois), cada uma com busca completa e vazia na Asaas. Desde o Lote 2, Etapa 1, liberar não paga o músico: a tentativa é encerrada, o repasse fica `FALHOU` e nenhuma nova tentativa é feita; o script lista esses repasses como pendentes. O banco recusa qualquer etapa fora do prazo, fora de ordem ou com busca incompleta. Essas proteções reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência: confira o painel da Asaas antes de confirmar. O nome passado em `--operador` é registrado como informado; não há autenticação individual do suporte.
 
 Casos que só o suporte resolve, pela conferência no painel da Asaas:
 
@@ -118,6 +118,7 @@ O último caso interrompe a migration de propósito; resolva antes de aplicá-la
 - [ ] Rever as "Melhorias futuras" registradas no fim da auditoria. Não entram na entrega de 24/11.
 - [ ] Decidir se o evento com convite deve aparecer no feed do músico convidado durante o acesso antecipado (seção 21 da auditoria: hoje a inscrição é liberada, mas o evento só aparece por notificação ou link).
 - [ ] Decidir os pontos de produto da seção 20 da auditoria: total com taxa nas propostas, raio do feed por conta, visibilidade de eventos pela tela do evento e aviso de acesso antecipado. A API não registra requisições; o roteiro de teste foi corrigido nessa seção.
+- [ ] Decidir como recuperar repasses que falharam: desde o Lote 2, Etapa 1, só a rotina financeira pede repasses e nenhum caminho tenta de novo um repasse `FALHOU` (ver [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md)).
 - [ ] Revisar e fazer o merge do PR #6; depois fechar os PRs #1, #2, #3 e #5.
 - [ ] Testar no celular pelo Expo Go (Expo SDK 58): abertura, transições, barra inferior e puxar para atualizar.
 - [ ] Ensaiar a apresentação no computador e no celular reais, com o fluxo completo.

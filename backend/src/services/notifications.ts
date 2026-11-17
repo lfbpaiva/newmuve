@@ -225,7 +225,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       await notify(
         event.musicoContratadoId,
         `Repasse não concluído: "${event.titulo}"`,
-        "A transferência do cachê falhou. Confira sua chave Pix em Editar perfil; tentaremos de novo quando o comprovante for aberto.",
+        "A transferência do cachê falhou. Confira sua chave Pix em Editar perfil e fale com o suporte da Muve.",
         hiringLink(event),
       );
     },

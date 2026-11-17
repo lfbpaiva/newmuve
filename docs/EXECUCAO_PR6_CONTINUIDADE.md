@@ -631,6 +631,21 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   3. **Repasse ao abrir a contratação:** `getHiring` chama `payments.payout` em evento `CONCLUIDO` ou `CANCELADO`, o que pode pedir um Pix de repasse à Asaas mesmo com a rotina financeira desligada. Antes dos testes de fumaça, conferir que nenhum pagamento `PAGO` com repasse `RETIDO` ou `FALHOU` está nesses eventos, incluindo o 5º pagamento criado depois do backup de 16/11.
 - O hospedado mudou depois do backup de 16/11 (5 pagamentos e 1 evento cancelado): a janela exige exportação e ensaio novos.
 
+## Lote 2, Etapa 1: proteção do fluxo de repasses (17/11/2026, sem commit)
+
+- Decisões do usuário: a Opção B da auditoria, sem migration; nenhum caminho recupera repasse `FALHOU` nesta etapa; confirmar o show, cancelar sem estorno e decidir contestação a favor do músico só mudam o estado.
+- `payments.payout` passou a ser chamado só pela rotina financeira, que já exige autorização (`ENABLE_FINANCIAL_ROUTINE` ou o disparo com `FINANCIAL_ROUTINE_TOKEN`, mais a trava no banco). A rotina pede o repasse de pagamento `PAGO` com repasse `RETIDO` em evento `CONCLUIDO` ou `CANCELADO` e continua acompanhando os `PROCESSANDO`.
+- `payout` só reserva repasse `RETIDO`; `FALHOU` não abre nova tentativa nem novo aviso. A recursão depois de uma tentativa liberada e o repasse depois da confirmação de ausência pelo suporte foram removidos.
+- `getHiring`, `confirmCompletion`, `cancelHiring` sem estorno, `resolveDispute` com `PAGAR_MUSICO` e `settleDueHiring` não chamam mais `payout`. A consulta continua acompanhando estornos e concluindo shows vencidos.
+- Nenhuma configuração nova. Textos que prometiam nova tentativa automática agora orientam a falar com o suporte.
+- Pendência: decidir como recuperar repasses `FALHOU` (rotina com limite ou ação do suporte). Com a rotina desligada no hospedado, nenhum repasse sai.
+- O script de suporte avisa que liberar uma tentativa não paga o músico e lista os repasses falhos como pendentes.
+- Validação: testes 1015/1015, E2E local 72/72 (com a rotina encontrando pagamentos retidos de evento concluído e cancelado e ignorando os de evento contratado e os estornados), lint do mobile igual à base de 57.
+- Limitações da validação:
+  - o E2E não faz transferência real: sem Asaas no ambiente local, toda tentativa termina como `FALHOU`; ele comprova a seleção dos pagamentos e a ausência de duplicidade, não o envio;
+  - as mensagens do script de suporte (`scripts/resolver-repasse.mjs`) foram conferidas por inspeção e `node --check`, sem teste automatizado;
+  - não há teste específico para repasse `PROCESSANDO` sem tentativa aberta, que continua só registrando o pedido de conciliação manual.
+
 ## Pendências que dependem de pessoas
 
 1. **Aplicar as 12 migrations novas no Supabase hospedado** — pendente de autorização específica. Riscos: plano sem backup automático; chaves legadas ainda ativas permitem que backends antigos rodem a rotina. Exige exportação verificável antes. Enquanto não aplicar, `GET /events/:id/contratacao` responde 500 (coluna `disputes.payment_id` ausente) e as avaliações ficam bloqueadas.

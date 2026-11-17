@@ -46,7 +46,7 @@ export function createEventService(deps: {
   events: EventStore;
   accounts: AccountStore;
   images: ImageStore;
-  payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
+  payments: Pick<PaymentService, "ensureNoActiveCheckout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
   notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved" | "invited">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
@@ -230,7 +230,6 @@ export function createEventService(deps: {
       if (resultado === "JA_DECIDIDA") throw new AppError(409, "CONTESTACAO_RESOLVIDA", "Esta contestação já foi decidida.");
       if (decisao === "PAGAR_MUSICO") {
         if (event.status === "CONTRATADO") await events.concludeEvent(event.id);
-        await payments.payout(event.id);
       } else {
         try {
           await payments.refundHiring(event.id, "NAO_COMPARECIMENTO", disputeId);
@@ -372,7 +371,6 @@ export function createEventService(deps: {
       if (event?.status !== "CONTRATADO" || !prazoEncerrado(event, now)) return;
       if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO" || (await events.findOpenDispute(eventId))) return;
       await events.concludeEvent(eventId);
-      await payments.payout(eventId);
     },
 
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
@@ -391,7 +389,6 @@ export function createEventService(deps: {
       if (event.status === "CONTRATADO" && !estornoPendente && !contestacao && prazoEncerrado(event, now)) {
         event = await events.concludeEvent(eventId);
       }
-      if ((event.status === "CONCLUIDO" || event.status === "CANCELADO") && !estornoPendente) await payments.payout(eventId);
 
       const [contratante, musico, endereco, payment, avaliou] = await Promise.all([
         event.contractorId ? accounts.findAccount(event.contractorId) : null,
@@ -465,7 +462,6 @@ export function createEventService(deps: {
       }
       await payments.ensurePaidForNoRefund(eventId);
       await events.cancelEvent(eventId);
-      await payments.payout(eventId);
       void notifier.hiringCancelled(event, "contratante", false);
       return { situacao: "SEM_ESTORNO" };
     },
@@ -500,8 +496,7 @@ export function createEventService(deps: {
       if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
 
       const updated = await events.setConfirmation(eventId, party);
-      if (updated.status === "CONCLUIDO") await payments.payout(eventId);
-      else void notifier.completionConfirmed(updated, party);
+      if (updated.status !== "CONCLUIDO") void notifier.completionConfirmed(updated, party);
       return updated;
     },
 

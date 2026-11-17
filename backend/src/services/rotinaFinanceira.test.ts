@@ -51,14 +51,96 @@ describe("rotina financeira", () => {
     expect(t.world.events.get(t.event.id)?.status).toBe("CONTRATADO");
   });
 
-  it("conclui o show depois de 7 dias, mesmo sem confirmação, e repassa o cachê", async () => {
+  it("conclui o show depois de 7 dias, mesmo sem confirmação, e só repassa na execução seguinte", async () => {
     const payment = await contratado();
 
     await t.rotina.run(umaSemanaDepois());
 
     expect(t.world.events.get(t.event.id)?.status).toBe("CONCLUIDO");
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("RETIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    await t.rotina.run(umaSemanaDepois());
+
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+  });
+
+  it("não tenta de novo um repasse que falhou, nem avisa o músico de novo", async () => {
+    const payment = await contratado();
+    await t.rotina.run(umaSemanaDepois());
+    t.world.failures.transfer = true;
+    await t.rotina.run(umaSemanaDepois());
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+
+    t.world.failures.transfer = false;
+    for (let vez = 0; vez < 3; vez++) await t.rotina.run(umaSemanaDepois());
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(1);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
+  });
+
+  it("repasse que já estava em processamento é concluído só pela rotina, sem consulta da contratação nem nova transferência", async () => {
+    const payment = await contratado();
+    t.world.events.get(t.event.id)!.status = "CONCLUIDO";
+    await t.payments.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    t.world.asaasTransfers.set(t.world.payments.get(payment.id)!.asaasTransferId!, "DONE");
+
+    await t.rotina.run(umaSemanaDepois());
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Cachê repassado"))).toHaveLength(1);
+  });
+
+  it("repasse em processamento recusado pela Asaas vira falha pela rotina, com um aviso e sem nova tentativa", async () => {
+    const payment = await contratado();
+    t.world.events.get(t.event.id)!.status = "CONCLUIDO";
+    await t.payments.payout(t.event.id);
+    t.world.asaasTransfers.set(t.world.payments.get(payment.id)!.asaasTransferId!, "FAILED");
+
+    for (let vez = 0; vez < 3; vez++) await t.rotina.run(umaSemanaDepois());
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toEqual([expect.objectContaining({ estado: "FALHOU" })]);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
+  });
+
+  it("repasse em processamento sem resposta da Asaas é localizado pela rotina pela referência, sem segundo envio", async () => {
+    const payment = await contratado();
+    t.world.events.get(t.event.id)!.status = "CONCLUIDO";
+    t.world.failures.transferLost = true;
+    await t.payments.payout(t.event.id);
+    t.world.failures.transferLost = false;
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", asaasTransferId: null });
+
+    await t.rotina.run(umaSemanaDepois());
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.tentativas.find((tentativa) => tentativa.paymentId === payment.id && tentativa.encerradaEm === null)).toMatchObject({ estado: "PENDENTE", asaasTransferId: expect.stringMatching(/^tra_/) });
+  });
+
+  it("repasse retido de evento ainda contratado não sai pela rotina", async () => {
+    const payment = await contratado();
+
+    await t.rotina.run(hoursFromNow(80));
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("RETIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+
+  it("sem a trava da rotina, nada é executado", async () => {
+    await contratado();
+    t.world.events.get(t.event.id)!.status = "CONCLUIDO";
+    vi.spyOn(t.world.stores.trava, "adquirir").mockResolvedValueOnce(null);
+
+    await expect(t.rotina.iniciar(umaSemanaDepois())).resolves.toMatchObject({ resultado: "EM_ANDAMENTO" });
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.tentativas).toHaveLength(0);
   });
 
   it("não conclui nem repassa com contestação aberta ou antes do prazo", async () => {
@@ -76,6 +158,7 @@ describe("rotina financeira", () => {
 
   it("acompanha o repasse até a conclusão e nunca transfere de novo", async () => {
     const payment = await contratado();
+    await t.rotina.run(umaSemanaDepois());
     await t.rotina.run(umaSemanaDepois());
     t.world.asaasTransfers.set(t.world.payments.get(payment.id)!.asaasTransferId!, "DONE");
 

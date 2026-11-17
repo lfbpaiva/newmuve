@@ -415,7 +415,7 @@ describe("repasse ao músico", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
-  it("falha na transferência fica registrada e pode ser tentada de novo", async () => {
+  it("falha na transferência fica registrada e não é tentada de novo, nem avisada de novo", async () => {
     const payment = await contratado();
     t.world.failures.transfer = true;
 
@@ -423,8 +423,10 @@ describe("repasse ao músico", () => {
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
 
     t.world.failures.transfer = false;
-    await t.service.payout(t.event.id);
-    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    for (let vez = 0; vez < 5; vez++) await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(tentativasDo(payment.id)).toEqual([expect.objectContaining({ estado: "FALHOU" })]);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
   });
 
   it("resposta perdida da Asaas não gera segunda transferência: a tentativa é localizada pela própria referência", async () => {
@@ -456,7 +458,7 @@ describe("repasse ao músico", () => {
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("sem transferência localizada, o repasse só é reenviado depois das duas conferências do suporte", async () => {
+  it("sem transferência localizada, as duas conferências do suporte encerram a tentativa sem reenviar o repasse", async () => {
     const payment = await contratado();
     semResposta();
     await t.service.payout(t.event.id);
@@ -478,10 +480,11 @@ describe("repasse ao músico", () => {
     await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).resolves.toEqual({ resultado: "AUSENCIA_CONFIRMADA" });
 
     expect(tentativa.estado).toBe("AUSENCIA_CONFIRMADA");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
-    const nova = tentativaAberta(payment.id);
-    expect(nova.id).not.toBe(tentativa.id);
-    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(nova.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativaAberta(payment.id)).toBeUndefined();
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    await t.service.payout(t.event.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
     expect(t.world.decisoes).toEqual([
       expect.objectContaining({ tentativaId: tentativa.id, etapa: "VERIFICACAO", operadorNomeInformado: "Ana Suporte", identidadeAutenticada: false, declaracao: null }),
       expect.objectContaining({ tentativaId: tentativa.id, etapa: "CONFIRMACAO", operadorNomeInformado: "Ana Suporte", identidadeAutenticada: false, declaracao: DECLARACAO_AUSENCIA }),
@@ -489,7 +492,7 @@ describe("repasse ao músico", () => {
     await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).rejects.toMatchObject({ code: "LIBERACAO_ESTADO_INVALIDO" });
   });
 
-  it("nova tentativa ignora a notificação atrasada da transferência anterior", async () => {
+  it("notificação atrasada da transferência falha não abre nova tentativa nem repete o aviso", async () => {
     const payment = await contratado();
     await t.service.payout(t.event.id);
     const primeira = t.world.payments.get(payment.id)!.asaasTransferId!;
@@ -498,11 +501,12 @@ describe("repasse ao músico", () => {
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
 
     await t.service.payout(t.event.id);
-    const segunda = t.world.payments.get(payment.id)!.asaasTransferId!;
     await t.service.handleWebhook({ id: "evt_antigo", event: "TRANSFER_FAILED", transfer: { id: primeira } });
 
-    expect(segunda).not.toBe(primeira);
-    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(tentativasDo(payment.id)).toHaveLength(1);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
   });
 
   it("cliente de outra conta da Asaas é recriado e a cobrança sai na segunda tentativa", async () => {
@@ -720,7 +724,7 @@ describe("reserva e liquidação de multas no repasse", () => {
   const avisos = (titulo: string) => t.world.notifications.filter((n) => n.userId === "m1" && n.titulo.startsWith(titulo));
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  it("transferência pendente reserva a multa; a falha definitiva devolve a multa e a nova tentativa reserva de novo", async () => {
+  it("transferência pendente reserva a multa; a falha definitiva devolve a multa e nenhuma nova tentativa a reserva de novo", async () => {
     const fine = multa(100);
     const payment = await contratado();
 
@@ -737,15 +741,10 @@ describe("reserva e liquidação de multas no repasse", () => {
     expect(tentativasDo(payment.id)).toEqual([expect.objectContaining({ estado: "FALHOU", asaasTransferId: primeira })]);
 
     await t.service.payout(t.event.id);
-    const segunda = transferenciaAtual(payment.id);
-    expect(segunda).not.toBe(primeira);
-    expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(650);
-    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
-
-    t.world.asaasTransfers.set(segunda, "DONE");
-    await t.service.payout(t.event.id);
-    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: true });
-    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("REPASSADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(tentativasDo(payment.id)).toHaveLength(1);
+    expect(fine).toMatchObject({ reservaPaymentId: null, quitada: false });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", multaDescontada: 0 });
   });
 
   it("falha ao quitar depois da transferência concluída é recuperada pela rotina sem desconto duplicado", async () => {
@@ -825,7 +824,7 @@ describe("reserva e liquidação de multas no repasse", () => {
     expect(pequena).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
   });
 
-  it("liberação pelo suporte com busca incompleta não avança e mantém a reserva; com ausência confirmada, reserva de novo e reenvia", async () => {
+  it("liberação pelo suporte com busca incompleta não avança e mantém a reserva; com ausência confirmada, devolve a multa sem reenviar", async () => {
     const fine = multa(100);
     const payment = await contratado();
     semResposta();
@@ -852,11 +851,13 @@ describe("reserva e liquidação de multas no repasse", () => {
 
     t.world.failures.transferSearchIncomplete = false;
     await expect(t.service.confirmPayoutAbsence(tentativa.id, "Ana Suporte", DECLARACAO_AUSENCIA)).resolves.toEqual({ resultado: "AUSENCIA_CONFIRMADA" });
-    expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 650, externalReference: tentativaAberta(payment.id).id })]);
-    expect(fine).toMatchObject({ reservaPaymentId: payment.id, quitada: false });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativaAberta(payment.id)).toBeUndefined();
+    expect(fine).toMatchObject({ reservaPaymentId: null, quitada: false });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", multaDescontada: 0 });
   });
 
-  it("notificação atrasada de falha de uma transferência antiga não libera a reserva da atual", async () => {
+  it("notificação repetida de falha da mesma transferência não reserva a multa de novo nem repete o aviso", async () => {
     const fine = multa(100);
     const payment = await contratado();
     await t.service.payout(t.event.id);
@@ -864,15 +865,17 @@ describe("reserva e liquidação de multas no repasse", () => {
     t.world.asaasTransfers.set(antiga, "FAILED");
     await t.service.handleWebhook({ id: "evt_1", event: "TRANSFER_FAILED", transfer: { id: antiga } });
     await t.service.payout(t.event.id);
-    const atual = transferenciaAtual(payment.id);
 
     await t.service.handleWebhook({ id: "evt_2", event: "TRANSFER_FAILED", transfer: { id: antiga } });
+    await flush();
 
-    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "PROCESSANDO", asaasTransferId: atual, multaDescontada: 100 });
-    expect(fine.reservaPaymentId).toBe(payment.id);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", asaasTransferId: null, multaDescontada: 0 });
+    expect(fine.reservaPaymentId).toBeNull();
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(avisos("Repasse não concluído")).toHaveLength(1);
   });
 
-  it("repasse falho antigo com transferência registrada fica travado para conciliação manual", async () => {
+  it("repasse falho antigo com transferência registrada não é tocado pelo repasse", async () => {
     const fine = multa(100);
     const payment = await contratado();
     Object.assign(t.world.payments.get(payment.id)!, { repasseStatus: "FALHOU", asaasTransferId: "tra_antiga", multaDescontada: 100 });
@@ -881,8 +884,8 @@ describe("reserva e liquidação de multas no repasse", () => {
 
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
     expect(fine.reservaPaymentId).toBeNull();
-    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", asaasTransferId: "tra_antiga" });
-    expect(console.error).toHaveBeenCalledWith("Repasse falho antigo com transferência registrada; requer conciliação manual", payment.id, "tra_antiga");
+    expect(tentativasDo(payment.id)).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ repasseStatus: "FALHOU", asaasTransferId: "tra_antiga", multaDescontada: 100 });
   });
 });
 
@@ -919,7 +922,7 @@ describe("tentativas de repasse", () => {
     expect(avisos("Cachê repassado")).toHaveLength(1);
   });
 
-  it("recusa definitiva da Asaas encerra a tentativa e permite tentar de novo", async () => {
+  it("recusa definitiva da Asaas encerra a tentativa e não abre outra sozinha", async () => {
     const payment = await contratado();
     t.world.failures.transferUnavailable = true;
     await t.service.payout(t.event.id);
@@ -928,7 +931,8 @@ describe("tentativas de repasse", () => {
 
     t.world.failures.transferUnavailable = false;
     await t.service.payout(t.event.id);
-    expect(tentativaAberta(payment.id)).toMatchObject({ estado: "PENDENTE" });
+    expect(tentativaAberta(payment.id)).toBeUndefined();
+    expect(tentativasDo(payment.id)).toHaveLength(1);
   });
 
   it("erro ambíguo deixa a tentativa inconclusiva e a rotina nunca reenvia sozinha", async () => {
@@ -1015,15 +1019,15 @@ describe("tentativas de repasse", () => {
     await t.service.verifyPayoutAbsence(antiga.id, "Ana Suporte");
     recuar(antiga, "verificacaoIniciadaEm", 61 * 60 * 1000);
     await t.service.confirmPayoutAbsence(antiga.id, "Ana Suporte", DECLARACAO_AUSENCIA);
-    const atual = tentativaAberta(payment.id);
+    expect(tentativaAberta(payment.id)).toBeUndefined();
 
     transferenciaNaAsaas("tra_tardia", "DONE", antiga.id);
     await t.service.handleWebhook({ id: "evt_tardio", event: "TRANSFER_DONE", transfer: { id: "tra_tardia" } });
 
     expect(antiga.estado).toBe("AUSENCIA_CONFIRMADA");
     expect(t.world.alertas.filter((alerta) => alerta.tentativaId === antiga.id).map((alerta) => alerta.tipo).sort()).toEqual(["POSSIVEL_DUPLICIDADE", "RESPOSTA_TARDIA"]);
-    expect(atual).toMatchObject({ estado: "PENDENTE" });
-    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
     expect(avisos("Cachê repassado")).toHaveLength(0);
   });
 
@@ -1070,7 +1074,7 @@ describe("solicitação de repasse parada", () => {
     return t.world.tentativas.find((tentativa) => tentativa.id === tentativaId)!;
   }
 
-  it("queda antes do envio, com a rotina desligada: a próxima chamada encerra a tentativa e faz uma nova, com uma única transferência", async () => {
+  it("queda antes do envio: a próxima chamada encerra a tentativa como falha, sem pedir transferência nem abrir outra", async () => {
     const payment = await contratado();
     const parada = await solicitacaoInterrompida(payment, { envioRegistrado: false });
 
@@ -1082,11 +1086,9 @@ describe("solicitação de repasse parada", () => {
     await t.service.payout(t.event.id);
 
     expect(parada).toMatchObject({ estado: "FALHOU", asaasTransferId: null });
-    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
-    const nova = tentativaAberta(payment.id);
-    expect(nova.id).not.toBe(parada.id);
-    expect(nova).toMatchObject({ estado: "PENDENTE" });
-    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(nova.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativaAberta(payment.id)).toBeUndefined();
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
   });
 
   it("queda depois do envio registrado: a tentativa fica inconclusiva, é procurada na Asaas e nada é reenviado", async () => {
@@ -1118,7 +1120,7 @@ describe("solicitação de repasse parada", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
   });
 
-  it("falha ao registrar o envio sem gravação: nada é enviado e a regra de solicitação parada libera uma nova tentativa", async () => {
+  it("falha ao registrar o envio sem gravação: nada é enviado e a regra de solicitação parada encerra a tentativa sem abrir outra", async () => {
     const payment = await contratado();
     vi.spyOn(t.world.stores.payments, "registerRequestSent").mockRejectedValueOnce(new Error("banco fora do ar"));
 
@@ -1133,8 +1135,8 @@ describe("solicitação de repasse parada", () => {
     await t.service.payout(t.event.id);
 
     expect(parada.estado).toBe("FALHOU");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
-    expect(t.world.asaasCalls.transferPix[0]?.externalReference).toBe(tentativaAberta(payment.id).id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(tentativaAberta(payment.id)).toBeUndefined();
   });
 
   it("envio gravado no banco com erro na resposta: a tentativa não vira falha, nada é enviado e ela fica protegida", async () => {

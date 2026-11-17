@@ -100,6 +100,18 @@ async function aguardarFimDaRotina() {
   return execucaoDaRotina();
 }
 
+async function rodarRotina(token) {
+  const disparo = await dispararRotina({ "x-rotina-token": token });
+  const execucao = await aguardarFimDaRotina();
+  return disparo.status === 202 && execucao.dono === null && execucao.ultimo_resultado === "SUCESSO";
+}
+
+async function tentativasDoPagamento(asaasPaymentId) {
+  const pagamento = await admin.from("payments").select("id, status, repasse_status").eq("asaas_payment_id", asaasPaymentId).single().throwOnError();
+  const tentativas = await admin.from("repasse_tentativas").select("estado, origem").eq("payment_id", pagamento.data.id).throwOnError();
+  return { pagamento: pagamento.data, tentativas: tentativas.data };
+}
+
 async function verificarRotinaFinanceira(token) {
   if (!token) throw new AmbienteRecusado("Ambiente E2E recusado: a API local foi iniciada sem token de disparo da rotina financeira.");
   let r = await dispararRotina({});
@@ -251,6 +263,9 @@ export async function executarE2E({ apiIniciada, executar, lerArquivo, criarClie
   check("músico não contratado não vê o comprovante: 404", r.status === 404, JSON.stringify(r));
   r = await api(c, "GET", `/events/${eventId}/contratacao`);
   check("contratante vê o telefone do músico", r.json?.musico?.telefone === "45999990000" && r.json?.papel === "contratante", JSON.stringify(r.json));
+  const rotinaComContratado = await rodarRotina(apiIniciada.tokenDaRotina);
+  let repasse = await tentativasDoPagamento("pay_e2e_1");
+  check("rotina não repassa pagamento retido de evento ainda contratado", rotinaComContratado && repasse.pagamento.repasse_status === "RETIDO" && repasse.tentativas.length === 0, JSON.stringify(repasse));
   r = await api(m, "DELETE", "/me", { email: USERS.musician.email, password: PASSWORD });
   check("músico com show contratado não exclui a conta: 409", r.code === "CONTRATACAO_EM_ANDAMENTO", JSON.stringify(r));
   r = await api(m, "DELETE", `/events/${eventId}/contratacao`);
@@ -278,9 +293,31 @@ export async function executarE2E({ apiIniciada, executar, lerArquivo, criarClie
   r = await api(c, "GET", "/me");
   check("média do contratante atualizada", r.json?.avaliacaoMedia === 4 && r.json?.totalAvaliacoes === 1, JSON.stringify(r.json));
   r = await api(c, "GET", `/events/${eventId}/contratacao`);
-  check("repasse sem Asaas: registrado como FALHOU para nova tentativa", r.json?.pagamento?.repasseStatus === "FALHOU", JSON.stringify(r.json?.pagamento));
-  const tentativas = await admin.from("repasse_tentativas").select("estado, origem").eq("payment_id", (await admin.from("payments").select("id").eq("asaas_payment_id", "pay_e2e_1").single()).data?.id);
-  check("repasse sem Asaas só deixa tentativas encerradas como FALHOU", tentativas.data?.length > 0 && tentativas.data.every((t) => t.estado === "FALHOU" && t.origem === "ATUAL"), JSON.stringify(tentativas.error ?? tentativas.data));
+  await api(m, "GET", `/events/${eventId}/contratacao`);
+  await api(c, "GET", `/events/${eventId}/contratacao`);
+  check("show concluído e consultado: o repasse continua RETIDO", r.json?.evento?.status === "CONCLUIDO" && r.json?.pagamento?.repasseStatus === "RETIDO", JSON.stringify(r.json?.pagamento));
+  const tentativas = await admin.from("repasse_tentativas").select("estado").eq("payment_id", (await admin.from("payments").select("id").eq("asaas_payment_id", "pay_e2e_1").single()).data?.id);
+  check("consultas da contratação não criam tentativa de repasse", tentativas.data?.length === 0, JSON.stringify(tentativas.error ?? tentativas.data));
+
+  const rotinaComConcluido = await rodarRotina(apiIniciada.tokenDaRotina);
+  repasse = await tentativasDoPagamento("pay_e2e_1");
+  check("rotina encontra o pagamento retido do show concluído e abre uma tentativa (sem Asaas, termina como FALHOU)", rotinaComConcluido && repasse.pagamento.repasse_status === "FALHOU" && repasse.tentativas.length === 1 && repasse.tentativas[0].estado === "FALHOU" && repasse.tentativas[0].origem === "ATUAL", JSON.stringify(repasse));
+  const rotinaRepetida = await rodarRotina(apiIniciada.tokenDaRotina);
+  await api(c, "GET", `/events/${eventId}/contratacao`);
+  repasse = await tentativasDoPagamento("pay_e2e_1");
+  check("rotina e consulta repetidas não tentam de novo o repasse que falhou", rotinaRepetida && repasse.pagamento.repasse_status === "FALHOU" && repasse.tentativas.length === 1, JSON.stringify(repasse));
+
+  await admin.from("payments").update({ repasse_status: "RETIDO", multa_descontada: 0 }).eq("asaas_payment_id", "pay_e2e_1").throwOnError();
+  await admin.from("events").update({ status: "CANCELADO" }).eq("id", eventId).throwOnError();
+  const rotinaComCancelado = await rodarRotina(apiIniciada.tokenDaRotina);
+  repasse = await tentativasDoPagamento("pay_e2e_1");
+  check("rotina encontra o pagamento retido de evento cancelado (dados preparados)", rotinaComCancelado && repasse.pagamento.repasse_status === "FALHOU" && repasse.tentativas.length === 2, JSON.stringify(repasse));
+
+  await admin.from("payments").update({ status: "ESTORNADO", repasse_status: "RETIDO" }).eq("asaas_payment_id", "pay_e2e_1").throwOnError();
+  await admin.from("events").update({ status: "CONCLUIDO" }).eq("id", eventId).throwOnError();
+  const rotinaComEstornado = await rodarRotina(apiIniciada.tokenDaRotina);
+  repasse = await tentativasDoPagamento("pay_e2e_1");
+  check("rotina ignora pagamento estornado de evento concluído (dados preparados)", rotinaComEstornado && repasse.pagamento.repasse_status === "RETIDO" && repasse.tentativas.length === 2, JSON.stringify(repasse));
 
   r = await api(m2, "DELETE", "/me", { email: USERS.musician2.email, password: "senha-errada" });
   check("exclusão com senha errada: 400", r.code === "CREDENCIAIS_NAO_CONFEREM", JSON.stringify(r));

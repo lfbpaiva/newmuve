@@ -374,7 +374,7 @@ export function memoryWorld() {
       return {
         expiredCharges: eventIds((p) => p.status === "PENDENTE" && p.expiraEm <= now),
         refunds: eventIds((p) => p.refundStatus === "PROCESSANDO"),
-        payouts: eventIds((p) => p.status === "PAGO" && p.repasseStatus === "PROCESSANDO"),
+        payouts: eventIds((p) => p.status === "PAGO" && (p.repasseStatus === "PROCESSANDO" || (p.repasseStatus === "RETIDO" && ["CONCLUIDO", "CANCELADO"].includes(events.get(p.eventId ?? "")?.status ?? "")))),
       };
     },
     findLateRefundsToRetry: async (eventId) =>

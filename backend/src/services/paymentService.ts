@@ -420,18 +420,13 @@ export function createPaymentService(deps: {
           console.error("Repasse em processamento sem tentativa aberta; requer conciliação manual", payment.id);
           return;
         }
-        if ((await reconcileAttempt(attempt)) === "LIBERADO") await this.payout(eventId);
+        await reconcileAttempt(attempt);
         return;
       }
-      if (payment?.status !== "PAGO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return;
+      if (payment?.status !== "PAGO" || payment.repasseStatus !== "RETIDO") return;
       if (await events.findOpenDispute(eventId)) return;
       const { tentativaId, desconto } = await payments.claimPayout(payment.id);
-      if (!tentativaId) {
-        if (payment.repasseStatus === "FALHOU" && payment.asaasTransferId) {
-          console.error("Repasse falho antigo com transferência registrada; requer conciliação manual", payment.id, payment.asaasTransferId);
-        }
-        return;
-      }
+      if (!tentativaId) return;
 
       let transferRequested = false;
       let transfer: { id: string; status: string };
@@ -523,9 +518,6 @@ export function createPaymentService(deps: {
       if (!busca) return { resultado: "TRANSFERENCIA_ENCONTRADA" };
       const resultado = await payments.confirmAbsence(attempt.id, evidencia(operador, busca), declaracao);
       if (resultado !== "AUSENCIA_CONFIRMADA") throw liberacaoRecusada(resultado);
-      const payment = await payments.findPaymentById(attempt.paymentId);
-      const latest = payment?.eventId ? await payments.findLatestPayment(payment.eventId) : null;
-      if (belongsToCurrentPayout(payment, latest)) await this.payout(payment!.eventId!);
       return { resultado };
     },
 

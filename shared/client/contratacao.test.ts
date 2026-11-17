@@ -60,11 +60,11 @@ describe("etapasDaContratacao", () => {
     expect(situacoes(contratacao({ evento: { inicio: "2026-11-19T23:00:00Z", status: "CONCLUIDO" }, pagamento: { repasseStatus: "REPASSADO" } }))).toEqual(["feita", "feita", "feita", "feita"]);
   });
 
-  it("marca o repasse em processamento e a falha com nova tentativa", () => {
+  it("marca o repasse em processamento e a falha com orientação ao suporte", () => {
     const concluido = { inicio: "2026-11-19T23:00:00Z", status: "CONCLUIDO" as const };
     expect(situacoes(contratacao({ evento: concluido, pagamento: { repasseStatus: "PROCESSANDO" } }))[3]).toBe("atual");
     const falha = etapasDaContratacao(contratacao({ evento: concluido, pagamento: { repasseStatus: "FALHOU" } }), AGORA)[3];
-    expect(falha).toMatchObject({ situacao: "problema", detalhe: expect.stringContaining("automaticamente") });
+    expect(falha).toMatchObject({ situacao: "problema", detalhe: "O Pix falhou. Fale com o suporte da Muve" });
   });
 
   it("suspende o repasse durante uma contestação", () => {
@@ -115,7 +115,7 @@ describe("situacaoDoCache", () => {
     expect(situacaoDoCache(contratacao())).toContain("guarda o cachê");
     expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "PROCESSANDO" } }))).toContain("está repassando");
     expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "REPASSADO" } }))).toContain("repassou");
-    expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "FALHOU" } }))).toContain("tenta de novo");
+    expect(situacaoDoCache(contratacao({ pagamento: { repasseStatus: "FALHOU" } }))).toContain("Fale com o suporte");
     expect(situacaoDoCache(contratacao({ pagamento: { status: "ESTORNADO" } }))).toContain("devolvido");
   });
 });
