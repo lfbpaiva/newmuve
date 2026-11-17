@@ -629,9 +629,10 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   1. **Multa em dobro:** a partir da migration 1, `finalize_asaas_refund` cria a multa do estorno, e o backend do `main` cria outra (`penalize` → `addPenalty`, sem `estorno_payment_id`) e reduz a visibilidade de novo. Mais um motivo para nenhuma instância do `main` ficar ligada ao banco migrado.
   2. **Perda de conversa na reabertura:** `reopen_event` (`20261027180000_ajustes_de_fluxo.sql`) apaga a inscrição do músico contratado quando a contratação é desfeita com reabertura, e as mensagens caem em cascata. Afeta D7 e deve ser tratado junto com a migration do D5.
   3. **Repasse ao abrir a contratação:** `getHiring` chama `payments.payout` em evento `CONCLUIDO` ou `CANCELADO`, o que pode pedir um Pix de repasse à Asaas mesmo com a rotina financeira desligada. Antes dos testes de fumaça, conferir que nenhum pagamento `PAGO` com repasse `RETIDO` ou `FALHOU` está nesses eventos, incluindo o 5º pagamento criado depois do backup de 16/11.
+     - Atualização: corrigido na Etapa 1 do Lote 2 (commit `d68dfc5`). `getHiring` não pede mais repasses; só a rotina financeira autorizada os pede.
 - O hospedado mudou depois do backup de 16/11 (5 pagamentos e 1 evento cancelado): a janela exige exportação e ensaio novos.
 
-## Lote 2, Etapa 1: proteção do fluxo de repasses (17/11/2026, sem commit)
+## Lote 2, Etapa 1: proteção do fluxo de repasses (17/11/2026, concluída e enviada no commit `d68dfc5`)
 
 - Decisões do usuário: a Opção B da auditoria, sem migration; nenhum caminho recupera repasse `FALHOU` nesta etapa; confirmar o show, cancelar sem estorno e decidir contestação a favor do músico só mudam o estado.
 - `payments.payout` passou a ser chamado só pela rotina financeira, que já exige autorização (`ENABLE_FINANCIAL_ROUTINE` ou o disparo com `FINANCIAL_ROUTINE_TOKEN`, mais a trava no banco). A rotina pede o repasse de pagamento `PAGO` com repasse `RETIDO` em evento `CONCLUIDO` ou `CANCELADO` e continua acompanhando os `PROCESSANDO`.
