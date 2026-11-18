@@ -115,29 +115,35 @@ Rodar `preverificacao.sql` com `npx supabase db query --remote=lylxorfrwuioednhu
 
 E também: `0-verificar-desvio.sh` sem diferenças fora de `auth`/`storage`.
 
-## 6. Sequência de implantação (só depois da aprovação)
+## 6. Sequência da janela (só depois da aprovação)
 
-Não existe ordem segura com uma API no ar: o backend antigo é incompatível com o banco novo e o backend novo não funciona no banco antigo. A sequência elimina o intervalo deixando **nenhum backend** ligado ao hospedado entre a migração e a publicação do backend novo.
+**Arquitetura da apresentação (decisão de 18/11/2026):** o app roda no Expo Go, com o Expo/Metro e o backend do PR rodando no notebook (`pnpm dev:api` com o `backend/.env` do hospedado) e o Supabase hospedado como banco. A Asaas continua no Sandbox. Render, merge do PR no `main` e implantação em produção **não fazem parte** da preparação nem da janela.
 
-**Antes da janela (decisões do grupo):**
-- Como o backend novo chega à Render: merge do PR no `main` ou apontar o serviço para `integracao/redesign-lote1`. O serviço `muve-api` tem `autoDeployTrigger: off`.
-- Na Render: `ENABLE_FINANCIAL_ROUTINE=false` (já no `render.yaml`) e **sem** `FINANCIAL_ROUTINE_TOKEN`.
-- **Não acessar a URL da Render antes da janela:** no plano gratuito o serviço dorme, e uma requisição o acorda; se ele roda o código do `main`, a rotina começa na hora.
+O backend do `main` é incompatível com o banco migrado (seção 4) e o backend do PR não funciona no banco antigo. Por isso, entre o início da janela e a liberação, nenhum backend do `main` pode estar ligado ao hospedado, e o backend do PR só é iniciado depois das migrations.
+
+**Serviços que podem acessar o hospedado (verificado em 18/11/2026):**
+- **Render, serviço `muve-api`:** roda o código do `main`, que executa a rotina financeira ao iniciar e a cada 5 minutos, gravando direto em `payments` e criando a multa em dobro. Ele só age se estiver acordado; no plano gratuito ele dorme e uma requisição à URL o acorda. A situação atual (ativo, dormindo ou suspenso) não pode ser conferida pelo repositório: é preciso olhar o painel da Render. Nada o acorda automaticamente hoje, porque o webhook da Asaas está desativado e não aponta para ele, e não há workflow agendado (conferido na API pública do GitHub: só o `CI`, 0 execuções agendadas; o `rotina-financeira.yml` existe só na branch do PR).
+- **Cópias locais do `main` com o `.env` do hospedado:** não detectáveis daqui; cada pessoa do grupo confirma que não tem uma rodando.
+- **Supabase hospedado:** nenhuma Edge Function publicada (conferido em 17/11) e sem `pg_cron`/`pg_net` (seção 9).
+- **Medida temporária, só com autorização expressa:** se o painel mostrar o `muve-api` ativo, suspendê-lo durante a janela (Dashboard → Suspend). A suspensão preserva toda a configuração; para restaurar, Dashboard → Resume. É só uma medida de segurança, não uma etapa de implantação; depois das migrations, retomá-lo com o código do `main` volta a criar o risco da seção 4, então ele deve continuar suspenso ou dormindo enquanto o banco estiver migrado.
+
+**Webhook da Asaas:** continua desativado e com a fila pausada; não é reativado, redirecionado nem alterado na janela. A reavaliação fica para depois da apresentação.
 
 **Janela:**
-1. Avisar o grupo; ninguém usa o app.
-2. **Parar todo backend ligado ao hospedado:** suspender o serviço `muve-api` na Render (Dashboard → Suspend) e confirmar com cada pessoa que não há API local do `main` rodando com o `.env` do hospedado.
-3. Exportação nova e verificação (`1-exportar.sh`, `2-restaurar-e-verificar.sh`, `0-verificar-desvio.sh`, `4-baixar-storage.mjs`), pré-verificação (seção 5) e ensaio (`3-ensaiar-migrations.sh`, com o `ensure_rls` recriado na cópia). Qualquer diferença nova interrompe a janela.
-4. `npx supabase db push --remote=lylxorfrwuioednhukhz --dry-run`: exatamente as 12 migrations, em ordem.
-5. `npx supabase db push --remote=lylxorfrwuioednhukhz`.
-6. Validação do banco (seção 7, itens 1 a 4).
-7. Publicar o backend do PR na Render e retomar o serviço; conferir no log "Rotina financeira desabilitada nesta instância".
-8. Testes de fumaça (seção 7, item 5) e conferência da fila de webhooks no painel da Asaas Sandbox (as notificações enviadas durante a parada são reenviadas pela Asaas; a fila pode ser pausada depois de falhas seguidas).
-9. Liberar o app.
+1. Avisar o grupo da indisponibilidade temporária; ninguém usa o app.
+2. Garantir que nenhum serviço incompatível acessa o hospedado: conferir o `muve-api` no painel da Render (e suspendê-lo só com autorização) e confirmar com cada pessoa que não há API local do `main` ligada ao hospedado.
+3. Exportação nova e verificação (`1-exportar.sh`, `2-restaurar-e-verificar.sh`, `0-verificar-desvio.sh`, `4-baixar-storage.mjs`).
+4. Pré-verificação (seção 5) e ensaio (`3-ensaiar-migrations.sh`, com o `ensure_rls` recriado na cópia) com os dados atuais. Qualquer diferença nova interrompe a janela.
+5. `npx supabase db push --remote=lylxorfrwuioednhukhz --dry-run`: exatamente as 12 migrations, em ordem.
+6. Apresentar o resultado e aguardar autorização expressa.
+7. `npx supabase db push --remote=lylxorfrwuioednhukhz`: as 12 migrations em um único lote.
+8. Verificações em lote (seção 7, itens 1 a 4), com resultado consolidado ao final.
+9. Iniciar o backend do PR no notebook (`pnpm dev:api`), sem `ENABLE_FINANCIAL_ROUTINE` e sem `FINANCIAL_ROUTINE_TOKEN`, conferir no log "Rotina financeira desabilitada nesta instância" e fazer os testes de fumaça (seção 7, item 5).
+10. Liberar o ambiente para a apresentação pelo Expo Go.
 
-**Se o passo 5 falhar no meio:** cada migration roda numa transação, então o banco fica numa das migrations intermediárias. O serviço continua suspenso; corrigir com migration nova ensaiada na cópia ou restaurar (seção 8). O backend antigo **não** volta ao ar.
+**Se o passo 7 falhar no meio:** cada migration roda numa transação, então o banco fica numa das migrations intermediárias. Nenhum backend é iniciado; corrigir com migration nova ensaiada na cópia ou restaurar (seção 8). O backend do `main` **não** volta a ser ligado ao hospedado.
 
-**Mitigação adicional (decisão própria):** desativar as chaves legadas do Supabase impede que qualquer cópia esquecida do `main` acesse o banco. Antes disso, confirmar qual chave a Render e cada `.env` usam.
+**Mitigação adicional (decisão própria):** desativar as chaves legadas do Supabase impede que qualquer cópia esquecida do `main` acesse o banco. Antes disso, confirmar qual chave cada `.env` e a Render usam, porque o backend local da apresentação também precisa da sua.
 
 ## 7. Validação posterior
 
@@ -145,7 +151,7 @@ Não existe ordem segura com uma API no ar: o backend antigo é incompatível co
 2. Inventário do hospedado igual a `referencia/inventario_esperado_v33.csv`: mesmas funções, ACL, RLS e **nenhuma policy nova**.
 3. Contagem: tabelas antigas com o mesmo número de linhas (exceto `disputes`, que só tem colunas atualizadas); `repasse_tentativas` com o número previsto; `rotina_financeira_execucao` com 1 linha, sem dono.
 4. `select dono from public.rotina_financeira_execucao` vazio, e nenhuma variável da rotina criada.
-5. Testes de fumaça pela API local: tela de contratação (`GET /events/:id/contratacao`) responde 200; avaliações aparecem; contestação abre; nenhum 500 nos logs.
+5. Testes de fumaça pelo backend local da apresentação (o mesmo do passo 9 da janela): tela de contratação (`GET /events/:id/contratacao`) responde 200; avaliações aparecem; contestação abre; nenhum 500 nos logs.
 6. Testes pgTAP no hospedado (`pnpm test:db` usa transações com rollback, mas grava temporariamente): **só com autorização própria**.
 
 ## 8. Recuperação

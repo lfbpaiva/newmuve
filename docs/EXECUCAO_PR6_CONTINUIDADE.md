@@ -647,6 +647,16 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   - as mensagens do script de suporte (`scripts/resolver-repasse.mjs`) foram conferidas por inspeção e `node --check`, sem teste automatizado;
   - não há teste específico para repasse `PROCESSANDO` sem tentativa aberta, que continua só registrando o pedido de conciliação manual.
 
+## Lote 2: falha do QR Code Pix no checkout local (17/11/2026, sem commit)
+
+- Duas tentativas no Expo Go, no ambiente local isolado (Supabase local, Asaas Sandbox, webhook desativado): a cobrança foi criada na Asaas, o QR Code não veio e a API removeu a cobrança (`pay_0_qtz2imjfindxny` e `pay_0_cdi4yadz8qc6y0`, as duas removidas, R$ 165 cada). Nenhum pagamento local, nenhuma duplicidade.
+- Comprovado (log da segunda tentativa, Kong local e consultas à Asaas): duas leituras do QR Code sem nenhuma resposta HTTP até o tempo limite local (10 s e 9 s); a terceira não aconteceu por causa do limite total de 20 s. Criação da cobrança, cliente, conta e chave Pix sem problema; o banco local não chegou a ser chamado para gravar.
+- Provável, não comprovado: a Asaas Sandbox demora mais de 10 s para responder ao QR Code de uma cobrança recém-criada. Em 04/11 o QR Code veio com um pedido único de até 15 s; em 15/11, com o mesmo limite, falhou; desde 16/11 cada tentativa tinha só 10 s. A documentação oficial não diz se a geração é síncrona nem dá prazo.
+- Correção (sem migration): orçamento total de 50 s dentro dos 60 s do app; tentativas de até 20 s; repetição só para falhas transitórias; remoção confirmada pela resposta ou por consulta, com a cobrança gravada para conciliação quando a remoção não se confirma; registros estruturados com duração e correlação. Testes com relógio simulado.
+- Auditoria final (18/11): corrigidos o `invalid_action` decidido pelo texto (agora consulta a cobrança antes de repetir), a repetição de 4xx desconhecidos, o prazo que só começava depois de liberar a cobrança anterior (agora único desde o início do pedido, com tempos limitados pelo que resta) e a cobrança anterior dada como encerrada sem confirmação da Asaas.
+- A taxa de 10% das tentativas está correta: o contratante local não tem Muve Casa.
+- Pendente: uma única tentativa manual no Expo Go, depois da aprovação; o log com duração vai mostrar o tempo real do QR Code.
+
 ## Pendências que dependem de pessoas
 
 1. **Aplicar as 12 migrations novas no Supabase hospedado** — pendente de autorização específica. Riscos: plano sem backup automático; chaves legadas ainda ativas permitem que backends antigos rodem a rotina. Exige exportação verificável antes. Enquanto não aplicar, `GET /events/:id/contratacao` responde 500 (coluna `disputes.payment_id` ausente) e as avaliações ficam bloqueadas.
