@@ -633,6 +633,7 @@ export function memoryWorld() {
     cancelCharge: async (paymentId) => {
       asaasCalls.cancelCharge.push(paymentId);
       asaasCharges.delete(paymentId);
+      return { removida: true };
     },
     refundPayment: async (paymentId) => {
       if (failures.refund) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada no estorno");

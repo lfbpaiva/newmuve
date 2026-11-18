@@ -67,6 +67,7 @@ export const horarioLocalDoEvento = (data: string, horario: string, uf: string) 
 export const TERMOS_VERSAO = "2026-10-29";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
+export const CHECKOUT_TEMPO_LIMITE_APP_MS = 60_000;
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const onlyDigits = (value: string) => value.replace(/\D/g, "");

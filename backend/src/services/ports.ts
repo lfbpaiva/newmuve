@@ -80,8 +80,8 @@ export interface PaymentStore {
     asaasPaymentId: string;
     valor: number;
     valorComissao: number;
-    pixCopiaCola: string;
-    pixQrCode: string;
+    pixCopiaCola: string | null;
+    pixQrCode: string | null;
     expiraEm: Date;
   }): Promise<PaymentRecord>;
   setPaymentStatus(id: string, status: PaymentStatus): Promise<void>;
@@ -139,12 +139,19 @@ export interface BuscaDeTransferencias {
   listadas: number;
 }
 
+export interface ContextoAsaas {
+  correlacao?: string;
+  etapa?: string;
+  tentativa?: number;
+  timeoutMs?: number;
+}
+
 export interface AsaasGateway {
-  createCustomer(customer: { name: string; cpfCnpj: string; email: string; externalReference: string }): Promise<string>;
-  createPixCharge(charge: { customer: string; value: number; dueDate: string; description: string; externalReference: string }): Promise<string>;
-  getPixQrCode(paymentId: string): Promise<{ payload: string; encodedImage: string }>;
-  getPayment(paymentId: string): Promise<AsaasPayment | null>;
-  cancelCharge(paymentId: string): Promise<void>;
+  createCustomer(customer: { name: string; cpfCnpj: string; email: string; externalReference: string }, contexto?: ContextoAsaas): Promise<string>;
+  createPixCharge(charge: { customer: string; value: number; dueDate: string; description: string; externalReference: string }, contexto?: ContextoAsaas): Promise<string>;
+  getPixQrCode(paymentId: string, opcoes?: { prazo?: number; correlacao?: string }): Promise<{ payload: string; encodedImage: string }>;
+  getPayment(paymentId: string, opcoes?: { timeoutMs?: number; correlacao?: string; etapa?: string }): Promise<AsaasPayment | null>;
+  cancelCharge(paymentId: string, opcoes?: { timeoutMs?: number; correlacao?: string }): Promise<{ removida: boolean }>;
   refundPayment(paymentId: string): Promise<void>;
   transferPix(transfer: {
     value: number;

@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../domain/errors.ts";
 import { createNotifier } from "./notifications.ts";
 import { COBRANCA_REMOVIDA_NA_ASAAS } from "./ports.ts";
-import { createPaymentService, situacaoDoEstornoNaAsaas } from "./paymentService.ts";
+import { CHECKOUT_MARGEM_DO_APP_MS, CHECKOUT_ORCAMENTO_MS, CHECKOUT_RESERVA_ENCERRAMENTO_MS, CHECKOUT_TEMPO_MINIMO_QR_MS, createPaymentService, REMOCAO_TEMPO_LIMITE_MS, situacaoDoEstornoNaAsaas } from "./paymentService.ts";
+import { CHECKOUT_TEMPO_LIMITE_APP_MS } from "../../../shared/dominio.ts";
 import { createRotinaFinanceira } from "./rotinaFinanceira.ts";
 import { contratante, DECLARACAO_AUSENCIA, hoursFromNow, memoryWorld, NOW, outroContratante, payAtAsaas } from "./testing.ts";
 
@@ -104,7 +105,7 @@ describe("checkout (aprovar candidato)", () => {
     const payment = await checkout();
 
     expect(payment.status).toBe("PENDENTE");
-    expect(createCustomer).toHaveBeenCalledWith(expect.objectContaining({ name: "c1", externalReference: "c1" }));
+    expect(createCustomer).toHaveBeenCalledWith(expect.objectContaining({ name: "c1", externalReference: "c1" }), { correlacao: expect.any(String), timeoutMs: expect.any(Number) });
     expect(Object.prototype.hasOwnProperty.call(createCustomer.mock.calls[0]![0], "mobilePhone")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(createCustomer.mock.calls[0]![0], "phone")).toBe(false);
   });
@@ -157,6 +158,224 @@ describe("checkout (aprovar candidato)", () => {
 
     await expect(checkout()).rejects.toThrow("falha simulada");
     expect(t.world.asaasCharges.size).toBe(0);
+  });
+});
+
+describe("checkout quando o QR Code Pix não vem", () => {
+  const semQr = () => vi.spyOn(t.world.stores.asaas, "getPixQrCode").mockRejectedValue(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado na Asaas"));
+  const cobrancasCriadas = () => [...t.world.asaasCharges.keys()];
+  const pagamentosLocais = () => [...t.world.payments.values()];
+
+  beforeEach(() => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+
+  it("remoção confirmada: devolve o erro, não cria outra cobrança e não grava pagamento", async () => {
+    semQr();
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
+    expect(t.world.asaasCalls.cancelCharge).toHaveLength(1);
+    expect(cobrancasCriadas()).toHaveLength(0);
+    expect(pagamentosLocais()).toHaveLength(0);
+  });
+
+  it("remoção recusada, mas a consulta mostra a cobrança removida: nada fica para conciliar", async () => {
+    semQr();
+    const cancelar = t.world.stores.asaas.cancelCharge;
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockImplementationOnce(async (id) => {
+      await cancelar(id);
+      throw new AppError(409, "CANCELAMENTO_COBRANCA_RECUSADO", "recusa simulada");
+    });
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    expect(pagamentosLocais()).toHaveLength(0);
+  });
+
+  it("tempo esgotado na remoção com a cobrança ainda ativa: fica registrada, vencida e sem QR, e a consulta seguinte a encerra", async () => {
+    semQr();
+    const remocao = vi.spyOn(t.world.stores.asaas, "cancelCharge").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado"));
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    const [ativa] = cobrancasCriadas();
+    expect(pagamentosLocais()).toEqual([expect.objectContaining({ asaasPaymentId: ativa, status: "PENDENTE", pixCopiaCola: null, pixQrCode: null })]);
+    expect(pagamentosLocais()[0]!.expiraEm.getTime()).toBeLessThanOrEqual(Date.now());
+
+    await expect(t.service.syncCheckout(contratante, t.event.id, minutesLater(1))).resolves.toMatchObject({ status: "EXPIRADO", asaasPaymentId: ativa });
+    expect(remocao.mock.calls.map(([id]) => id)).toEqual([ativa, ativa]);
+    expect(cobrancasCriadas()).toHaveLength(0);
+  });
+
+  it("remoção sem resposta e consulta também sem resposta: resultado inconclusivo, a cobrança fica registrada", async () => {
+    semQr();
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado"));
+    vi.spyOn(t.world.stores.asaas, "getPayment").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado"));
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    expect(pagamentosLocais()).toEqual([expect.objectContaining({ asaasPaymentId: cobrancasCriadas()[0], status: "PENDENTE" })]);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('"remocao":"INCONCLUSIVA"'));
+  });
+
+  it("cobrança recebida enquanto a remoção falhava: fica registrada e a consulta seguinte efetiva a contratação", async () => {
+    semQr();
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockImplementationOnce(async (id) => {
+      payAtAsaas(t.world, id);
+      throw new AppError(409, "CANCELAMENTO_COBRANCA_RECUSADO", "já recebida");
+    });
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    expect(pagamentosLocais()).toHaveLength(1);
+
+    await expect(t.service.syncCheckout(contratante, t.event.id, minutesLater(1))).resolves.toMatchObject({ status: "PAGO" });
+    expect(t.world.events.get(t.event.id)?.status).toBe("CONTRATADO");
+  });
+
+  it("sem registrar nem remover, deixa um alerta rastreável com a cobrança", async () => {
+    semQr();
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado"));
+    vi.spyOn(t.world.stores.payments, "insertPayment").mockRejectedValueOnce(new Error("banco fora do ar"));
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(`"alerta":"COBRANCA_SEM_REGISTRO_LOCAL"`));
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining(cobrancasCriadas()[0]!));
+  });
+
+  it("nova tentativa depois de uma cobrança registrada para conciliação: encerra a antiga antes de criar outra", async () => {
+    const qr = semQr();
+    const remocao = vi.spyOn(t.world.stores.asaas, "cancelCharge").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado"));
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    const [antiga] = cobrancasCriadas();
+    qr.mockRestore();
+
+    const nova = await checkout(minutesLater(1));
+
+    expect(remocao.mock.calls.map(([id]) => id)).toEqual([antiga, antiga]);
+    expect(nova).toMatchObject({ status: "PENDENTE" });
+    expect(nova.asaasPaymentId).not.toBe(antiga);
+    expect(pagamentosLocais().filter((p) => p.status === "PENDENTE")).toEqual([expect.objectContaining({ id: nova.id })]);
+  });
+
+  it("checkouts simultâneos: um só pagamento pendente, e a operação que perde remove só a própria cobrança", async () => {
+    const resultados = await Promise.allSettled([checkout(), checkout()]);
+
+    const aceitos = resultados.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof checkout>>> => r.status === "fulfilled");
+    expect(aceitos).toHaveLength(1);
+    expect(resultados.find((r) => r.status === "rejected")).toMatchObject({ reason: { code: "COBRANCA_EM_ANDAMENTO" } });
+    const vencedora = aceitos[0]!.value.asaasPaymentId;
+    expect(t.world.asaasCalls.cancelCharge).toHaveLength(1);
+    expect(t.world.asaasCalls.cancelCharge).not.toContain(vencedora);
+    expect(t.world.asaasCharges.has(vencedora)).toBe(true);
+    expect(pagamentosLocais().filter((p) => p.status === "PENDENTE")).toEqual([expect.objectContaining({ asaasPaymentId: vencedora })]);
+  });
+
+  it("dá ao QR Code o orçamento do app menos a margem e a reserva para encerrar, com a mesma correlação em todas as chamadas", async () => {
+    const qr = vi.spyOn(t.world.stores.asaas, "getPixQrCode");
+    const cobranca = vi.spyOn(t.world.stores.asaas, "createPixCharge");
+    const antes = Date.now();
+
+    await checkout();
+
+    const [, opcoes] = qr.mock.calls[0]!;
+    expect(opcoes!.prazo).toBeGreaterThanOrEqual(antes + CHECKOUT_ORCAMENTO_MS - CHECKOUT_RESERVA_ENCERRAMENTO_MS);
+    expect(opcoes!.prazo).toBeLessThanOrEqual(Date.now() + CHECKOUT_ORCAMENTO_MS - CHECKOUT_RESERVA_ENCERRAMENTO_MS);
+    expect(CHECKOUT_ORCAMENTO_MS).toBe(CHECKOUT_TEMPO_LIMITE_APP_MS - CHECKOUT_MARGEM_DO_APP_MS);
+    expect(cobranca.mock.calls[0]![1]).toEqual({ correlacao: opcoes!.correlacao, timeoutMs: expect.any(Number) });
+    expect(console.info).toHaveBeenCalledWith(expect.stringContaining(`"correlacao":"${opcoes!.correlacao}"`));
+  });
+});
+
+describe("checkout dentro de um único orçamento de tempo", () => {
+  let relogio = 0;
+  let agora: { mockRestore(): void } | null = null;
+  const passar = (ms: number) => { relogio += ms; };
+
+  beforeEach(() => {
+    relogio = 1_000_000;
+    agora = vi.spyOn(Date, "now").mockImplementation(() => relogio);
+    vi.spyOn(console, "info").mockImplementation(() => {});
+  });
+  afterEach(() => agora?.mockRestore());
+
+  it("o prazo começa antes de liberar a cobrança anterior: sem tempo para cobrar de novo, não cria outra cobrança", async () => {
+    const primeira = await checkout();
+    vi.spyOn(t.world.stores.asaas, "getPayment").mockImplementationOnce(async (id) => {
+      passar(20_000);
+      return t.world.asaasCharges.get(id) ?? null;
+    });
+    const cancelar = t.world.stores.asaas.cancelCharge;
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockImplementationOnce(async (id) => {
+      passar(15_000);
+      return cancelar(id);
+    });
+
+    await expect(checkout(minutesLater(16))).rejects.toMatchObject({ code: "PAGAMENTO_TEMPO_INSUFICIENTE" });
+
+    expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
+    expect(t.world.payments.get(primeira.id)?.status).toBe("EXPIRADO");
+  });
+
+  it("o tempo gasto para criar a cobrança encurta o QR Code, mas não a reserva para encerrar", async () => {
+    const inicio = relogio;
+    const criar = t.world.stores.asaas.createPixCharge;
+    const cobranca = vi.spyOn(t.world.stores.asaas, "createPixCharge").mockImplementationOnce(async (dados, contexto) => {
+      passar(20_000);
+      return criar(dados, contexto);
+    });
+    const qr = vi.spyOn(t.world.stores.asaas, "getPixQrCode").mockImplementationOnce(async (_id, opcoes) => {
+      relogio = opcoes!.prazo!;
+      throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado");
+    });
+    const remocao = vi.spyOn(t.world.stores.asaas, "cancelCharge");
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    const prazoFinal = inicio + CHECKOUT_ORCAMENTO_MS;
+    expect(cobranca.mock.calls[0]![1]!.timeoutMs).toBeLessThanOrEqual(prazoFinal - CHECKOUT_RESERVA_ENCERRAMENTO_MS - CHECKOUT_TEMPO_MINIMO_QR_MS - inicio);
+    expect(qr.mock.calls[0]![1]!.prazo).toBe(prazoFinal - CHECKOUT_RESERVA_ENCERRAMENTO_MS);
+    expect(qr.mock.calls[0]![1]!.prazo! - (inicio + 20_000)).toBe(CHECKOUT_ORCAMENTO_MS - CHECKOUT_RESERVA_ENCERRAMENTO_MS - 20_000);
+    expect(remocao.mock.calls[0]![1]!.timeoutMs).toBe(REMOCAO_TEMPO_LIMITE_MS);
+    expect(prazoFinal - relogio).toBe(CHECKOUT_RESERVA_ENCERRAMENTO_MS);
+  });
+
+  it("sem tempo para encerrar com folga, a remoção e a conferência usam só o que resta do orçamento", async () => {
+    const inicio = relogio;
+    vi.spyOn(t.world.stores.asaas, "getPixQrCode").mockImplementationOnce(async () => {
+      relogio = inicio + CHECKOUT_ORCAMENTO_MS - 3_000;
+      throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado");
+    });
+    const remocao = vi.spyOn(t.world.stores.asaas, "cancelCharge").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado"));
+    const consulta = vi.spyOn(t.world.stores.asaas, "getPayment");
+
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+
+    expect(remocao.mock.calls[0]![1]!.timeoutMs).toBe(3_000);
+    expect(consulta.mock.calls[0]![1]!.timeoutMs).toBeLessThanOrEqual(3_000);
+  });
+});
+
+describe("cobrança anterior sem remoção confirmada", () => {
+  it("nova cobrança não é criada enquanto a Asaas não confirma a remoção da anterior", async () => {
+    const primeira = await checkout();
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockResolvedValueOnce({ removida: false });
+
+    await expect(checkout(minutesLater(16))).rejects.toMatchObject({ code: "COBRANCA_EM_CONCILIACAO" });
+
+    expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
+    expect(t.world.payments.get(primeira.id)?.status).toBe("PENDENTE");
+  });
+
+  it("consulta depois do vencimento sem remoção confirmada mantém a cobrança pendente e avisa no log", async () => {
+    const primeira = await checkout();
+    vi.spyOn(t.world.stores.asaas, "cancelCharge").mockResolvedValueOnce({ removida: false });
+
+    await expect(t.service.syncCheckout(contratante, t.event.id, minutesLater(16))).resolves.toMatchObject({ id: primeira.id, status: "PENDENTE" });
+
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('"alerta":"REMOCAO_NAO_CONFIRMADA"'));
   });
 });
 

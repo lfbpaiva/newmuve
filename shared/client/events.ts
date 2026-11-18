@@ -1,6 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { ApiError, apiRequest } from "./api.ts";
 import { appendFile, supabase, type UploadFile } from "./config.ts";
+import { CHECKOUT_TEMPO_LIMITE_APP_MS } from "../dominio.ts";
 
 export type EventStatus = "ABERTO" | "CONTRATADO" | "CANCELADO" | "CONCLUIDO";
 export type CandidateStatus = "PENDENTE" | "APROVADO" | "RECUSADO";
@@ -419,7 +420,7 @@ export function startCheckout(eventId: string, candidateId: string): Promise<Che
   const key = `${eventId}:${candidateId}`;
   let request = checkoutsInFlight.get(key);
   if (!request) {
-    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId }, timeoutMs: 60_000 }).finally(() =>
+    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId }, timeoutMs: CHECKOUT_TEMPO_LIMITE_APP_MS }).finally(() =>
       checkoutsInFlight.delete(key),
     );
     checkoutsInFlight.set(key, request);

@@ -1,11 +1,25 @@
-import { calcularCobranca, COBRANCA_VALIDADE_MS, comissaoPercentual, EMAIL_SUPORTE } from "../../../shared/dominio.ts";
+import { randomUUID } from "node:crypto";
+import { calcularCobranca, CHECKOUT_TEMPO_LIMITE_APP_MS, COBRANCA_VALIDADE_MS, comissaoPercentual, EMAIL_SUPORTE } from "../../../shared/dominio.ts";
 import type { AsaasWebhook, EventRecord, PaymentRecord, PayoutAttempt, RefundAction } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
-import { COBRANCA_REMOVIDA_NA_ASAAS, type AsaasGateway, type AsaasPayment, type AsaasTransfer, type BuscaDeTransferencias, type EventStore, type PaymentStore } from "./ports.ts";
+import { COBRANCA_REMOVIDA_NA_ASAAS, type AsaasGateway, type AsaasPayment, type AsaasTransfer, type BuscaDeTransferencias, type ContextoAsaas, type EventStore, type PaymentStore } from "./ports.ts";
 
 const ASAAS_PAID = ["RECEIVED", "CONFIRMED"];
+export const CHECKOUT_MARGEM_DO_APP_MS = 10_000;
+export const CHECKOUT_ORCAMENTO_MS = CHECKOUT_TEMPO_LIMITE_APP_MS - CHECKOUT_MARGEM_DO_APP_MS;
+export const CHECKOUT_RESERVA_ENCERRAMENTO_MS = 12_000;
+export const REMOCAO_TEMPO_LIMITE_MS = 6_000;
+export const VERIFICACAO_REMOCAO_TEMPO_LIMITE_MS = 5_000;
+export const CHECKOUT_TEMPO_MINIMO_QR_MS = 5_000;
+export const CHECKOUT_TEMPO_MINIMO_CRIACAO_MS = 2_000;
+const REQUISICAO_PADRAO_MS = 15_000;
+const tempoAte = (prazo: number, maximoMs: number) => Math.max(1, Math.min(maximoMs, prazo - Date.now()));
+const cobrancaEmConciliacao = () =>
+  new AppError(409, "COBRANCA_EM_CONCILIACAO", "A cobrança anterior ainda não foi encerrada na Asaas. Tente novamente em instantes.");
+const tempoInsuficiente = () =>
+  new AppError(503, "PAGAMENTO_TEMPO_INSUFICIENTE", "O serviço de pagamentos demorou para responder. Tente novamente em instantes.");
 const REFUND_REQUEST_GRACE_MS = 60_000;
 const TRANSFER_DEAD = ["FAILED", "CANCELLED"];
 const BUSCA_PAGINAS_ROTINA = 5;
@@ -25,6 +39,14 @@ const semEstornoAtivoNaAsaas = (remote: AsaasPayment | null) =>
   !remote?.refunds?.some((refund) => situacaoDoEstornoNaAsaas(refund.status) !== "ENCERRADO_SEM_DEVOLUCAO");
 
 const estornosEncerradosSemDevolucao = (remote: AsaasPayment | null) => Boolean(remote?.refunds?.length) && semEstornoAtivoNaAsaas(remote);
+type ResultadoDaRemocao = "REMOVIDA" | "ATIVA" | "RECEBIDA" | "INCONCLUSIVA";
+
+const registrarCheckout = (registro: Record<string, unknown>, falha: boolean) => {
+  const linha = `Checkout ${JSON.stringify({ origem: "checkout", ...registro })}`;
+  if (falha) console.error(linha);
+  else console.info(linha);
+};
+
 const ESPERA_VERIFICACAO_MS = 24 * 60 * 60 * 1000;
 const ESPERA_CONFIRMACAO_MS = 60 * 60 * 1000;
 const ESTADOS_SEM_RESPOSTA = ["INCONCLUSIVA", "EM_VERIFICACAO"];
@@ -287,17 +309,19 @@ export function createPaymentService(deps: {
     }
   }
 
-  async function release(pending: PaymentRecord, now: Date): Promise<void> {
-    const remote = await asaas.getPayment(pending.asaasPaymentId);
+  async function release(pending: PaymentRecord, now: Date, orcamento?: { prazo: number; correlacao: string }): Promise<void> {
+    const limite = () => orcamento && { timeoutMs: tempoAte(orcamento.prazo, REQUISICAO_PADRAO_MS), correlacao: orcamento.correlacao };
+    const remote = await asaas.getPayment(pending.asaasPaymentId, limite() && { ...limite(), etapa: "liberacao" });
     if (remote && ASAAS_PAID.includes(remote.status)) {
       await confirm(pending.asaasPaymentId);
       throw new AppError(409, "PAGAMENTO_JA_RECEBIDO", "O pagamento deste evento já foi recebido.");
     }
-    await asaas.cancelCharge(pending.asaasPaymentId);
+    const remocao = await asaas.cancelCharge(pending.asaasPaymentId, limite());
+    if (!remocao?.removida) throw cobrancaEmConciliacao();
     await payments.setPaymentStatus(pending.id, pending.expiraEm <= now ? "EXPIRADO" : "CANCELADO");
   }
 
-  async function ensureCustomer(user: AuthUser, recreate = false): Promise<string> {
+  async function ensureCustomer(user: AuthUser, recreate = false, contexto?: ContextoAsaas): Promise<string> {
     const existing = recreate ? null : await payments.getAsaasCustomerId(user.id);
     if (existing) return existing;
 
@@ -309,9 +333,18 @@ export function createPaymentService(deps: {
       cpfCnpj: account.documento!,
       email: user.email,
       externalReference: user.id,
-    });
+    }, contexto);
     await payments.setAsaasCustomerId(user.id, customerId);
     return customerId;
+  }
+
+  async function encerrarCobrancaSemQr(asaasPaymentId: string, correlacao: string, prazo: number): Promise<ResultadoDaRemocao> {
+    const remocao = await asaas.cancelCharge(asaasPaymentId, { timeoutMs: tempoAte(prazo, REMOCAO_TEMPO_LIMITE_MS), correlacao }).catch(() => null);
+    if (remocao?.removida) return "REMOVIDA";
+    const remota = await asaas.getPayment(asaasPaymentId, { timeoutMs: tempoAte(prazo, VERIFICACAO_REMOCAO_TEMPO_LIMITE_MS), correlacao, etapa: "verificacao_remocao" }).catch(() => undefined);
+    if (remota === undefined) return "INCONCLUSIVA";
+    if (remota === null || remota.status === COBRANCA_REMOVIDA_NA_ASAAS) return "REMOVIDA";
+    return ASAAS_PAID.includes(remota.status) ? "RECEBIDA" : "ATIVA";
   }
 
   async function findOwnedEvent(user: AuthUser, eventId: string) {
@@ -333,14 +366,20 @@ export function createPaymentService(deps: {
     } else if (remote?.status === COBRANCA_REMOVIDA_NA_ASAAS) {
       await payments.setPaymentStatus(latest.id, latest.expiraEm <= now ? "EXPIRADO" : "CANCELADO");
     } else if (latest.expiraEm <= now) {
-      await asaas.cancelCharge(latest.asaasPaymentId);
-      await payments.setPaymentStatus(latest.id, "EXPIRADO");
+      const remocao = await asaas.cancelCharge(latest.asaasPaymentId);
+      if (remocao?.removida) await payments.setPaymentStatus(latest.id, "EXPIRADO");
+      else console.error(`Checkout ${JSON.stringify({ origem: "checkout", evento: eventId, cobranca: latest.asaasPaymentId, alerta: "REMOCAO_NAO_CONFIRMADA" })}`);
     }
     return payments.findLatestPayment(eventId);
   }
 
   return {
     async startCheckout(user: AuthUser, eventId: string, candidateId: string, now = new Date()): Promise<PaymentRecord> {
+      const correlacao = randomUUID();
+      const inicio = Date.now();
+      const prazoFinal = inicio + CHECKOUT_ORCAMENTO_MS;
+      const prazoDoQr = prazoFinal - CHECKOUT_RESERVA_ENCERRAMENTO_MS;
+      const prazoDaCriacao = prazoDoQr - CHECKOUT_TEMPO_MINIMO_QR_MS;
       const event = await findOwnedEvent(user, eventId);
       if (event.status !== "ABERTO") throw new AppError(409, "EVENTO_INDISPONIVEL", "Este evento não está mais aberto para contratação.");
       if (event.inicio <= now) throw new AppError(409, "EVENTO_JA_INICIADO", "Este evento já começou e não pode mais receber contratações.");
@@ -355,9 +394,13 @@ export function createPaymentService(deps: {
       const pending = await payments.findPendingPayment(eventId);
       if (pending) {
         if (pending.candidateId === candidateId && pending.expiraEm > now) return pending;
-        await release(pending, now);
+        await release(pending, now, { prazo: prazoDaCriacao - CHECKOUT_TEMPO_MINIMO_CRIACAO_MS, correlacao });
       }
 
+      const contexto = () => {
+        if (prazoDaCriacao - Date.now() < CHECKOUT_TEMPO_MINIMO_CRIACAO_MS) throw tempoInsuficiente();
+        return { correlacao, timeoutMs: tempoAte(prazoDaCriacao, REQUISICAO_PADRAO_MS) };
+      };
       const contratante = await accounts.findAccount(user.id);
       const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache, comissaoPercentual(contratante?.casaAte, now));
       const charge = (customer: string) => asaas.createPixCharge({
@@ -366,14 +409,15 @@ export function createPaymentService(deps: {
         dueDate: dueDateInSaoPaulo(now),
         description: `Muve — contratação de músico para "${event.titulo}"`,
         externalReference: event.id,
-      });
-      const asaasPaymentId = await charge(await ensureCustomer(user)).catch(async (error: unknown) => {
+      }, contexto());
+      const asaasPaymentId = await charge(await ensureCustomer(user, false, contexto())).catch(async (error: unknown) => {
         if (!(error instanceof AppError) || error.code !== "PAGAMENTO_CLIENTE_INVALIDO") throw error;
-        return charge(await ensureCustomer(user, true));
+        return charge(await ensureCustomer(user, true, contexto()));
       });
+      const base = { correlacao, evento: eventId, cobranca: asaasPaymentId };
       try {
-        const qrCode = await asaas.getPixQrCode(asaasPaymentId);
-        return await payments.insertPayment({
+        const qrCode = await asaas.getPixQrCode(asaasPaymentId, { prazo: prazoDoQr, correlacao });
+        const pagamento = await payments.insertPayment({
           eventId,
           candidateId,
           contractorId: user.id,
@@ -384,8 +428,35 @@ export function createPaymentService(deps: {
           pixQrCode: qrCode.encodedImage,
           expiraEm: new Date(now.getTime() + COBRANCA_VALIDADE_MS),
         });
+        registrarCheckout({ ...base, resultado: "COBRANCA_GERADA", duracaoMs: Date.now() - inicio }, false);
+        return pagamento;
       } catch (error) {
-        await asaas.cancelCharge(asaasPaymentId).catch((cleanupError) => console.error("Falha ao cancelar cobrança órfã", cleanupError));
+        const remocao = await encerrarCobrancaSemQr(asaasPaymentId, correlacao, prazoFinal);
+        let registradaParaConciliacao = false;
+        if (remocao !== "REMOVIDA") {
+          registradaParaConciliacao = await payments.insertPayment({
+            eventId,
+            candidateId,
+            contractorId: user.id,
+            asaasPaymentId,
+            valor: cobranca.total,
+            valorComissao: cobranca.comissao,
+            pixCopiaCola: null,
+            pixQrCode: null,
+            expiraEm: new Date(),
+          }).then(() => true, () => false);
+        }
+        registrarCheckout({
+          ...base,
+          resultado: "FALHA",
+          erro: error instanceof AppError ? error.code : "falha inesperada",
+          remocao,
+          registradaParaConciliacao,
+          duracaoMs: Date.now() - inicio,
+        }, true);
+        if (remocao !== "REMOVIDA" && !registradaParaConciliacao) {
+          console.error(`Checkout ${JSON.stringify({ origem: "checkout", ...base, alerta: "COBRANCA_SEM_REGISTRO_LOCAL", remocao })}`);
+        }
         throw error;
       }
     },
