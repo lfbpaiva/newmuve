@@ -3,10 +3,10 @@ import { Pressable, Text, View } from "react-native";
 import { formatCurrency, parseValor, toValorInput } from "../../shared/client/format.ts";
 import { isValidCache } from "../../shared/dominio.ts";
 import { colors, radius, space, type } from "../lib/theme";
-import { Alert, ativarComEspaco, Button, Field, type IconName } from "./ui";
+import { Alert, ativarComEspaco, Button, Field, focoDaOpcao, grupoDeOpcoes, type IconName } from "./ui";
 
 function Opcao({ ativa, titulo, detalhe, onPress }: { ativa: boolean; titulo: string; detalhe: string; onPress: () => void }) {
-  return <Pressable role="radio" aria-checked={ativa} {...ativarComEspaco(onPress)} onPress={onPress} style={({ pressed }) => ({ flex: 1, gap: 2, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
+  return <Pressable role="radio" aria-checked={ativa} {...focoDaOpcao(ativa)} {...ativarComEspaco(onPress)} onPress={onPress} style={({ pressed }) => ({ flex: 1, gap: 2, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
     <Text style={[type.titleSmall, { fontSize: 14, color: ativa ? colors.ink : colors.ink2 }]}>{titulo}</Text>
     <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{detalhe}</Text>
   </Pressable>;
@@ -33,7 +33,7 @@ export function ProposalForm({ cacheOferecido, valorAtual, submitLabel, icon, bu
   }
 
   return <View style={{ gap: space.md }}>
-    <View accessibilityRole="radiogroup" style={{ flexDirection: "row", gap: space.sm }}>
+    <View {...grupoDeOpcoes([false, true], propor, (valor) => { setPropor(valor); setError(""); })} style={{ flexDirection: "row", gap: space.sm }}>
       <Opcao ativa={!propor} titulo="Aceito o cachê" detalhe={formatCurrency(cacheOferecido)} onPress={() => { setPropor(false); setError(""); }}/>
       <Opcao ativa={propor} titulo="Propor outro valor" detalhe="O contratante decide" onPress={() => { setPropor(true); setError(""); }}/>
     </View>
