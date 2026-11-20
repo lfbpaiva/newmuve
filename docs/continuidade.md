@@ -82,9 +82,11 @@ As imagens de `mobile/assets` ficam no **Git LFS**. A branch do redesign do grup
 - **Pix validado em 20/11, pelos serviços da API no sandbox:**
   - Com `contratante2@teste.com` e `musico2@teste.com`: evento, inscrição e cobrança de R$ 165 gerada em 4,9 s com QR Code (cliente 0,9 s, cobrança 0,7 s, QR 0,5 s).
   - Pagamento simulado no sandbox; a consulta do app confirmou em 1,7 s, e o evento passou a contratado.
-  - Depois, cancelamento com estorno integral, que ficou esperando o SMS.
+  - Depois, cancelamento com estorno integral, autorizado por SMS e concluído.
   - Se o app mostrar "O servidor demorou para responder", o atraso está entre o celular e a API (endereço em `EXPO_PUBLIC_API_URL`, mesma rede Wi-Fi, firewall do Windows na porta 3333), não na Asaas.
-- Para confirmar um Pix de teste, abra a cobrança no painel e use **Confirmar pagamento**.
+- Para confirmar um Pix de teste, abra a cobrança no painel e use **Confirmar pagamento**. Por script, use `POST /sandbox/payment/{id}/confirm`, que só existe no sandbox.
+- **No sandbox, o código das autorizações pode ser `000000`:** o próprio painel informa isso. Várias pendências (estornos e transferências) são autorizadas de uma vez.
+- **A Asaas confere se a chave Pix existe, mesmo no sandbox.** Chave fictícia faz o repasse falhar com `PAGAMENTO_DADOS_INVALIDOS`. Nas contas de teste, use `cliente-a00001@pix.bcb.gov.br`, a chave de teste do Banco Central.
 - A conta é de pessoa física, então não permite subcontas (Conta Escrow).
 - Ao trocar de conta, os clientes da conta antiga são recriados automaticamente na próxima cobrança ou assinatura.
 
@@ -99,7 +101,7 @@ Não há conta de administrador no app. Contestações são decididas por `scrip
 
 ### Repasses travados
 
-A liberação tem duas etapas (`verificar`, depois de 24 horas do pedido, e `confirmar`, pelo menos 1 hora depois), cada uma com busca completa e vazia na Asaas. Desde o Lote 2, Etapa 1, liberar não paga o músico: a tentativa é encerrada, o repasse fica `FALHOU` e nenhuma nova tentativa é feita; o script lista esses repasses como pendentes. O banco recusa qualquer etapa fora do prazo, fora de ordem ou com busca incompleta. Essas proteções reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência: confira o painel da Asaas antes de confirmar. O nome passado em `--operador` é registrado como informado; não há autenticação individual do suporte.
+A liberação tem duas etapas (`verificar`, depois de 24 horas do pedido, e `confirmar`, pelo menos 1 hora depois), cada uma com busca completa e vazia na Asaas. Desde o Lote 2, Etapa 1, liberar não paga o músico: a tentativa é encerrada e o repasse fica `FALHOU`. Desde 20/11, ele volta para a fila quando o músico troca a chave Pix (`reabrir_repasses_falhos`); fora isso, nenhuma nova tentativa é feita, e o script lista esses repasses como pendentes. O banco recusa qualquer etapa fora do prazo, fora de ordem ou com busca incompleta. Essas proteções reduzem o risco de Pix duplicado, mas não comprovam a ausência da transferência: confira o painel da Asaas antes de confirmar. O nome passado em `--operador` é registrado como informado; não há autenticação individual do suporte.
 
 Casos que só o suporte resolve, pela conferência no painel da Asaas:
 
@@ -195,8 +197,38 @@ O relatório está em [qa-2026-11-20.md](qa-2026-11-20.md). Parecer: reprovada p
 Continuam pendentes:
 
 - **QA-04 e QA-16:** decidido manter os dados. O Muve Casa sem pagamento do Bar Teste está explicado no roteiro. O horário recuado de "Noite de MPB no Bar Teste" fica como está, porque o evento já foi concluído e repassado.
-- **Setas no grupo de opções:** as setas ainda não trocam a opção escolhida.
-- **Teste com usuários reais:** os 12 fluxos com usuários reais exigem um ambiente de teste sem captcha.
+- **Setas no grupo de opções:** feito no PR #14. As setas trocam a opção e o foco, e só a opção marcada entra na ordem do Tab.
+- **Teste com sessão de usuário:** o isolamento entre usuários pelo RLS, com o token de cada um, continua sem teste. O captcha impede o login por script, e ele não deve ser contornado. Rodar quando o `localhost` for liberado no Turnstile.
+
+### Fluxos de ponta a ponta (20/11/2026, à noite)
+
+Executados pelos serviços da API, com os adaptadores reais (Supabase hospedado e Asaas sandbox) e as contas de teste. Ficam de fora a tela e o login, por causa do captcha. Resultado: 44 fluxos, e só um falhou, por erro da preparação (chave Pix fictícia).
+
+- **Evento:** criar com foto, editar, recusar data no passado e recusar edição por quem não é o dono.
+- **Inscrição:** inscrever, recusar inscrição duplicada, recusar inscrição do contratante, propor valor, cancelar a inscrição e o contratante recusar um candidato.
+- **Conversa e proposta:** mensagens nos dois sentidos, terceiro recusado, proposta de R$ 220 aceita.
+- **Pagamento:**
+  - valor desatualizado recusado com `VALOR_ALTERADO`;
+  - Pix de R$ 242 gerado em 3,6 s;
+  - gerar de novo reaproveita a cobrança;
+  - desistir remove a cobrança da Asaas;
+  - Pix pago contrata e retém o cachê.
+- **Contratação:** só o músico contratado vê o endereço; avisos na caixa de entrada.
+- **Estornos:** desistência com mais de 24h (R$ 242, integral, evento volta a ficar aberto) e não comparecimento (R$ 110, evento cancelado, multa de R$ 20 e visibilidade reduzida até 05/12), os dois concluídos depois da autorização por SMS.
+- **Depois do show:**
+  - confirmação e não comparecimento recusados antes do horário;
+  - os dois confirmam e o evento conclui;
+  - avaliações nos dois sentidos, sem repetir;
+  - contestação suspende a confirmação, e o suporte decide pagar o músico;
+  - repasses de R$ 150 e R$ 120 concluídos.
+- **Muve Pro:** assinar, pagar, ativar até 21/12 e cancelar mantendo até o fim do período; contratante sem Casa não favorita.
+- **Repasse que falhou:** a chave fictícia fez o repasse falhar. Isso levou ao PR #13, que recupera esses repasses: depois da troca da chave, o repasse de R$ 150 foi concluído na segunda tentativa.
+
+Observações da rodada:
+
+- **A chave Pix não é conferida no cadastro:** o app só confere o formato, e o músico descobre uma chave inexistente depois do show, quando o repasse falha. Com o PR #13, ele é avisado e recebe ao trocar a chave. Conferir a chave antes, pela Asaas, fica para produção.
+- **Não comparecimento unilateral confirmado na prática:** registrado 15 segundos depois do horário do show, com estorno e multa imediatos e sem chance de o músico responder. Continua como decisão do grupo, com a proposta da revisão da banca.
+- **Evento com pagamento não é apagado:** a exclusão vira cancelamento, para manter o histórico financeiro. O evento de teste "Teste E2E: noite de rock e MPB (editado)" foi cancelado assim.
 
 ## O que falta
 
@@ -212,18 +244,21 @@ Continuam pendentes:
 - [ ] Rever as "Melhorias futuras" registradas no fim da auditoria. Não entram na entrega de 24/11.
 - [ ] Decidir se o evento com convite deve aparecer no feed do músico convidado durante o acesso antecipado (seção 21 da auditoria: hoje a inscrição é liberada, mas o evento só aparece por notificação ou link).
 - [ ] Decidir os pontos de produto da seção 20 da auditoria: total com taxa nas propostas, raio do feed por conta, visibilidade de eventos pela tela do evento e aviso de acesso antecipado. A API não registra requisições; o roteiro de teste foi corrigido nessa seção.
-- [ ] Decidir como recuperar repasses que falharam: desde o Lote 2, Etapa 1, só a rotina financeira pede repasses e nenhum caminho tenta de novo um repasse `FALHOU` (ver [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md)).
+- [x] Recuperar repasses que falharam: desde 20/11 (PR #13), trocar a chave Pix devolve para a fila os repasses que falharam sem transferência criada.
 - [x] Merge do PR #6 (pelo #7, em 20/11); PRs #1, #2, #3 e #5 fechados.
 - [ ] Testar no celular pelo Expo Go (Expo SDK 58): abertura, transições, barra inferior e puxar para atualizar.
 - [ ] Ensaiar a apresentação no computador e no celular reais, com o fluxo completo.
 - [ ] Preencher `EXPO_PUBLIC_TURNSTILE_SITE_KEY` e `EXPO_PUBLIC_TURNSTILE_BASE_URL` no `mobile/.env` de quem apresenta: o captcha está ligado no Supabase e, sem elas, o login falha (conferido em 20/11).
 - [ ] Liberar `localhost` e `127.0.0.1` nos domínios do widget do Turnstile, no painel da Cloudflare. Sem isso, o captcha falha na web local (erro 110200); no Expo Go ele funciona. A alternativa é desligar o captcha no Supabase durante a demonstração.
 - [ ] Item B implementado em 20/11 ("Para aprovar a inscrição de R$ Y, você paga R$ X" no topo da conversa): falta testar no Expo Go.
-- [x] Contas de demonstração completas. Em 20/11 foram criadas também `musico2@teste.com`, `musico3@teste.com` e `contratante2@teste.com` (lista no README).
+- [x] Contas de demonstração completas. Em 20/11 foram criadas também `musico2@teste.com`, `musico3@teste.com`, `musico4@teste.com` e `contratante2@teste.com` (lista no README).
+- [ ] Rodar `npm install` na pasta `mobile` antes do teste no Expo Go: `expo`, `expo-router` e `expo-web-browser` foram atualizados em 20/11 (PR #14).
 - [ ] Combinar quem estará com o telefone da conta Asaas na apresentação.
 - [ ] Passar [monografia.md](monografia.md) para o texto oficial, incluindo o redesign.
 
 ### Para produção
+- [ ] Conferir a chave Pix na Asaas quando o músico a cadastra, para ele não descobrir só depois do show que ela não existe.
+- [ ] Ligar a rotina financeira agendada (variável `ROTINA_FINANCEIRA_ATIVA` do GitHub Actions); sem ela, expiração, estorno tardio e repasse dependem de alguém abrir o app.
 - [ ] Painel de suporte no app (contestações, repasses e planos), com decisão do grupo.
 - [ ] Conta Escrow com subcontas ([conta-escrow.md](conta-escrow.md)), que exige conta Asaas com CNPJ.
 - [ ] Bloquear usuário. Hoje só existe denúncia, por e-mail ao suporte.
