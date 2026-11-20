@@ -347,6 +347,22 @@ export function createPaymentService(deps: {
     return cobrancaQuitada(remota.status) ? "RECEBIDA" : "ATIVA";
   }
 
+  async function expirarCobrancaVencida(local: PaymentRecord): Promise<void> {
+    const remote = await asaas.getPayment(local.asaasPaymentId);
+    if (remote && cobrancaQuitada(remote.status) && remote.value >= local.valor) {
+      await confirm(local.asaasPaymentId);
+      return;
+    }
+    if (remote && remote.status !== COBRANCA_REMOVIDA_NA_ASAAS) {
+      const remocao = await asaas.cancelCharge(local.asaasPaymentId);
+      if (!remocao?.removida) {
+        console.error(`Vencimento ${JSON.stringify({ origem: "webhook", cobranca: local.asaasPaymentId, alerta: "REMOCAO_NAO_CONFIRMADA" })}`);
+        return;
+      }
+    }
+    await payments.setPaymentStatus(local.id, "EXPIRADO");
+  }
+
   async function findOwnedEvent(user: AuthUser, eventId: string) {
     const event = await events.findEvent(eventId);
     if (!event || event.contractorId !== user.id) throw new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
@@ -707,7 +723,7 @@ export function createPaymentService(deps: {
             break;
           }
           case "PAYMENT_OVERDUE":
-            if (local.status === "PENDENTE") await payments.setPaymentStatus(local.id, "EXPIRADO");
+            if (local.status === "PENDENTE") await expirarCobrancaVencida(local);
             break;
           case "PAYMENT_DELETED":
             if (local.status === "PENDENTE") await payments.setPaymentStatus(local.id, "CANCELADO");

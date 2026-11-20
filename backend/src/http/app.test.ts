@@ -610,3 +610,34 @@ describe("POST /api/admin/rotina-financeira", () => {
     expect(tudo).not.toContain(TOKEN_DA_ROTINA);
   });
 });
+
+describe("proteções da QA de 20/11", () => {
+  it("o limite das rotas de suporte vale para todas, mesmo trocando o ID", async () => {
+    const { app } = setup();
+    const resolver = (id: string) =>
+      app.request(`/api/admin/contestacoes/${id}/resolucao`, { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": "errado" }, body: "{}" });
+
+    for (let i = 0; i < 30; i++) expect((await resolver(`a${i}`)).status).toBe(401);
+
+    expect((await resolver("outro-id")).status).toBe(429);
+  });
+
+  it("corpo que não é um objeto responde em português", async () => {
+    const { app } = setup();
+
+    for (const body of ["[]", "null"]) {
+      const response = await app.request("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: { code: "DADOS_INVALIDOS", message: "Dados inválidos." } });
+    }
+  });
+
+  it("corpo grande demais responde 413 sem falar só de imagem", async () => {
+    const { app } = setup();
+
+    const response = await app.request("/api/auth/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: "x".repeat(7 * 1024 * 1024) });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: { code: "REQUISICAO_MUITO_GRANDE", message: "O conteúdo enviado é grande demais. Imagens devem ter no máximo 5 MB." } });
+  });
+});

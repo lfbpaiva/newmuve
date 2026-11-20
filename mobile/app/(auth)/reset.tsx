@@ -1,3 +1,4 @@
+import { Redirect } from "expo-router";
 import { useState } from "react";
 import { updatePassword } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
@@ -7,7 +8,7 @@ import { AuthHeader } from "../../components/AuthHeader";
 import { Alert, Button, PasswordField, Screen } from "../../components/ui";
 
 export default function ResetPasswordScreen() {
-  const { finishPasswordRecovery } = useAuth();
+  const { finishPasswordRecovery, recoveringPassword } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
@@ -25,6 +26,8 @@ export default function ResetPasswordScreen() {
       setSubmitting(false);
     }
   }
+
+  if (!recoveringPassword) return <Redirect href="/(auth)/login"/>;
 
   return <Screen evitarTeclado>
     <AuthHeader titulo="Defina uma nova senha" subtitulo="É a senha que você usará para entrar na Muve a partir de agora."/>

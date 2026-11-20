@@ -9,7 +9,7 @@ import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, isValidChavePix, isValidDocumento, isValidTelefone, isValidUrl, normalizeChavePix, type AcaoPerfil, type CampoPerfil } from "../../../shared/dominio.ts";
 import { ImageField, LocationFields, PixKeyFields } from "../../components/fields";
-import { Turnstile } from "../../components/Turnstile";
+import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { Alert, Button, Chips, Field, Grupo, Icon, PasswordField, Screen, Surface } from "../../components/ui";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { colors, radius, space, styles, type } from "../../lib/theme";
@@ -95,7 +95,7 @@ export default function EditProfileScreen() {
       {pedeSenha && <>
         <Text style={type.bodySmall}>É para essa chave que os seus cachês são repassados. Para trocar, confirme a senha da conta.</Text>
         <PasswordField label="Senha da conta" value={senhaAtual} onChangeText={(senha) => { setSenhaAtual(senha); setError(""); }}/>
-        <Turnstile onToken={setCaptchaToken} onError={setError}/>
+        <VerificacaoDeSeguranca onToken={setCaptchaToken}/>
       </>}
     </Grupo>}
     {error ? <Alert tone="error">{error}</Alert> : null}

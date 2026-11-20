@@ -574,6 +574,27 @@ describe("webhook da Asaas", () => {
     expect(t.world.events.get(t.event.id)?.status).toBe("ABERTO");
   });
 
+  it("aviso de vencimento remove a cobrança na Asaas para ela não poder mais ser paga", async () => {
+    const payment = await checkout();
+
+    await t.service.handleWebhook({ id: "evt_vencida", event: "PAYMENT_OVERDUE", payment: { id: payment.asaasPaymentId } });
+
+    expect(t.world.asaasCalls.cancelCharge).toContain(payment.asaasPaymentId);
+    expect(t.world.asaasCharges.has(payment.asaasPaymentId)).toBe(false);
+    expect(t.world.payments.get(payment.id)?.status).toBe("EXPIRADO");
+  });
+
+  it("aviso de vencimento de uma cobrança já paga contrata em vez de expirar", async () => {
+    const payment = await checkout();
+    payAtAsaas(t.world, payment.asaasPaymentId);
+
+    await t.service.handleWebhook({ id: "evt_vencida_paga", event: "PAYMENT_OVERDUE", payment: { id: payment.asaasPaymentId } });
+
+    expect(t.world.payments.get(payment.id)?.status).toBe("PAGO");
+    expect(t.world.events.get(t.event.id)?.status).toBe("CONTRATADO");
+    expect(t.world.asaasCalls.cancelCharge).not.toContain(payment.asaasPaymentId);
+  });
+
   it("cobrança excluída deixa de estar pendente sem alterar o evento", async () => {
     const payment = await checkout();
     await t.service.handleWebhook({ id: "evt_deleted", event: "PAYMENT_DELETED", payment: { id: payment.asaasPaymentId } });

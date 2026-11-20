@@ -1,7 +1,8 @@
+import { router, Stack } from "expo-router";
 import { Text, View } from "react-native";
 import { formatCurrency } from "../../shared/client/format.ts";
 import { CACHE_MINIMO, COBRANCA_VALIDADE_MS, COMISSAO_PERCENTUAL, EMAIL_SUPORTE, MULTA_AUSENCIA_PERCENTUAL, RAIO_MAXIMO_KM, TERMOS_VERSAO, VISIBILIDADE_REDUZIDA_DIAS } from "../../shared/dominio.ts";
-import { Heading, Screen } from "../components/ui";
+import { Button, Heading, Screen } from "../components/ui";
 import { colors, space, styles, type } from "../lib/theme";
 
 const versao = TERMOS_VERSAO.split("-").reverse().join("/");
@@ -87,7 +88,9 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
 ];
 
 export default function TermsScreen() {
+  const semVolta = !router.canGoBack();
   return <Screen>
+    {semVolta ? <Stack.Screen options={{ headerLeft: () => <Button title="Início" variant="text" icon="chevron-back" block={false} onPress={() => router.replace("/")}/> }}/> : null}
     <Heading title="Termos de Uso" subtitle={`Versão de ${versao}. Ao criar uma conta, você concorda com estas regras.`}/>
     <View style={[styles.card, { gap: space.xl }]}>
       {secoes.map((secao) => <View key={secao.titulo} style={{ gap: space.sm }}>

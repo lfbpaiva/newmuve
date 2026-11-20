@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { completeProfile, type Role } from "../../../shared/client/account.ts";
@@ -39,6 +39,8 @@ export default function CompleteSignupScreen() {
       setSubmitting(false);
     }
   }
+
+  if (!concluido && state.status !== "needsProfile") return <Redirect href="/(auth)/login"/>;
 
   return <Screen evitarTeclado>
     <AuthHeader titulo="Quase lá" subtitulo={`Você entrou com ${email || "o Google"}. Falta só dizer como vai usar a Muve.`}/>

@@ -6,7 +6,7 @@ import { ApiError, errorMessage } from "../../../shared/client/api.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
 import { isValidEmail, SENHA_TAMANHO_MINIMO } from "../../../shared/dominio.ts";
 import { GoogleButton } from "../../components/GoogleButton";
-import { Turnstile } from "../../components/Turnstile";
+import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { AuthHeader } from "../../components/AuthHeader";
 import { Alert, Button, Checkbox, Field, Icon, OpcaoDePapel, PasswordField, Screen, type IconName } from "../../components/ui";
@@ -89,7 +89,7 @@ export default function SignupScreen() {
       <Checkbox label="Li e aceito os Termos de Uso" checked={form.aceiteTermos} onChange={(aceiteTermos) => set({ aceiteTermos })}/>
       <Button title="Ler os Termos de Uso" variant="text" block={false} onPress={() => router.push("/terms")}/>
     </View>
-    <Turnstile key={captchaKey} onToken={setCaptchaToken} onError={setError}/>
+    <VerificacaoDeSeguranca key={captchaKey} onToken={setCaptchaToken} aviso="Conclua a verificação de segurança para criar a conta."/>
     {error ? <Alert tone="error">{error}</Alert> : null}
     {waiting && !error ? <Alert tone="info">Muitas tentativas de cadastro em pouco tempo. Aguarde alguns instantes; o botão volta a funcionar sozinho.</Alert> : null}
     <Button title={waiting ? "Aguarde para tentar novamente" : "Criar minha conta"} icon="arrow-forward" onPress={submit} loading={submitting} disabled={waiting || faltaCaptcha}/>

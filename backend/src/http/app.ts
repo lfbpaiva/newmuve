@@ -95,7 +95,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     bodyLimit({
       maxSize: 6 * 1024 * 1024,
       onError: () => {
-        throw new AppError(400, "REQUISICAO_MUITO_GRANDE", "A imagem deve ter no máximo 5 MB.");
+        throw new AppError(413, "REQUISICAO_MUITO_GRANDE", "O conteúdo enviado é grande demais. Imagens devem ter no máximo 5 MB.");
       },
     }),
   );
@@ -127,7 +127,9 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
       return c.json({ error: { code: error.code, message: error.message } }, error.status);
     }
     if (error instanceof ZodError) {
-      return c.json({ error: { code: "DADOS_INVALIDOS", message: error.issues[0]?.message ?? "Dados inválidos." } }, 400);
+      const issue = error.issues[0];
+      const message = issue && issue.path.length > 0 ? issue.message : "Dados inválidos.";
+      return c.json({ error: { code: "DADOS_INVALIDOS", message } }, 400);
     }
     console.error(`${c.req.method} ${c.req.path}`, error);
     return c.json({ error: { code: "ERRO_INTERNO", message: "Não foi possível concluir a operação. Tente novamente." } }, 500);
@@ -149,7 +151,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.json({ needsEmailConfirmation: true }, 201);
   });
 
-  app.post("/webhooks/asaas", async (c) => {
+  app.post("/webhooks/asaas", rateLimit({ grupo: "webhook", limit: 300, windowMs: 10 * MINUTO }), async (c) => {
     if (!sameToken(c.req.header("asaas-access-token"), asaasWebhookToken)) {
       throw new AppError(401, "NAO_AUTENTICADO", "Token do webhook inválido.");
     }
@@ -325,7 +327,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.body(null, 204);
   });
 
-  app.use("/admin/*", rateLimit({ limit: 30, windowMs: 10 * 60 * 1000 }));
+  app.use("/admin/*", rateLimit({ grupo: "admin", limit: 30, windowMs: 10 * MINUTO }));
 
   app.post("/admin/contestacoes/:id/resolucao", async (c) => {
     if (!sameToken(c.req.header("x-admin-token"), adminToken)) throw new AppError(401, "NAO_AUTORIZADO", "Acesso restrito ao suporte.");
