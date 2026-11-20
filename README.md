@@ -70,6 +70,14 @@ Os Termos de Uso ficam em `mobile/app/terms.tsx`; ao mudar as regras, atualize o
 
 Contas de demonstração (senha `teste123`): `teste@teste.com` (músico) e `contratante@teste.com` (contratante). Para usar as duas no mesmo navegador, abra uma em `http://localhost:8081` e outra em `http://127.0.0.1:8081`. O script `node scripts/contas-demo.mjs` recria as duas do zero, com fotos do Unsplash (uso livre).
 
+Contas de teste extras, criadas em 20/11/2026 com perfis completos, em Cascavel/PR e com a mesma senha:
+
+- `musico2@teste.com`: Banda Teste Rock (Rock, Metal e Outros). Serve como segundo candidato nos eventos de rock.
+- `musico3@teste.com`: Dupla Teste MPB (MPB, Samba, Pop e Pagode).
+- `contratante2@teste.com`: Casa de Shows Teste, com CPF e sem Muve Casa.
+
+Os CPFs e telefones dessas contas são fictícios.
+
 ### Banco
 
 As migrations já estão aplicadas no projeto do grupo. Em um projeto novo, ou quando houver migration nova:
