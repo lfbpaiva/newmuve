@@ -115,6 +115,7 @@ export default function ConversationScreen() {
 
   async function sendProposal() {
     const valor = parseValor(valorProposta);
+    if (Number.isNaN(valor)) return setSendError("Não entendemos o valor. Digite como 150 ou 150,50.");
     if (!isValidCache(valor)) return setSendError("O valor mínimo é de R$ 100,00.");
     const aplicarProposta = (message: Message) => {
       aplicarMensagens([message]);
@@ -200,7 +201,8 @@ export default function ConversationScreen() {
         ? <View style={{ padding: space.md, gap: space.sm, borderTopWidth: 1, borderTopColor: colors.hairline, backgroundColor: colors.surface }}>
           {sendError ? <Alert tone="error">{sendError}</Alert> : null}
           {negotiable && (proposing
-            ? <View style={[styles.row, { gap: space.sm }]}>
+            ? <View style={{ gap: 4 }}>
+            <View style={[styles.row, { gap: space.sm }]}>
               <TextInput
                 value={valorProposta}
                 onChangeText={(value) => { setValorProposta(value.replace(/[^\d.,]/g, "")); setSendError(""); }}
@@ -212,6 +214,8 @@ export default function ConversationScreen() {
               />
               <Button title="Propor" block={false} loading={sending} onPress={() => void sendProposal()}/>
               <Button title="Fechar" variant="text" block={false} onPress={() => setProposing(false)}/>
+            </View>
+            {valorProposta.trim() !== "" && <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{isValidCache(parseValor(valorProposta)) ? `Você vai propor ${formatCurrency(parseValor(valorProposta))}.` : "Digite um valor como 150 ou 150,50. O mínimo é R$ 100,00."}</Text>}
             </View>
             : <Pressable accessibilityRole="button" onPress={() => setProposing(true)} style={({ pressed }) => [styles.row, { alignSelf: "flex-start", gap: 6, paddingHorizontal: 12, minHeight: 34, borderRadius: radius.pill, backgroundColor: pressed ? colors.surface3 : colors.surface2, borderWidth: 1, borderColor: colors.hairline }]}>
               <Icon name="cash-outline" size={15} color={colors.accentText}/>

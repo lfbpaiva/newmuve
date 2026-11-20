@@ -1,4 +1,4 @@
-import { camposFaltantes, descreverFaltantes, imageProblem, TERMOS_VERSAO, type AcaoPerfil } from "../../../shared/dominio.ts";
+import { camposFaltantes, descreverFaltantes, EMAIL_SUPORTE, imageProblem, TERMOS_VERSAO, type AcaoPerfil } from "../../../shared/dominio.ts";
 import type { Account, CompletarPerfilInput, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import type { Inbox, PushGateway } from "./notifications.ts";
@@ -51,7 +51,7 @@ export function createAccountService(deps: {
   auth: AuthGateway;
   images: ImageStore;
   hasOngoingHiring(userId: string): Promise<boolean>;
-  inbox: Pick<Inbox, "markAllRead">;
+  inbox: Pick<Inbox, "markAllRead" | "add">;
   releaseAccount(user: AuthUser, role: Role): Promise<void>;
   cnpj: CnpjLookup;
   devices?: Pick<PushGateway, "register" | "unregister">;
@@ -111,11 +111,23 @@ export function createAccountService(deps: {
         if (situacao === "INATIVA") throw new AppError(400, "CNPJ_INATIVO", "Este CNPJ não está ativo na Receita Federal.");
       }
 
+      const confirmacao = "senhaAtual" in changes ? { senha: changes.senhaAtual, captchaToken: changes.captchaToken } : { senha: undefined, captchaToken: undefined };
+      const trocaChavePix = "chavePix" in changes && Boolean(current.chavePix) && changes.chavePix !== undefined
+        && (changes.chavePix !== current.chavePix || changes.chavePixTipo !== current.chavePixTipo);
+      if (trocaChavePix && (await auth.hasPassword(user.id))) {
+        if (!confirmacao.senha) throw new AppError(400, "SENHA_NECESSARIA", "Para trocar a chave Pix, confirme a senha da conta.");
+        if (!(await auth.verifyPassword(user.email, confirmacao.senha, confirmacao.captchaToken))) throw new AppError(400, "SENHA_INCORRETA", "A senha não confere. A chave Pix não foi alterada.");
+      }
+
       if (role === "CONTRACTOR" && (changes.nome !== current.nome || (changes.documento && changes.documento !== current.documento))) {
         await store.resetPaymentCustomer(user.id);
       }
+      const avisarTrocaDaChave = () => trocaChavePix
+        ? deps.inbox.add({ userId: user.id, titulo: "Chave Pix alterada", texto: `Os próximos repasses vão para a chave nova. Se não foi você, escreva para ${EMAIL_SUPORTE}.`, link: "/account/edit" }).catch(() => {})
+        : Promise.resolve();
       if (!avatar) {
         await store.updateProfile(user.id, role, changes);
+        await avisarTrocaDaChave();
         return;
       }
       const problem = imageProblem(avatar);
@@ -128,6 +140,7 @@ export function createAccountService(deps: {
         throw error;
       }
       if (current.fotoPerfilUrl) await images.removeByUrl("avatars", current.fotoPerfilUrl).catch(() => {});
+      await avisarTrocaDaChave();
     },
 
     async deleteAccount(user: AuthUser, input: DeleteAccountInput): Promise<void> {

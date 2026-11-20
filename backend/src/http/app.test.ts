@@ -83,7 +83,7 @@ describe("POST /api/auth/signup", () => {
 
   it.each([
     [{ email: "sem-arroba.com" }, "Informe um e-mail válido."],
-    [{ password: "123" }, "A senha deve ter pelo menos 6 caracteres."],
+    [{ password: "123" }, "A senha deve ter pelo menos 8 caracteres."],
     [{ nome: "" }, "Informe seu nome."],
     [{ role: "ADMIN" }, "Selecione o tipo de conta."],
     [{ aceiteTermos: false }, "Aceite os Termos de Uso para criar a conta."],
@@ -315,7 +315,7 @@ describe("eventos e checkout", () => {
     });
 
     expect(response.status).toBe(201);
-    expect(payments.startCheckout).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1", CANDIDATE_ID);
+    expect(payments.startCheckout).toHaveBeenCalledWith({ id: "u1", email: "bar@exemplo.com" }, "e1", CANDIDATE_ID, expect.any(Date), undefined);
     const body = await response.json();
     expect(body).toMatchObject({ id: "p1", cache: 500, comissao: 50, valor: 550, status: "PENDENTE", pixCopiaCola: "000201..." });
     expect(JSON.stringify(body)).not.toContain("pay_interno");

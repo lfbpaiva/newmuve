@@ -4,9 +4,8 @@ import type { AsaasWebhook, EventRecord, PaymentRecord, PayoutAttempt, RefundAct
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
-import { COBRANCA_REMOVIDA_NA_ASAAS, type AsaasGateway, type AsaasPayment, type AsaasTransfer, type BuscaDeTransferencias, type ContextoAsaas, type EventStore, type PaymentStore } from "./ports.ts";
+import { COBRANCA_REMOVIDA_NA_ASAAS, cobrancaQuitada, type AsaasGateway, type AsaasPayment, type AsaasTransfer, type BuscaDeTransferencias, type ContextoAsaas, type EventStore, type PaymentStore } from "./ports.ts";
 
-const ASAAS_PAID = ["RECEIVED", "CONFIRMED"];
 export const CHECKOUT_MARGEM_DO_APP_MS = 10_000;
 export const CHECKOUT_ORCAMENTO_MS = CHECKOUT_TEMPO_LIMITE_APP_MS - CHECKOUT_MARGEM_DO_APP_MS;
 export const CHECKOUT_RESERVA_ENCERRAMENTO_MS = 12_000;
@@ -47,8 +46,8 @@ const registrarCheckout = (registro: Record<string, unknown>, falha: boolean) =>
   else console.info(linha);
 };
 
-const ESPERA_VERIFICACAO_MS = 24 * 60 * 60 * 1000;
-const ESPERA_CONFIRMACAO_MS = 60 * 60 * 1000;
+export const ESPERA_VERIFICACAO_MS = 24 * 60 * 60 * 1000;
+export const ESPERA_CONFIRMACAO_MS = 60 * 60 * 1000;
 const ESTADOS_SEM_RESPOSTA = ["INCONCLUSIVA", "EM_VERIFICACAO"];
 
 const RECUSAS_DA_LIBERACAO: Record<string, string> = {
@@ -242,9 +241,9 @@ export function createPaymentService(deps: {
   const reload = async (payment: PaymentRecord) => (await payments.findPaymentByAsaasId(payment.asaasPaymentId)) ?? payment;
 
   const isIdleAtAsaas = (remote: AsaasPayment | null) =>
-    remote !== null && ASAAS_PAID.includes(remote.status) && semEstornoAtivoNaAsaas(remote);
+    remote !== null && cobrancaQuitada(remote.status) && semEstornoAtivoNaAsaas(remote);
 
-  async function refreshRefund(payment: PaymentRecord, avisarReabertura = true): Promise<PaymentRecord> {
+  async function atualizarEstorno(payment: PaymentRecord, avisarReabertura = true): Promise<PaymentRecord> {
     if (payment.refundStatus !== "PROCESSANDO") return payment;
     const remote = await asaas.getPayment(payment.asaasPaymentId);
     const requestSettled = !payment.refundRequestedAt || Date.now() - payment.refundRequestedAt.getTime() >= REFUND_REQUEST_GRACE_MS;
@@ -264,13 +263,13 @@ export function createPaymentService(deps: {
       return reload(claimed);
     }
     const remote = await asaas.getPayment(claimed.asaasPaymentId).catch(() => null);
-    if (remote && !isIdleAtAsaas(remote)) return refreshRefund(claimed, false);
+    if (remote && !isIdleAtAsaas(remote)) return atualizarEstorno(claimed, false);
     await payments.releaseRefund(claimed.id, previous);
     return reload(claimed);
   }
 
   async function refundLatePayment(payment: PaymentRecord): Promise<void> {
-    const current = await refreshRefund(payment);
+    const current = await atualizarEstorno(payment);
     if (current.refundStatus === "PROCESSANDO" || current.refundStatus === "CONFIRMADO") return;
     const previous: RefundState = { refundStatus: current.refundStatus, refundAction: "NENHUMA" };
     if (!(await payments.claimRefund(current.id, "NENHUMA"))) return;
@@ -282,7 +281,7 @@ export function createPaymentService(deps: {
       await undoFailedRefund(claimed, previous, error);
       return;
     }
-    await refreshRefund(claimed).catch(() => {});
+    await atualizarEstorno(claimed).catch(() => {});
   }
 
   async function confirm(asaasPaymentId: string): Promise<void> {
@@ -312,7 +311,7 @@ export function createPaymentService(deps: {
   async function release(pending: PaymentRecord, now: Date, orcamento?: { prazo: number; correlacao: string }): Promise<void> {
     const limite = () => orcamento && { timeoutMs: tempoAte(orcamento.prazo, REQUISICAO_PADRAO_MS), correlacao: orcamento.correlacao };
     const remote = await asaas.getPayment(pending.asaasPaymentId, limite() && { ...limite(), etapa: "liberacao" });
-    if (remote && ASAAS_PAID.includes(remote.status)) {
+    if (remote && cobrancaQuitada(remote.status)) {
       await confirm(pending.asaasPaymentId);
       throw new AppError(409, "PAGAMENTO_JA_RECEBIDO", "O pagamento deste evento já foi recebido.");
     }
@@ -344,7 +343,7 @@ export function createPaymentService(deps: {
     const remota = await asaas.getPayment(asaasPaymentId, { timeoutMs: tempoAte(prazo, VERIFICACAO_REMOCAO_TEMPO_LIMITE_MS), correlacao, etapa: "verificacao_remocao" }).catch(() => undefined);
     if (remota === undefined) return "INCONCLUSIVA";
     if (remota === null || remota.status === COBRANCA_REMOVIDA_NA_ASAAS) return "REMOVIDA";
-    return ASAAS_PAID.includes(remota.status) ? "RECEBIDA" : "ATIVA";
+    return cobrancaQuitada(remota.status) ? "RECEBIDA" : "ATIVA";
   }
 
   async function findOwnedEvent(user: AuthUser, eventId: string) {
@@ -361,7 +360,7 @@ export function createPaymentService(deps: {
     if (latest?.status !== "PENDENTE") return latest;
 
     const remote = await asaas.getPayment(latest.asaasPaymentId);
-    if (remote && ASAAS_PAID.includes(remote.status) && remote.value >= latest.valor) {
+    if (remote && cobrancaQuitada(remote.status) && remote.value >= latest.valor) {
       await confirm(latest.asaasPaymentId);
     } else if (remote?.status === COBRANCA_REMOVIDA_NA_ASAAS) {
       await payments.setPaymentStatus(latest.id, latest.expiraEm <= now ? "EXPIRADO" : "CANCELADO");
@@ -374,7 +373,7 @@ export function createPaymentService(deps: {
   }
 
   return {
-    async startCheckout(user: AuthUser, eventId: string, candidateId: string, now = new Date()): Promise<PaymentRecord> {
+    async startCheckout(user: AuthUser, eventId: string, candidateId: string, now = new Date(), cacheEsperado?: number): Promise<PaymentRecord> {
       const correlacao = randomUUID();
       const inicio = Date.now();
       const prazoFinal = inicio + CHECKOUT_ORCAMENTO_MS;
@@ -387,6 +386,10 @@ export function createPaymentService(deps: {
       const candidate = await events.findCandidateById(candidateId);
       if (!candidate || candidate.eventId !== eventId) throw new AppError(404, "CANDIDATURA_NAO_ENCONTRADA", "Candidatura não encontrada.");
       if (candidate.status !== "PENDENTE") throw new AppError(409, "CANDIDATURA_INDISPONIVEL", "Esta candidatura não está mais disponível.");
+      const cacheDaInscricao = candidate.valorProposto ?? event.cache;
+      if (cacheEsperado !== undefined && Math.abs(cacheEsperado - cacheDaInscricao) > 0.005) {
+        throw new AppError(409, "VALOR_ALTERADO", `O valor da inscrição mudou para ${cacheDaInscricao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Confira antes de pagar.`);
+      }
       if (await events.musicianHasConflict(candidate.musicianId, eventId)) {
         throw new AppError(409, "MUSICO_OCUPADO", "Este músico já tem um show contratado nesse horário.");
       }
@@ -402,7 +405,7 @@ export function createPaymentService(deps: {
         return { correlacao, timeoutMs: tempoAte(prazoDaCriacao, REQUISICAO_PADRAO_MS) };
       };
       const contratante = await accounts.findAccount(user.id);
-      const cobranca = calcularCobranca(candidate.valorProposto ?? event.cache, comissaoPercentual(contratante?.casaAte, now));
+      const cobranca = calcularCobranca(cacheDaInscricao, comissaoPercentual(contratante?.casaAte, now));
       const charge = (customer: string) => asaas.createPixCharge({
         customer,
         value: cobranca.total,
@@ -626,11 +629,11 @@ export function createPaymentService(deps: {
       if (!remote || remote.value < payment.valor) throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", `A cobrança no Asaas não corresponde ao pagamento registrado. Escreva para ${EMAIL_SUPORTE}.`);
       let current = payment;
       if (current.refundStatus === "PROCESSANDO") {
-        current = await refreshRefund(current);
+        current = await atualizarEstorno(current);
         if (current.status === "ESTORNADO") return "ESTORNADO";
         if (current.refundStatus === "PROCESSANDO") return "PROCESSANDO";
       }
-      if (remote.status !== "RECEIVED" && remote.status !== "CONFIRMED" && remote.status !== "REFUNDED") {
+      if (!cobrancaQuitada(remote.status) && remote.status !== "REFUNDED") {
         throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", "A cobrança não está confirmada no Asaas. Atualize a contratação e tente novamente.");
       }
       const previous: RefundState = { refundStatus: current.refundStatus, refundAction: current.refundAction };
@@ -651,21 +654,21 @@ export function createPaymentService(deps: {
           ? error
           : new AppError(503, "ESTORNO_INDISPONIVEL", "Não foi possível solicitar o estorno agora. A contratação continua ativa; tente novamente em instantes.");
       }
-      const latest = await refreshRefund(claimed, false).catch(() => claimed);
+      const latest = await atualizarEstorno(claimed, false).catch(() => claimed);
       return latest.status === "ESTORNADO" ? "ESTORNADO" : "PROCESSANDO";
     },
 
     async refreshRefund(eventId: string): Promise<PaymentRecord | null> {
       const payment = await payments.findLatestPayment(eventId);
       if (!payment) return null;
-      return refreshRefund(payment);
+      return atualizarEstorno(payment);
     },
 
     async ensurePaidForNoRefund(eventId: string): Promise<void> {
       const payment = await payments.findLatestPayment(eventId);
       if (payment?.status !== "PAGO" || payment.refundStatus === "PROCESSANDO") throw new AppError(409, "PAGAMENTO_INDISPONIVEL", "O pagamento deste evento não está disponível para cancelamento sem estorno.");
       const remote = await asaas.getPayment(payment.asaasPaymentId);
-      if (!remote || !ASAAS_PAID.includes(remote.status) || remote.value < payment.valor) {
+      if (!remote || !cobrancaQuitada(remote.status) || remote.value < payment.valor) {
         throw new AppError(409, "PAGAMENTO_DIVERGENTE", `O pagamento no Asaas não corresponde ao registro do evento. Escreva para ${EMAIL_SUPORTE}.`);
       }
     },
@@ -695,7 +698,7 @@ export function createPaymentService(deps: {
           case "PAYMENT_RECEIVED":
           case "PAYMENT_CONFIRMED": {
             const remote = await asaas.getPayment(asaasPaymentId);
-            if (!remote || !ASAAS_PAID.includes(remote.status) || remote.value < local.valor) {
+            if (!remote || !cobrancaQuitada(remote.status) || remote.value < local.valor) {
               console.warn("Notificação de pagamento não confirmada na Asaas:", asaasPaymentId);
               return;
             }

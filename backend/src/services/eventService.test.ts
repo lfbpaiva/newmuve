@@ -925,7 +925,54 @@ describe("correções de fluxo", () => {
   });
 });
 
+describe("excluir a conta com Pix em andamento", () => {
+  it("recusa enquanto a cobrança está no prazo e não apaga o evento", async () => {
+    const aberto = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(aberto.id, "m1");
+    await t.payments.startCheckout(contratante, aberto.id, candidate.id, new Date());
+
+    await expect(t.service.releaseAccount(contratante, "CONTRACTOR")).rejects.toMatchObject({ code: "PAGAMENTO_EM_ANDAMENTO" });
+
+    expect(t.world.events.has(aberto.id)).toBe(true);
+    expect([...t.world.payments.values()].filter((p) => p.status === "PENDENTE")).toHaveLength(1);
+  });
+
+  it("cancela na Asaas a cobrança vencida antes de apagar o evento", async () => {
+    const aberto = t.world.seedEvent();
+    const candidate = t.world.seedCandidate(aberto.id, "m1");
+    const cobranca = await t.payments.startCheckout(contratante, aberto.id, candidate.id, new Date(Date.now() - 60 * 60 * 1000));
+
+    await t.service.releaseAccount(contratante, "CONTRACTOR");
+
+    expect(t.world.events.has(aberto.id)).toBe(false);
+    expect(t.world.asaasCalls.cancelCharge).toContain(cobranca.asaasPaymentId);
+    expect([...t.world.payments.values()].filter((p) => p.status === "PENDENTE")).toHaveLength(0);
+  });
+});
+
 describe("contraproposta no chat", () => {
+  it("quem não é parte da inscrição não propõe nem responde", async () => {
+    const event = t.world.seedEvent({ cache: 500 });
+    const candidate = t.world.seedCandidate(event.id, "m1");
+    const proposta = await t.service.proposeValue(musico, candidate.id, 700, NOW);
+
+    await expect(t.service.proposeValue(outroMusico, candidate.id, 900, NOW)).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.proposeValue(outroContratante, candidate.id, 900, NOW)).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.answerProposal(outroContratante, candidate.id, proposta.id, true, NOW)).rejects.toMatchObject({ status: 404 });
+    expect(candidate.valorProposto).toBeNull();
+  });
+
+  it("responder com a proposta de outra inscrição não muda nenhum valor", async () => {
+    const event = t.world.seedEvent({ cache: 500 });
+    const minha = t.world.seedCandidate(event.id, "m1");
+    const outra = t.world.seedCandidate(event.id, "m2");
+    const propostaDaOutra = await t.service.proposeValue(contratante, outra.id, 650, NOW);
+
+    await expect(t.service.answerProposal(musico, minha.id, propostaDaOutra.id, true, NOW)).rejects.toMatchObject({ code: "PROPOSTA_NAO_ENCONTRADA" });
+    expect(minha.valorProposto).toBeNull();
+    expect(outra.valorProposto).toBeNull();
+  });
+
   it("o contratante propõe, o músico aceita e o valor da inscrição passa a ser o combinado", async () => {
     const event = t.world.seedEvent({ cache: 500 });
     const candidate = t.world.seedCandidate(event.id, "m1");
@@ -1097,6 +1144,24 @@ describe("contestação", () => {
   it("não abre contestação antes do show nem depois do repasse", async () => {
     const { event } = await hired(hoursFromNow(48));
     await expect(t.service.openDispute(contratante, event.id, "Quero contestar antes.", NOW)).rejects.toMatchObject({ code: "CONTESTACAO_INDISPONIVEL" });
+
+    const pago = await hired(hoursFromNow(1));
+    const pagamento = [...t.world.payments.values()].find((p) => p.eventId === pago.event.id && p.status === "PAGO")!;
+    pagamento.repasseStatus = "REPASSADO";
+    await expect(t.service.openDispute(contratante, pago.event.id, "Quero contestar depois.", hoursFromNow(3))).rejects.toMatchObject({ code: "CONTESTACAO_INDISPONIVEL" });
+    expect(t.world.disputes).toHaveLength(0);
+  });
+
+  it("quem não é parte da contratação não abre contestação", async () => {
+    const { event } = await hired(hoursFromNow(1));
+
+    await expect(t.service.openDispute(outroContratante, event.id, "Não fui eu que contratei.", hoursFromNow(3))).rejects.toMatchObject({ status: 404 });
+    await expect(t.service.openDispute(outroMusico, event.id, "Não fui eu que toquei.", hoursFromNow(3))).rejects.toMatchObject({ status: 404 });
+    expect(t.world.disputes).toHaveLength(0);
+  });
+
+  it("decidir uma contestação que não existe responde 404", async () => {
+    await expect(t.service.resolveDispute("00000000-0000-0000-0000-000000000000", "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_NAO_ENCONTRADA" });
   });
 
   it("repasse iniciado depois da leitura do pagamento: o banco recusa a contestação", async () => {

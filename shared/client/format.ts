@@ -5,7 +5,18 @@ const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyl
 
 export const formatCurrency = (value: number) => currency.format(value);
 
-export const parseValor = (input: string) => Number(input.replace(/\./g, "").replace(",", "."));
+const MILHAR_COM_PONTO = /^\d{1,3}(\.\d{3})+$/;
+const DECIMAL_COM_PONTO = /^\d+\.\d{1,2}$/;
+const VALOR_NORMALIZADO = /^\d+(\.\d{1,2})?$/;
+
+export function parseValor(input: string): number {
+  const texto = input.trim();
+  let normalizado = texto;
+  if (texto.includes(",")) normalizado = texto.replace(/\./g, "").replace(",", ".");
+  else if (MILHAR_COM_PONTO.test(texto)) normalizado = texto.replace(/\./g, "");
+  else if (texto.includes(".") && !DECIMAL_COM_PONTO.test(texto)) return Number.NaN;
+  return VALOR_NORMALIZADO.test(normalizado) ? Number(normalizado) : Number.NaN;
+}
 
 export const toValorInput = (value: number) => String(value).replace(".", ",");
 

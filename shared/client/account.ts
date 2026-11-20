@@ -37,6 +37,8 @@ export interface ProfileData {
   chavePixTipo?: string;
   chavePix?: string;
   portfolioUrl?: string;
+  senhaAtual?: string;
+  captchaToken?: string;
 }
 
 export interface SignupData {

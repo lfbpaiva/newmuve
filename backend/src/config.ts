@@ -97,6 +97,18 @@ export function shouldLoadEnvFile(env: NodeJS.ProcessEnv): boolean {
   return env.NODE_ENV !== "production" && env.MUVE_IGNORAR_ARQUIVO_ENV !== "true";
 }
 
+const TOKEN_DO_SUPORTE_TAMANHO_MINIMO = 32;
+
+function tokenDoSuporte(valor: string | undefined): string | undefined {
+  const token = valor?.trim();
+  if (!token) return undefined;
+  if (token.length < TOKEN_DO_SUPORTE_TAMANHO_MINIMO) {
+    console.warn(`ADMIN_TOKEN ignorado: precisa ter pelo menos ${TOKEN_DO_SUPORTE_TAMANHO_MINIMO} caracteres. As rotas do suporte ficam desligadas.`);
+    return undefined;
+  }
+  return token;
+}
+
 export function readServerConfig(env: NodeJS.ProcessEnv, localHosts: string[] = []): ServerConfig {
   const production = env.NODE_ENV === "production";
   const rawOrigins = env.ALLOWED_ORIGINS?.trim() || (production ? "" : "http://localhost:8081");
@@ -119,7 +131,7 @@ export function readServerConfig(env: NodeJS.ProcessEnv, localHosts: string[] = 
     asaasApiUrl: asaasApiUrl(env, production),
     asaasApiKey,
     asaasWebhookToken,
-    adminToken: env.ADMIN_TOKEN?.trim() || undefined,
+    adminToken: tokenDoSuporte(env.ADMIN_TOKEN),
     allowedOrigins: [...new Set([...configuredOrigins, ...devOrigins])],
     allowedRedirects: redirects(env, production),
     smtp: env.SMTP_HOST?.trim()

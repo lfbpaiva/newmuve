@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  conteudoDeImagemConfere,
   calcularCobranca,
   comissaoPercentual,
   estimarCobrancaDoContratante,
@@ -158,5 +159,21 @@ describe("estimarCobrancaDoContratante", () => {
 
   it.each([null, undefined, 0, -10, Number.NaN, Number.POSITIVE_INFINITY])("valor ausente ou inválido (%s) não gera estimativa", (valor) => {
     expect(estimarCobrancaDoContratante(valor, null, agora)).toBeNull();
+  });
+});
+
+describe("conteúdo real da imagem enviada", () => {
+  const arquivo = (bytes: number[], type: string) => new Blob([new Uint8Array(bytes)], { type });
+
+  it("aceita PNG, JPEG e WebP de verdade", async () => {
+    expect(await conteudoDeImagemConfere(arquivo([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a], "image/png"))).toBe(true);
+    expect(await conteudoDeImagemConfere(arquivo([0xff, 0xd8, 0xff, 0xe0], "image/jpeg"))).toBe(true);
+    expect(await conteudoDeImagemConfere(arquivo([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50], "image/webp"))).toBe(true);
+  });
+
+  it("recusa outro arquivo declarado como imagem", async () => {
+    expect(await conteudoDeImagemConfere(arquivo([0x25, 0x50, 0x44, 0x46], "image/png"))).toBe(false);
+    expect(await conteudoDeImagemConfere(arquivo([0x3c, 0x68, 0x74, 0x6d, 0x6c], "image/jpeg"))).toBe(false);
+    expect(await conteudoDeImagemConfere(arquivo([0x89, 0x50, 0x4e, 0x47], "image/gif"))).toBe(false);
   });
 });

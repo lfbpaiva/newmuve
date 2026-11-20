@@ -166,3 +166,7 @@ export interface AsaasGateway {
   listSubscriptionPayments(subscriptionId: string): Promise<{ id: string; status: string; dueDate: string }[]>;
   cancelSubscription(subscriptionId: string): Promise<void>;
 }
+
+export const COBRANCA_QUITADA = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
+
+export const cobrancaQuitada = (status: string) => COBRANCA_QUITADA.includes(status);

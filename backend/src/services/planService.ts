@@ -3,7 +3,7 @@ import type { Role } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
-import type { AsaasGateway } from "./ports.ts";
+import { cobrancaQuitada, type AsaasGateway } from "./ports.ts";
 
 export type Plano = "PRO" | "CASA";
 export type PlanSubscriptionStatus = "AGUARDANDO_PAGAMENTO" | "ATIVA" | "CANCELADA";
@@ -41,7 +41,6 @@ const PLANOS: Record<Role, { plano: Plano; preco: number; descricao: string }> =
   CONTRACTOR: { plano: "CASA", preco: CASA_PRECO, descricao: "Muve Casa — assinatura mensal" },
 };
 
-const PAGO = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
 const EM_ABERTO = ["PENDING", "OVERDUE"];
 
 const hojeEmSaoPaulo = (now: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(now);
@@ -63,12 +62,12 @@ export function createPlanService(deps: { accounts: AccountStore; store: PlanSto
     if (!subscription) return { plano, ativoAte: ativoAte?.toISOString() ?? null, assinatura: null };
 
     const cobrancas = await asaas.listSubscriptionPayments(subscription.asaasSubscriptionId);
-    for (const pago of cobrancas.filter((c) => PAGO.includes(c.status))) {
+    for (const pago of cobrancas.filter((c) => cobrancaQuitada(c.status))) {
       const antes = ativoAte?.getTime() ?? 0;
       ativoAte = (await store.activate(userId, pago.id, PLANO_DIAS_POR_PAGAMENTO)) ?? ativoAte;
       if (ativoAte && ativoAte.getTime() > antes) void notifier.planActivated(userId, plano, ativoAte);
     }
-    const status = subscription.status === "AGUARDANDO_PAGAMENTO" && cobrancas.some((c) => PAGO.includes(c.status)) ? "ATIVA" : subscription.status;
+    const status = subscription.status === "AGUARDANDO_PAGAMENTO" && cobrancas.some((c) => cobrancaQuitada(c.status)) ? "ATIVA" : subscription.status;
 
     const emAberto = status === "CANCELADA" ? null : cobrancas.filter((c) => EM_ABERTO.includes(c.status)).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
     const qr = emAberto ? await asaas.getPixQrCode(emAberto.id).catch(() => null) : null;

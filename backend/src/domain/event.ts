@@ -96,6 +96,7 @@ export interface MessageRecord {
 
 export const checkoutSchema = z.object({
   candidateId: z.uuid({ error: "Candidatura inválida." }),
+  cacheEsperado: z.number({ error: "Valor inválido." }).positive("Valor inválido.").optional(),
 });
 
 export const reviewSchema = z.object({

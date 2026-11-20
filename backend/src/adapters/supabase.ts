@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Account, Role } from "../domain/account.ts";
+import { conteudoDeImagemConfere } from "../../../shared/dominio.ts";
 import { AppError } from "../domain/errors.ts";
 import type { AccountStore, AuthGateway, AuthUser, ImageBucket, ImageStore } from "../services/accountService.ts";
 
@@ -174,6 +175,7 @@ export function createImageStore(admin: SupabaseClient): ImageStore {
 
   return {
     async upload(bucket, ownerId, file) {
+      if (!(await conteudoDeImagemConfere(file))) throw new AppError(400, "IMAGEM_INVALIDA", "O arquivo enviado não é uma imagem PNG, JPEG ou WebP válida.");
       const path = `${ownerId}/${crypto.randomUUID()}.${extension(file.type)}`;
       const { error } = await admin.storage.from(bucket).upload(path, file, { contentType: file.type, upsert: false });
       if (error) throw error;

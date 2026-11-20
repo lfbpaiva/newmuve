@@ -1,14 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Text, View } from "react-native";
-import { updateProfile } from "../../../shared/client/account.ts";
+import { hasPasswordLogin, updateProfile } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import type { UploadFile } from "../../../shared/client/config.ts";
+import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
-import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, isValidChavePix, isValidDocumento, isValidTelefone, isValidUrl, type AcaoPerfil, type CampoPerfil } from "../../../shared/dominio.ts";
+import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, isValidChavePix, isValidDocumento, isValidTelefone, isValidUrl, normalizeChavePix, type AcaoPerfil, type CampoPerfil } from "../../../shared/dominio.ts";
 import { ImageField, LocationFields, PixKeyFields } from "../../components/fields";
-import { Alert, Button, Chips, Field, Grupo, Icon, Screen, Surface } from "../../components/ui";
+import { Turnstile } from "../../components/Turnstile";
+import { Alert, Button, Chips, Field, Grupo, Icon, PasswordField, Screen, Surface } from "../../components/ui";
+import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { colors, radius, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 
@@ -35,6 +38,12 @@ export default function EditProfileScreen() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const login = useAsync("login-com-senha", hasPasswordLogin);
+  const chaveNova = form.chavePix && form.chavePixTipo && isValidChavePix(form.chavePixTipo, form.chavePix) ? normalizeChavePix(form.chavePixTipo, form.chavePix) : null;
+  const trocaChavePix = isMusician && Boolean(me.chavePix) && chaveNova !== null && (chaveNova !== me.chavePix || form.chavePixTipo !== me.chavePixTipo);
+  const pedeSenha = trocaChavePix && login.data !== false;
 
   async function save() {
     if (!form.nome.trim()) return setError("Informe seu nome.");
@@ -43,10 +52,13 @@ export default function EditProfileScreen() {
     if (form.uf && !form.cidade) return setError("Selecione a cidade.");
     if (isMusician && form.chavePix && !isValidChavePix(form.chavePixTipo, form.chavePix)) return setError("Chave Pix inválida para o tipo selecionado.");
     if (isMusician && form.portfolioUrl && !isValidUrl(form.portfolioUrl)) return setError("Informe um link válido, começando com http:// ou https://.");
+    if (pedeSenha && !senhaAtual) return setError("Para trocar a chave Pix, confirme a senha da conta.");
+    if (pedeSenha && CAPTCHA_ATIVO && !captchaToken) return setError("Confirme a verificação de segurança.");
     setSubmitting(true);
     try {
       const { bio, chavePixTipo, chavePix, portfolioUrl, ...comum } = form;
-      await refreshMe(await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl } : comum, avatar));
+      const confirmacao = pedeSenha ? { senhaAtual, captchaToken: captchaToken ?? undefined } : {};
+      await refreshMe(await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl, ...confirmacao } : comum, avatar));
       if (router.canGoBack()) router.back();
       else router.replace("/(app)");
     } catch (e) {
@@ -80,6 +92,11 @@ export default function EditProfileScreen() {
     </Grupo>}
     {isMusician && pede("chavePix") && <Grupo titulo="Recebimento" icone="cash-outline">
       <PixKeyFields tipo={form.chavePixTipo} chave={form.chavePix} onTipoChange={(chavePixTipo) => set({ chavePixTipo })} onChaveChange={(chavePix) => set({ chavePix })}/>
+      {pedeSenha && <>
+        <Text style={type.bodySmall}>É para essa chave que os seus cachês são repassados. Para trocar, confirme a senha da conta.</Text>
+        <PasswordField label="Senha da conta" value={senhaAtual} onChangeText={(senha) => { setSenhaAtual(senha); setError(""); }}/>
+        <Turnstile onToken={setCaptchaToken} onError={setError}/>
+      </>}
     </Grupo>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button title={acao ? "Salvar e continuar" : "Salvar alterações"} icon="arrow-forward" onPress={save} loading={submitting}/>

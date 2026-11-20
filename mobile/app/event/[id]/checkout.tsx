@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { cancelPendingCheckout, consultarCobrancaAproveitavel, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
+import { cancelPendingCheckout, consultarCobrancaAproveitavel, fetchCandidateProfile, fetchCheckoutStatus, fetchEvent, startCheckout, type Checkout } from "../../../../shared/client/events.ts";
 import { formatCountdown, formatCurrency, formatEventDateTime } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, COBRANCA_VALIDADE_MS, comissaoPercentual } from "../../../../shared/dominio.ts";
@@ -21,6 +21,8 @@ export default function CheckoutScreen() {
   const me = useMe();
   const router = useRouter();
   const event = useAsync(`checkout-event:${eventId}`, () => fetchEvent(eventId));
+  const candidato = useAsync(`checkout-candidato:${eventId}:${candidateId}`, () => fetchCandidateProfile(eventId, candidateId));
+  const cacheDaInscricao = event.data && candidato.data !== undefined ? candidato.data?.valorProposto ?? event.data.cache : null;
   const [checkout, setCheckout] = useState<Checkout | null>(null);
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(true);
@@ -70,7 +72,7 @@ export default function CheckoutScreen() {
     setGerandoPix(true);
     setGenerating(true);
     setError("");
-    void show(startCheckout(eventId, candidateId));
+    void show(startCheckout(eventId, candidateId, cacheDaInscricao ?? undefined));
   }
 
   const expiraEm = checkout?.expiraEm;
@@ -151,7 +153,7 @@ export default function CheckoutScreen() {
   }
 
   const expired = situacao === "encerrada";
-  const total = checkout?.valor ?? (event.data ? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).total : null);
+  const total = checkout?.valor ?? (cacheDaInscricao !== null ? calcularCobranca(cacheDaInscricao, comissaoPercentual(me.casaAte)).total : null);
   const restante = Math.min(1, (seconds * 1000) / COBRANCA_VALIDADE_MS);
 
   if (cancelled) return <Screen>
@@ -172,7 +174,7 @@ export default function CheckoutScreen() {
       {!generating && !error && !checkout && confirmar && <Reveal index={1}><Surface destaque>
         <Text style={type.title}>Confirmar a cobrança</Text>
         <Text style={type.bodySmall}>O Pix só é gerado quando você confirmar. Ele vale por 15 minutos e pode ser cancelado enquanto não for pago. Ao gerar, outra cobrança pendente deste evento é cancelada.</Text>
-        <Button title="Gerar cobrança Pix" icon="flash" onPress={generate}/>
+        <Button title="Gerar cobrança Pix" icon="flash" onPress={generate} disabled={cacheDaInscricao === null}/>
         <Button title="Voltar sem gerar" variant="text" onPress={() => router.back()}/>
       </Surface></Reveal>}
       {!generating && !error && checkout && <Reveal index={1}><Surface destaque>
@@ -208,9 +210,9 @@ export default function CheckoutScreen() {
       </Surface></Reveal>}
 
       {event.data ? <Reveal index={2}><View style={[styles.card, { gap: space.sm }]}>
-        <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(checkout?.cache ?? event.data.cache)}</Text></View>
-        <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço ({checkout ? Math.round((checkout.comissao / checkout.cache) * 100) : comissaoPercentual(me.casaAte)}%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).comissao)}</Text></View>
-        <View style={[styles.between, { paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.hairline }]}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(event.data.cache, comissaoPercentual(me.casaAte)).total)}</Text></View>
+        <View style={styles.between}><Text style={type.bodySmall}>Cachê do músico</Text><Text style={type.body}>{formatCurrency(checkout?.cache ?? cacheDaInscricao ?? event.data.cache)}</Text></View>
+        <View style={styles.between}><Text style={type.bodySmall}>Taxa de serviço ({checkout ? Math.round((checkout.comissao / checkout.cache) * 100) : comissaoPercentual(me.casaAte)}%)</Text><Text style={type.body}>{formatCurrency(checkout?.comissao ?? calcularCobranca(cacheDaInscricao ?? event.data.cache, comissaoPercentual(me.casaAte)).comissao)}</Text></View>
+        <View style={[styles.between, { paddingTop: space.sm, borderTopWidth: 1, borderTopColor: colors.hairline }]}><Text style={type.titleSmall}>Total</Text><Text style={type.price}>{formatCurrency(checkout?.valor ?? calcularCobranca(cacheDaInscricao ?? event.data.cache, comissaoPercentual(me.casaAte)).total)}</Text></View>
       </View></Reveal> : event.error ? <Alert tone="error">{event.error}</Alert> : null}
 
       <View style={[styles.row, { alignItems: "flex-start", gap: space.md }]}>

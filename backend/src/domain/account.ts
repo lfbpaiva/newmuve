@@ -86,6 +86,8 @@ const musicianProfile = z
     portfolioUrl: clearableText(z.string().refine(isValidUrl, "Informe um link válido, começando com http:// ou https://.")),
     chavePixTipo: optionalText(z.enum(TIPOS_CHAVE_PIX, { error: "Tipo de chave Pix inválido." })),
     chavePix: optionalText(z.string()),
+    senhaAtual: z.string().max(200).optional(),
+    captchaToken,
   })
   .refine((p) => (p.chavePix ? Boolean(p.chavePixTipo) : true), "Selecione o tipo da chave Pix.")
   .refine((p) => (p.chavePix && p.chavePixTipo ? isValidChavePix(p.chavePixTipo, p.chavePix) : true), "Chave Pix inválida para o tipo selecionado.")

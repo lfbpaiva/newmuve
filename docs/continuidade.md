@@ -142,6 +142,32 @@ O último caso interrompe a migration de propósito; resolva antes de aplicá-la
 - **Webhook da Asaas:** aponta para uma Edge Function da versão antiga, que não existe mais, e está desativado. Não é necessário: pagamentos, planos e estornos são confirmados por consulta direta à Asaas.
 - **Repasse na apresentação:** com a API no notebook e o banco hospedado, a rotina financeira fica bloqueada, então o repasse não acontece ao vivo. O roteiro mostra o repasse real já concluído em "Noite de MPB no Bar Teste".
 
+## Revisão da banca (20/11/2026)
+
+Quatro revisões independentes (segurança, uso errado, manutenção e testes) reprovaram a versão anterior. Corrigido no PR da branch `correcoes/banca`:
+
+- Valor "150.50" virava R$ 15.050,00; a proposta no chat agora mostra a prévia do valor.
+- A tela de pagamento mostrava o cachê do evento, e o servidor cobrava o valor proposto; agora mostra o valor da inscrição, e a API recusa cobrar se ele mudou (`VALOR_ALTERADO`).
+- Datas impossíveis (31/02) eram aceitas e viravam outra data.
+- Excluir a conta com Pix pendente deixava a cobrança sem evento, fora da rotina.
+- A chave Pix mudava sem senha e sem aviso.
+- `ADMIN_TOKEN` aceitava qualquer tamanho, e as rotas do suporte não tinham limite de tentativas.
+- Senha mínima de 8 caracteres; imagem conferida pelo conteúdo; sessão expirada volta ao login; mensagem amigável com o servidor fora do ar.
+- Aviso da penalidade na desistência com menos de 24h; aviso quando a recorrência do Muve Casa é criada pela metade; explicação do tamanho mínimo da contestação.
+- Uma definição de cobrança quitada para pagamentos e planos; o nome `refreshRefund` deixou de ser usado para duas funções diferentes.
+- Teste que compara as regras do banco com as do TypeScript (multa, penalidade, prazos, raio e acesso antecipado do Pro, prazos da liberação de repasse).
+- Testes novos: exclusão com Pix pendente, terceiros na negociação e na contestação, contestação depois do repasse, contestação inexistente, assinatura repetida e desconhecida.
+- `pnpm test` no Windows usa o Git Bash; sem um bash compatível, os dois casos do workflow são pulados.
+
+Ficou para decisão do grupo, com a proposta registrada:
+
+- **Não comparecimento unilateral:** o contratante pede estorno total e multa logo depois do horário, se o músico ainda não confirmou, e o músico não consegue contestar depois do estorno. Proposta: segurar o estorno por 24h e avisar o músico, que pode confirmar ou contestar nesse prazo. Exige migration e mudança de regra.
+- **Leitura direta da tabela de eventos:** a policy permite ler todo evento aberto, contornando o acesso antecipado do Pro e a visibilidade reduzida (é o ponto D3 da auditoria). Proposta: limitar a leitura de evento aberto ao que o feed mostraria, a quem já se inscreveu e a quem foi convidado. Exige migration.
+- **`claim_payout` aceita repasse `FALHOU` no banco:** a regra "não repetir repasse que falhou" está só no serviço. Proposta: recusar `FALHOU` também na função, com teste pgTAP. Exige migration.
+- **Publicar evento e enviar mensagem não são idempotentes:** um tempo esgotado pode levar a duplicar. Proposta: chave de idempotência enviada pelo app e restrição única. Exige migration.
+- **Redirecionamento `exp://**` no Supabase:** necessário para o Expo Go, mas permite levar o link de redefinição de senha a um app do atacante. Em produção, deixar só `muve://auth`.
+- **Manutenção:** dividir `paymentService.ts` (733 linhas) e `ui.tsx`, centralizar em `dominio.ts` as permissões da contratação e a situação da conversa, registrar o motivo nos `catch` vazios e unificar português e inglês nos nomes. São refatorações grandes demais para fazer perto da entrega.
+
 ## O que falta
 
 ### Para a entrega do TCC

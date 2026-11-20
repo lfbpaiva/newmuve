@@ -25,7 +25,7 @@ function httpErrorMessage(status: number): string {
   if (status === 401) return "Sessão inválida ou expirada. Entre novamente.";
   if (status === 403) return "Você não tem permissão para esta operação.";
   if (status === 429) return "Muitas tentativas. Aguarde um pouco e tente novamente.";
-  if (status >= 500) return `Erro no servidor (HTTP ${status}). Tente novamente.`;
+  if (status >= 500) return "O servidor está indisponível no momento. Tente de novo em instantes.";
   return `A solicitação falhou (HTTP ${status}). Tente novamente.`;
 }
 
@@ -131,6 +131,7 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
   if (response.status === 204 || (response.ok && corpoVazio)) return undefined as T;
 
   if (!response.ok) {
+    if (response.status === 401 && token && !options.accessToken) void supabase().auth.signOut({ scope: "local" }).catch(() => {});
     throw new ApiError(
       payload?.error?.message ?? httpErrorMessage(response.status),
       response.status,

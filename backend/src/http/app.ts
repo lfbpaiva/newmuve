@@ -230,8 +230,9 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.post("/events", limites.eventos, async (c) => {
     const { dados, file } = await readMultipart(c, "imagem");
-    const event = await events.createEvent(c.get("user"), eventSchema.parse(dados), file);
-    return c.json({ id: event.id }, 201);
+    const input = eventSchema.parse(dados);
+    const event = await events.createEvent(c.get("user"), input, file);
+    return c.json({ id: event.id, semanasCriadas: event.semanasCriadas, semanasPedidas: input.repetirSemanas }, 201);
   });
 
   app.patch("/events/:id", limites.eventos, async (c) => {
@@ -290,8 +291,8 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   });
 
   app.post("/events/:id/checkout", limites.checkout, async (c) => {
-    const { candidateId } = checkoutSchema.parse(await readJson(c));
-    const payment = await payments.startCheckout(c.get("user"), c.req.param("id"), candidateId);
+    const { candidateId, cacheEsperado } = checkoutSchema.parse(await readJson(c));
+    const payment = await payments.startCheckout(c.get("user"), c.req.param("id"), candidateId, new Date(), cacheEsperado);
     return c.json(toCheckoutView(payment), 201);
   });
 
@@ -323,6 +324,8 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     await events.openDispute(c.get("user"), c.req.param("id"), motivo);
     return c.body(null, 204);
   });
+
+  app.use("/admin/*", rateLimit({ limit: 30, windowMs: 10 * 60 * 1000 }));
 
   app.post("/admin/contestacoes/:id/resolucao", async (c) => {
     if (!sameToken(c.req.header("x-admin-token"), adminToken)) throw new AppError(401, "NAO_AUTORIZADO", "Acesso restrito ao suporte.");

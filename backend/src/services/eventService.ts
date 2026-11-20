@@ -117,7 +117,7 @@ export function createEventService(deps: {
   const contact = (account: Account | null) => account && { nome: account.nome, telefone: account.telefone ?? "", fotoPerfilUrl: account.fotoPerfilUrl ?? "" };
 
   return {
-    async createEvent(user: AuthUser, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord> {
+    async createEvent(user: AuthUser, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord & { semanasCriadas: number }> {
       const contractor = await requireRole(user, "CONTRACTOR", "Apenas contratantes podem criar eventos.");
       assertProfileComplete(contractor, "criarEvento");
       assertFuture(input.inicio, now);
@@ -147,7 +147,7 @@ export function createEventService(deps: {
           break;
         }
       }
-      return criados[0];
+      return { ...criados[0], semanasCriadas: criados.length };
     },
 
     async updateEvent(user: AuthUser, eventId: string, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord> {
@@ -272,6 +272,9 @@ export function createEventService(deps: {
 
     async releaseAccount(user: AuthUser, role: Role): Promise<void> {
       const mine = await events.listEventsOf(user.id, role);
+      if (role === "CONTRACTOR") {
+        for (const event of mine.filter((evento) => evento.status === "ABERTO")) await payments.ensureNoActiveCheckout(event.id);
+      }
       for (const event of mine) {
         if (role === "CONTRACTOR" && event.status === "ABERTO") {
           const pending = (await events.listCandidates(event.id)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);

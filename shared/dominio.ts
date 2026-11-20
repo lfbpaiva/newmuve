@@ -42,7 +42,7 @@ export const ROTULOS_CHAVE_PIX: Record<TipoChavePix, string> = {
 };
 
 export const CACHE_MINIMO = 100;
-export const SENHA_TAMANHO_MINIMO = 6;
+export const SENHA_TAMANHO_MINIMO = 8;
 export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
 export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
@@ -62,8 +62,13 @@ const FUSOS_FORA_DE_BRASILIA: Record<string, { fuso: string; offset: string }> =
 
 export const fusoDaUf = (uf: string) => FUSOS_FORA_DE_BRASILIA[uf]?.fuso ?? "America/Sao_Paulo";
 
-export const horarioLocalDoEvento = (data: string, horario: string, uf: string) =>
-  new Date(`${data}T${horario}:00${FUSOS_FORA_DE_BRASILIA[uf]?.offset ?? "-03:00"}`);
+export function horarioLocalDoEvento(data: string, horario: string, uf: string): Date {
+  const [ano, mes, dia] = data.split("-").map(Number);
+  const [hora, minuto] = horario.split(":").map(Number);
+  const diasDoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  if (!(mes >= 1 && mes <= 12 && dia >= 1 && dia <= diasDoMes && hora >= 0 && hora <= 23 && minuto >= 0 && minuto <= 59)) return new Date(Number.NaN);
+  return new Date(`${data}T${horario}:00${FUSOS_FORA_DE_BRASILIA[uf]?.offset ?? "-03:00"}`);
+}
 export const TERMOS_VERSAO = "2026-10-29";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
@@ -132,6 +137,18 @@ export function isValidChavePix(tipo: string, chave: string): boolean {
 export function normalizeChavePix(tipo: string, chave: string): string {
   if (tipo === "CPF" || tipo === "CNPJ" || tipo === "PHONE") return onlyDigits(chave);
   return chave.trim().toLowerCase();
+}
+
+const ASSINATURAS_DE_IMAGEM: Record<string, (bytes: Uint8Array) => boolean> = {
+  "image/png": (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+  "image/jpeg": (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  "image/webp": (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+};
+
+export async function conteudoDeImagemConfere(file: Blob): Promise<boolean> {
+  const confere = ASSINATURAS_DE_IMAGEM[file.type];
+  if (!confere) return false;
+  return confere(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
 }
 
 export function imageProblem(file: { type: string; size: number }): string | null {
