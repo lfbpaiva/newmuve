@@ -78,6 +78,12 @@ As imagens de `mobile/assets` ficam no **Git LFS**. A branch do redesign do grup
 
 - A chave de API precisa da opção **"Permitir que esta chave execute operações de saque via API"**. Sem ela, o repasse falha com `insufficient_permission`.
 - Cada repasse fica pendente até a autorização por SMS: **Meu Dinheiro → Transferências → Enviar código**, na faixa do topo. O código vai para o telefone cadastrado na conta. Depois de autorizada, a transferência conclui sozinha.
+- **Estornos também esperam a autorização por SMS:** ficam como `AWAITING_CRITICAL_ACTION_AUTHORIZATION`, e no app o estorno aparece como "em processamento" até alguém autorizar no painel da Asaas. Conferido em 20/11. Testar o cancelamento com estorno ao vivo só com o telefone da conta em mãos.
+- **Pix validado em 20/11, pelos serviços da API no sandbox:**
+  - Com `contratante2@teste.com` e `musico2@teste.com`: evento, inscrição e cobrança de R$ 165 gerada em 4,9 s com QR Code (cliente 0,9 s, cobrança 0,7 s, QR 0,5 s).
+  - Pagamento simulado no sandbox; a consulta do app confirmou em 1,7 s, e o evento passou a contratado.
+  - Depois, cancelamento com estorno integral, que ficou esperando o SMS.
+  - Se o app mostrar "O servidor demorou para responder", o atraso está entre o celular e a API (endereço em `EXPO_PUBLIC_API_URL`, mesma rede Wi-Fi, firewall do Windows na porta 3333), não na Asaas.
 - Para confirmar um Pix de teste, abra a cobrança no painel e use **Confirmar pagamento**.
 - A conta é de pessoa física, então não permite subcontas (Conta Escrow).
 - Ao trocar de conta, os clientes da conta antiga são recriados automaticamente na próxima cobrança ou assinatura.

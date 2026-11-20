@@ -77,3 +77,4 @@ O repasse não acontece ao vivo: com a API no notebook e o banco hospedado, a ro
 | Por que o repasse não foi feito ao vivo? | Só a rotina financeira pede repasses, e ela só roda em produção ou com banco de teste local. Na demonstração, a API roda no notebook ligada ao banco hospedado, então a rotina fica bloqueada de propósito. O repasse mostrado aconteceu de verdade no sandbox. |
 | E se a Asaas não responder ao pedido de repasse? | O repasse não é repetido às cegas, para não pagar em dobro. A API procura a transferência pela referência do pagamento e, sem encontrar, o suporte confere e libera. |
 | O repasse aparece como em andamento. Por quê? | No sandbox, a transferência pela API aguarda autorização por SMS no painel da Asaas (**Meu Dinheiro → Transferências → Enviar código**). |
+| O estorno aparece como em processamento. Por quê? | Pelo mesmo motivo: a Asaas pede autorização por SMS para devolver o dinheiro. Depois de autorizado, o app atualiza sozinho. |
