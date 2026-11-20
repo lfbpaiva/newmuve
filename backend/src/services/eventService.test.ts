@@ -1,17 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EventInput } from "../domain/event.ts";
+import { candidaturaSchema, type EventInput } from "../domain/event.ts";
 import { AppError } from "../domain/errors.ts";
 import { createEventService } from "./eventService.ts";
 import { createNotifier } from "./notifications.ts";
 import { createPaymentService } from "./paymentService.ts";
+import { createRotinaFinanceira } from "./rotinaFinanceira.ts";
 import { contratante, hoursFromNow, memoryWorld, musico, NOW, outroContratante, outroMusico, payAtAsaas } from "./testing.ts";
+import type { Hiring } from "../../../shared/client/events.ts";
+import { historicoDaContestacao } from "../../../shared/client/contratacao.ts";
 
 function setup() {
   const world = memoryWorld();
   const notifier = createNotifier({ ...world.stores, appUrl: "http://localhost:8443" });
   const payments = createPaymentService({ ...world.stores, notifier });
   const service = createEventService({ ...world.stores, payments, notifier });
-  return { world, service, payments };
+  const rotina = createRotinaFinanceira({ paymentStore: world.stores.payments, eventStore: world.stores.events, payments, events: service, trava: world.stores.trava });
+  return { world, service, payments, rotina };
 }
 
 const banner = () => new File(["x"], "banner.png", { type: "image/png" });
@@ -217,6 +221,17 @@ describe("cancelamento de inscrição (regra das 24h)", () => {
     expect(t.world.candidates.size).toBe(1);
   });
 
+  it("inscrição de evento cancelado ou já recusada não pode ser apagada pelo músico: o histórico fica", async () => {
+    const cancelado = t.world.seedEvent({ status: "CANCELADO" });
+    t.world.seedCandidate(cancelado.id, "m1");
+    const aberto = t.world.seedEvent();
+    t.world.seedCandidate(aberto.id, "m1", "RECUSADO");
+
+    await expect(t.service.cancelApplication(musico, cancelado.id, NOW)).rejects.toMatchObject({ code: "INSCRICAO_ENCERRADA" });
+    await expect(t.service.cancelApplication(musico, aberto.id, NOW)).rejects.toMatchObject({ code: "INSCRICAO_ENCERRADA" });
+    expect(t.world.candidates.size).toBe(2);
+  });
+
   it("músico contratado não cancela, e ninguém cancela a inscrição de outro", async () => {
     const event = t.world.seedEvent();
     t.world.seedCandidate(event.id, "m1", "APROVADO");
@@ -349,7 +364,7 @@ describe("cancelamento da contratação", () => {
     expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
   });
 
-  it("estorno negado fica visível, mas não impede a confirmação nem o repasse", async () => {
+  it("estorno negado fica visível, mas não impede a confirmação nem o repasse pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(1));
     t.world.stores.asaas.refundPayment = async () => {
       throw new AppError(409, "ESTORNO_RECUSADO", "Estorno recusado.");
@@ -362,6 +377,8 @@ describe("cancelamento da contratação", () => {
     const concluido = await t.service.confirmCompletion(musico, event.id, hoursFromNow(3));
 
     expect(concluido.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(4));
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500 })]);
     expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", repasseStatus: "PROCESSANDO", refundStatus: "NEGADO" });
   });
@@ -374,6 +391,8 @@ describe("cancelamento da contratação", () => {
     const comprovante = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8));
 
     expect(comprovante.evento.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(24 * 8));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
@@ -382,20 +401,25 @@ describe("cancelamento da contratação", () => {
     t.world.payments.get(payment.id)!.refundStatus = "NEGADO";
 
     await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(NOW);
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
   });
 
-  it("repasse de cancelamento em cima da hora é tentado de novo ao abrir o comprovante", async () => {
+  it("repasse falho de cancelamento em cima da hora não é tentado de novo ao abrir o comprovante nem pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(12));
     t.world.failures.transfer = true;
     await t.service.cancelHiring(contratante, event.id, undefined, NOW);
+    await t.rotina.run(NOW);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
 
     t.world.failures.transfer = false;
-    await t.service.getHiring(musico, event.id, NOW);
+    for (let vez = 0; vez < 5; vez++) await t.service.getHiring(vez % 2 === 0 ? musico : contratante, event.id, NOW);
+    await t.rotina.run(hoursFromNow(1));
 
-    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(1);
+    expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
   });
 
   it("registra recusa por saldo sem desfazer o contrato e permite nova tentativa segura", async () => {
@@ -443,10 +467,16 @@ describe("cancelamento da contratação", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
   });
 
-  it("contratante com menos de 24h: sem estorno, o cachê vai para o músico", async () => {
+  it("contratante com menos de 24h: sem estorno, o cachê vai para o músico pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(12));
 
     await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "SEM_ESTORNO" });
+    const consultas = await Promise.all([t.service.getHiring(musico, event.id, NOW), t.service.getHiring(contratante, event.id, NOW)]);
+    expect(consultas.map((consulta) => consulta.evento.status)).toEqual(["CANCELADO", "CANCELADO"]);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("RETIDO");
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(0);
+    await t.rotina.run(NOW);
 
     expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500, pixAddressKey: "m1@exemplo.com" })]);
@@ -507,7 +537,7 @@ describe("cancelamento da contratação", () => {
 });
 
 describe("liberação do valor retido", () => {
-  it("a segunda confirmação conclui o show e dispara o repasse ao músico", async () => {
+  it("a segunda confirmação conclui o show sem transferir; o repasse sai pela rotina", async () => {
     const { event, payment } = await hired(hoursFromNow(1));
     const depois = hoursFromNow(5);
 
@@ -515,31 +545,73 @@ describe("liberação do valor retido", () => {
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
     await t.service.confirmCompletion(musico, event.id, depois);
+    expect(t.world.events.get(event.id)?.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("RETIDO");
+
+    await t.rotina.run(depois);
     expect(t.world.asaasCalls.transferPix).toEqual([expect.objectContaining({ value: 500 })]);
     expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("com uma só confirmação, conclui e repassa automaticamente após 7 dias", async () => {
-    const { event } = await hired(hoursFromNow(1));
+  it("com uma só confirmação, a consulta conclui após 7 dias sem transferir; o repasse sai pela rotina", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
     await t.service.confirmCompletion(musico, event.id, hoursFromNow(5));
 
     const antes = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 6));
     expect(antes.evento.status).toBe("CONTRATADO");
-    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
     const depois = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 7 + 2));
     expect(depois.evento.status).toBe("CONCLUIDO");
+    expect(depois.pagamento?.repasseStatus).toBe("RETIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    await t.rotina.run(hoursFromNow(24 * 7 + 3));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("PROCESSANDO");
   });
 
-  it("sem nenhuma confirmação nem ausência registrada, o show é dado como realizado após 7 dias", async () => {
+  it("sem nenhuma confirmação nem ausência registrada, o show é dado como realizado após 7 dias, sem transferir na consulta", async () => {
     const { event } = await hired(hoursFromNow(1));
 
     expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 6))).evento.status).toBe("CONTRATADO");
     const view = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 8 + 1));
 
     expect(view.evento.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+
+  it("consultas repetidas e simultâneas da contratação não transferem, não criam tentativas nem avisos", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(5));
+    await t.service.confirmCompletion(musico, event.id, hoursFromNow(5));
+    const avisosAntes = t.world.notifications.length;
+
+    const consultas = await Promise.all([
+      t.service.getHiring(contratante, event.id, hoursFromNow(6)),
+      t.service.getHiring(musico, event.id, hoursFromNow(6)),
+      t.service.getHiring(contratante, event.id, hoursFromNow(6)),
+    ]);
+    for (let vez = 0; vez < 5; vez++) await t.service.getHiring(musico, event.id, hoursFromNow(7));
+
+    expect(consultas.map((consulta) => consulta.evento.status)).toEqual(["CONCLUIDO", "CONCLUIDO", "CONCLUIDO"]);
+    expect(consultas[0]).toMatchObject({ papel: "contratante", pagamento: { repasseStatus: "RETIDO" } });
+    expect(consultas[1]).toMatchObject({ papel: "musico", pagamento: { repasseStatus: "RETIDO" } });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(0);
+    expect(t.world.notifications.length).toBe(avisosAntes);
+  });
+
+  it("execuções simultâneas da rotina geram uma única transferência", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(5));
+    await t.service.confirmCompletion(musico, event.id, hoursFromNow(5));
+
+    await Promise.all([t.rotina.run(hoursFromNow(6)), t.rotina.run(hoursFromNow(6)), t.payments.payout(event.id)]);
+    await t.rotina.run(hoursFromNow(7));
+
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(t.world.tentativas.filter((tentativa) => tentativa.paymentId === payment.id)).toHaveLength(1);
   });
 
   it("o não comparecimento só pode ser registrado até 7 dias após o show", async () => {
@@ -767,6 +839,43 @@ describe("correções de fluxo", () => {
     expect(avisosDe("m3").some((n) => n.titulo.includes("voltou a concorrer"))).toBe(false);
   });
 
+  it("excluir evento com inscritos preserva o histórico: o evento é cancelado e inscrições, conversas e imagem continuam", async () => {
+    const event = await t.service.createEvent(contratante, novoEvento, banner(), NOW);
+    const candidate = t.world.seedCandidate(event.id, "m1");
+    t.world.seedCandidate(event.id, "m2", "RECUSADO");
+    const mensagem = await t.service.sendMessage(musico, candidate.id, "Tenho repertório de MPB.", NOW);
+    const remover = vi.spyOn(t.world.stores.events, "deleteEvent");
+
+    await t.service.deleteEvent(contratante, event.id, NOW);
+    await flush();
+
+    expect(remover).not.toHaveBeenCalled();
+    expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
+    expect([...t.world.candidates.values()].filter((c) => c.eventId === event.id)).toHaveLength(2);
+    expect(await t.world.stores.events.findMessage(mensagem.id)).toMatchObject({ candidateId: candidate.id, texto: "Tenho repertório de MPB." });
+    expect(t.world.images.has(event.imagemUrl)).toBe(true);
+    expect(avisosDe("m1").map((n) => n.titulo)).toEqual([expect.stringContaining("foi excluído")]);
+    expect(avisosDe("m2")).toHaveLength(0);
+  });
+
+  it("excluir evento sem nenhum inscrito continua apagando o evento e a imagem", async () => {
+    const event = await t.service.createEvent(contratante, novoEvento, banner(), NOW);
+
+    await t.service.deleteEvent(contratante, event.id, NOW);
+
+    expect(t.world.events.has(event.id)).toBe(false);
+    expect(t.world.images.has(event.imagemUrl)).toBe(false);
+  });
+
+  it("evento cancelado pela exclusão não aceita inscrição nem edição", async () => {
+    const event = t.world.seedEvent();
+    t.world.seedCandidate(event.id, "m2");
+    await t.service.deleteEvent(contratante, event.id, NOW);
+
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "INSCRICOES_ENCERRADAS" });
+    await expect(t.service.updateEvent(contratante, event.id, novoEvento, null, NOW)).rejects.toMatchObject({ code: "EVENTO_BLOQUEADO" });
+  });
+
   it("excluir o evento avisa os inscritos", async () => {
     const event = t.world.seedEvent();
     t.world.seedCandidate(event.id, "m1");
@@ -855,6 +964,8 @@ describe("contraproposta no chat", () => {
   });
 });
 
+const concluirTransferencia = (paymentId: string) => t.world.asaasTransfers.set(t.world.payments.get(paymentId)!.asaasTransferId!, "DONE");
+
 describe("penalidades do músico", () => {
   it("ausência registrada gera multa de 20% e visibilidade reduzida; a multa sai do próximo cachê", async () => {
     const { event } = await hired(hoursFromNow(1));
@@ -866,10 +977,16 @@ describe("penalidades do músico", () => {
     const proximo = await hired(hoursFromNow(48));
     await t.service.confirmCompletion(contratante, proximo.event.id, hoursFromNow(50));
     await t.service.confirmCompletion(musico, proximo.event.id, hoursFromNow(50));
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(50));
 
     expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(400);
     expect(t.world.payments.get(proximo.payment.id)?.multaDescontada).toBe(100);
-    expect(t.world.penalties[0].quitada).toBe(true);
+    expect(t.world.penalties[0]).toMatchObject({ quitada: false, reservaPaymentId: proximo.payment.id });
+
+    concluirTransferencia(proximo.payment.id);
+    await t.payments.payout(proximo.event.id);
+    expect(t.world.penalties[0]).toMatchObject({ quitada: true, reservaPaymentId: proximo.payment.id });
   });
 
   it("desistência com menos de 24h reduz a visibilidade sem multa; com antecedência, nada acontece", async () => {
@@ -883,10 +1000,72 @@ describe("penalidades do músico", () => {
     expect(t.world.penalties).toEqual([expect.objectContaining({ tipo: "DESISTENCIA_TARDIA", multa: 0, eventId: tarde.event.id })]);
     vi.useRealTimers();
   });
+
+  const estornoPendente = (paymentId: string, asaasPaymentId: string, valor: number) => {
+    Object.assign(t.world.payments.get(paymentId)!, { refundStatus: "PROCESSANDO", refundAction: "NAO_COMPARECIMENTO", refundRequestedAt: hoursFromNow(3) });
+    t.world.asaasCharges.set(asaasPaymentId, { status: "REFUNDED", value: valor });
+  };
+  const avisosDeMulta = () => avisosDe("m1").filter((n) => n.titulo.startsWith("Multa por ausência"));
+
+  it("webhook repetido, rotina e consulta do comprovante sobre o mesmo estorno geram uma penalidade e um aviso", async () => {
+    const rotina = createRotinaFinanceira({ paymentStore: t.world.stores.payments, eventStore: t.world.stores.events, payments: t.payments, events: t.service, trava: t.world.stores.trava });
+    const { event, payment } = await hired(hoursFromNow(1));
+    estornoPendente(payment.id, payment.asaasPaymentId, payment.valor);
+    const webhook = (id: string) => t.payments.handleWebhook({ id, event: "PAYMENT_REFUNDED", payment: { id: payment.asaasPaymentId } });
+
+    await Promise.all([webhook("evt_a"), webhook("evt_b"), rotina.run(hoursFromNow(4)), t.service.getHiring(contratante, event.id, hoursFromNow(4))]);
+    await flush();
+    const prazo = t.world.accounts.get("m1")?.visibilidadeReduzidaAte;
+
+    expect(t.world.penalties.filter((p) => p.estornoPaymentId === payment.id)).toEqual([expect.objectContaining({ musicianId: "m1", tipo: "AUSENCIA", multa: 100 })]);
+    expect(prazo).toBeInstanceOf(Date);
+    expect(avisosDeMulta()).toHaveLength(1);
+
+    await webhook("evt_c");
+    await rotina.run(hoursFromNow(5));
+    await t.service.getHiring(contratante, event.id, hoursFromNow(5));
+    await flush();
+
+    expect(t.world.penalties).toHaveLength(1);
+    expect(t.world.accounts.get("m1")?.visibilidadeReduzidaAte).toBe(prazo);
+    expect(avisosDeMulta()).toHaveLength(1);
+  });
+
+  it("falha ao avisar não desfaz nem duplica a penalidade", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    vi.spyOn(t.world.stores.payments, "findRefundPenalty").mockRejectedValueOnce(new Error("falha simulada no aviso"));
+
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(3))).resolves.toMatchObject({ situacao: "ESTORNADO" });
+    await flush();
+
+    expect(t.world.penalties).toEqual([expect.objectContaining({ tipo: "AUSENCIA", multa: 100 })]);
+    expect(t.world.accounts.get("m1")?.visibilidadeReduzidaAte).toBeInstanceOf(Date);
+    expect(avisosDeMulta()).toHaveLength(0);
+    expect(console.error).toHaveBeenCalledWith("Falha ao avisar a penalidade", expect.any(String), expect.any(Error));
+  });
+
+  it("multas antigas, sem estorno de origem, continuam sendo descontadas junto com as novas", async () => {
+    t.world.penalties.push({ id: "pen_antiga", musicianId: "m1", eventId: null, tipo: "AUSENCIA", multa: 50, quitada: false, estornoPaymentId: null, reservaPaymentId: null });
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    const proximo = await hired(hoursFromNow(48));
+    await t.service.confirmCompletion(contratante, proximo.event.id, hoursFromNow(50));
+    await t.service.confirmCompletion(musico, proximo.event.id, hoursFromNow(50));
+    await t.rotina.run(hoursFromNow(50));
+
+    expect(t.world.asaasCalls.transferPix.at(-1)?.value).toBe(350);
+    expect(t.world.payments.get(proximo.payment.id)?.multaDescontada).toBe(150);
+    expect(t.world.penalties.every((p) => p.reservaPaymentId === proximo.payment.id && !p.quitada)).toBe(true);
+
+    concluirTransferencia(proximo.payment.id);
+    await t.payments.payout(proximo.event.id);
+    expect(t.world.penalties.every((p) => p.quitada)).toBe(true);
+  });
 });
 
 describe("contestação", () => {
-  it("congela o repasse até o suporte decidir, e a decisão paga o músico", async () => {
+  it("congela o repasse até o suporte decidir, e a decisão libera o pagamento ao músico pela rotina", async () => {
     const { event } = await hired(hoursFromNow(1));
     await t.service.confirmCompletion(musico, event.id, hoursFromNow(3));
 
@@ -899,6 +1078,8 @@ describe("contestação", () => {
     await t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", "Fotos do show enviadas pelo músico.");
 
     expect(t.world.events.get(event.id)?.status).toBe("CONCLUIDO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(24 * 9));
     expect(t.world.asaasCalls.transferPix).toHaveLength(1);
     await expect(t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA" });
   });
@@ -916,6 +1097,28 @@ describe("contestação", () => {
   it("não abre contestação antes do show nem depois do repasse", async () => {
     const { event } = await hired(hoursFromNow(48));
     await expect(t.service.openDispute(contratante, event.id, "Quero contestar antes.", NOW)).rejects.toMatchObject({ code: "CONTESTACAO_INDISPONIVEL" });
+  });
+
+  it("repasse iniciado depois da leitura do pagamento: o banco recusa a contestação", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    const pagamento = [...t.world.payments.values()].find((p) => p.eventId === event.id && p.status === "PAGO")!;
+    vi.spyOn(t.payments, "findPayment").mockResolvedValueOnce({ ...pagamento });
+    pagamento.repasseStatus = "PROCESSANDO";
+
+    await expect(t.service.openDispute(contratante, event.id, "O músico não apareceu no bar.", hoursFromNow(3))).rejects.toMatchObject({ code: "CONTESTACAO_INDISPONIVEL" });
+    expect(t.world.disputes).toHaveLength(0);
+  });
+
+  it("contestação aberta depois da checagem do serviço: o banco recusa a reivindicação do repasse", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.openDispute(contratante, event.id, "O músico não apareceu no bar.", hoursFromNow(3));
+    vi.spyOn(t.world.stores.events, "findOpenDispute").mockResolvedValueOnce(null);
+
+    await t.payments.payout(event.id);
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.tentativas).toHaveLength(0);
+    expect([...t.world.payments.values()].find((p) => p.eventId === event.id && p.status === "PAGO")?.repasseStatus).toBe("RETIDO");
   });
 });
 
@@ -937,6 +1140,81 @@ describe("acesso antecipado do Muve Pro", () => {
     await expect(t.service.apply(musico, longe.id, null, NOW)).rejects.toMatchObject({ code: "EVENTO_INCOMPATIVEL" });
     t.world.accounts.get("m1")!.proAte = hoursFromNow(24 * 30);
     await expect(t.service.apply(musico, longe.id, null, NOW)).resolves.toBeUndefined();
+  });
+});
+
+describe("penalidade de visibilidade na inscrição", () => {
+  const penalizar = (ate: Date | null) => {
+    t.world.accounts.get("m1")!.visibilidadeReduzidaAte = ate;
+  };
+
+  it("músico com penalidade vigente não se inscreve, e nada é gravado nem notificado", async () => {
+    const event = t.world.seedEvent();
+    penalizar(hoursFromNow(24 * 10));
+
+    const erro = await t.service.apply(musico, event.id, null, NOW).catch((e: unknown) => e);
+    await flush();
+
+    expect(erro).toBeInstanceOf(AppError);
+    expect(erro).toMatchObject({ status: 403, code: "VISIBILIDADE_REDUZIDA" });
+    expect((erro as AppError).message).toContain("não pode se inscrever em novos eventos até");
+    expect([...t.world.candidates.values()].filter((c) => c.eventId === event.id)).toHaveLength(0);
+    expect(avisosDe("c1")).toHaveLength(0);
+    expect(t.world.sent).toHaveLength(0);
+  });
+
+  it("músico com penalidade vencida se inscreve normalmente", async () => {
+    const event = t.world.seedEvent();
+    penalizar(hoursFromNow(-1));
+
+    await expect(t.service.apply(musico, event.id, null, NOW)).resolves.toBeUndefined();
+    expect([...t.world.candidates.values()].some((c) => c.eventId === event.id && c.musicianId === "m1")).toBe(true);
+  });
+
+  it("músico sem penalidade se inscreve normalmente", async () => {
+    const event = t.world.seedEvent();
+    penalizar(null);
+
+    await expect(t.service.apply(musico, event.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("compara a penalidade com o horário do servidor; a inscrição não aceita data vinda do app", async () => {
+    const event = t.world.seedEvent({ inicio: hoursFromNow(24 * 5) });
+    penalizar(hoursFromNow(1));
+
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "VISIBILIDADE_REDUZIDA" });
+    await expect(t.service.apply(musico, event.id, null, hoursFromNow(2))).resolves.toBeUndefined();
+    expect(candidaturaSchema.parse({ valorProposto: null, visibilidadeReduzidaAte: null, agora: hoursFromNow(48).toISOString() })).toEqual({ valorProposto: null });
+  });
+
+  it("as regras de acesso antecipado continuam valendo depois da penalidade, e a penalidade vale até para o Pro", async () => {
+    const novo = t.world.seedEvent({ createdAt: hoursFromNow(-2), inicio: hoursFromNow(24 * 10) });
+    penalizar(hoursFromNow(1));
+    t.world.accounts.get("m1")!.proAte = hoursFromNow(24 * 30);
+    await expect(t.service.apply(musico, novo.id, null, NOW)).rejects.toMatchObject({ code: "VISIBILIDADE_REDUZIDA" });
+
+    penalizar(hoursFromNow(-1));
+    t.world.accounts.get("m1")!.proAte = null;
+    await expect(t.service.apply(musico, novo.id, null, NOW)).rejects.toMatchObject({ code: "ACESSO_ANTECIPADO" });
+  });
+
+  it("convite não libera a inscrição durante a penalidade", async () => {
+    const event = t.world.seedEvent({ cidade: "Curitiba", inscricoesEncerradas: true });
+    t.world.invites.add(`${event.id}:m1`);
+    penalizar(hoursFromNow(24));
+
+    await expect(t.service.apply(musico, event.id, null, NOW)).rejects.toMatchObject({ code: "VISIBILIDADE_REDUZIDA" });
+    expect([...t.world.candidates.values()].filter((c) => c.eventId === event.id)).toHaveLength(0);
+
+    penalizar(hoursFromNow(-1));
+    await expect(t.service.apply(musico, event.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("a penalidade de um músico não afeta outro", async () => {
+    const event = t.world.seedEvent();
+    penalizar(hoursFromNow(24));
+
+    await expect(t.service.apply(outroMusico, event.id, null, NOW)).resolves.toBeUndefined();
   });
 });
 
@@ -965,6 +1243,58 @@ describe("Muve Casa", () => {
     expect(inicios).toEqual([0, 1, 2].map((semana) => novoEvento.inicio.getTime() + semana * 7 * 24 * 60 * 60 * 1000));
   });
 
+  it("recorrência envia as imagens das semanas ao mesmo tempo, uma por evento, antes de gravar", async () => {
+    casa();
+    const liberar: (() => void)[] = [];
+    let contador = 0;
+    vi.spyOn(t.world.stores.images, "upload").mockImplementation(() => new Promise((resolve) => {
+      const url = `https://cdn.test/banner-${++contador}.png`;
+      liberar.push(() => resolve(url));
+    }));
+    const inserir = vi.spyOn(t.world.stores.events, "insertEvent");
+
+    const pedido = t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW);
+    await flush();
+
+    expect(liberar).toHaveLength(3);
+    expect(inserir).not.toHaveBeenCalled();
+    liberar.forEach((solta) => solta());
+    await pedido;
+    expect([...t.world.events.values()].map((e) => e.imagemUrl).sort()).toEqual(["https://cdn.test/banner-1.png", "https://cdn.test/banner-2.png", "https://cdn.test/banner-3.png"]);
+  });
+
+  it("recorrência: falha no envio de uma semana cria as anteriores, descarta as imagens das seguintes e para", async () => {
+    casa();
+    let contador = 0;
+    vi.spyOn(t.world.stores.images, "upload").mockImplementation(async () => {
+      contador += 1;
+      if (contador === 2) throw new Error("falha no Storage");
+      return `https://cdn.test/banner-${contador}.png`;
+    });
+    const remover = vi.spyOn(t.world.stores.images, "removeByUrl");
+
+    const primeiro = await t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW);
+
+    expect(primeiro.imagemUrl).toBe("https://cdn.test/banner-1.png");
+    expect(t.world.events.size).toBe(1);
+    expect(remover).toHaveBeenCalledWith("event-banners", "https://cdn.test/banner-3.png");
+  });
+
+  it("recorrência: se a primeira semana falhar no envio, nada é criado e o erro aparece", async () => {
+    casa();
+    let contador = 0;
+    vi.spyOn(t.world.stores.images, "upload").mockImplementation(async () => {
+      contador += 1;
+      if (contador === 1) throw new Error("falha no Storage");
+      return `https://cdn.test/banner-${contador}.png`;
+    });
+    const remover = vi.spyOn(t.world.stores.images, "removeByUrl");
+
+    await expect(t.service.createEvent(contratante, { ...novoEvento, repetirSemanas: 3 }, banner(), NOW)).rejects.toThrow("falha no Storage");
+    expect(t.world.events.size).toBe(0);
+    expect(remover.mock.calls.map(([, url]) => url).sort()).toEqual(["https://cdn.test/banner-2.png", "https://cdn.test/banner-3.png"]);
+  });
+
   it("favoritar exige o Casa e um músico que já se inscreveu; o convite libera a inscrição fora do alcance", async () => {
     const antigo = t.world.seedEvent();
     t.world.seedCandidate(antigo.id, "m1");
@@ -981,5 +1311,841 @@ describe("Muve Casa", () => {
 
     expect(avisosDe("m1").at(-1)?.titulo).toContain("convidou você");
     await expect(t.service.apply(musico, longe.id, null, NOW)).resolves.toBeUndefined();
+  });
+
+  it("favoritar consulta a conta e a inscrição ao mesmo tempo, antes de gravar", async () => {
+    casa();
+    t.world.seedCandidate(t.world.seedEvent().id, "m1");
+    let liberarConta!: () => void;
+    const contaOriginal = t.world.stores.accounts.findAccount;
+    vi.spyOn(t.world.stores.accounts, "findAccount").mockImplementation((id) => new Promise((resolve) => { liberarConta = () => resolve(contaOriginal(id)); }));
+    const inscricao = vi.spyOn(t.world.stores.events, "hasAppliedToContractor");
+    const gravar = vi.spyOn(t.world.stores.events, "setFavorite");
+
+    const pedido = t.service.setFavorite(contratante, "m1", true, NOW);
+    await flush();
+
+    expect(inscricao).toHaveBeenCalledWith("m1", "c1");
+    expect(gravar).not.toHaveBeenCalled();
+    liberarConta();
+    await pedido;
+    expect(gravar).toHaveBeenCalledWith("c1", "m1", true);
+  });
+
+  it("músico não favorita, mesmo que a verificação de inscrição falhe ao mesmo tempo", async () => {
+    vi.spyOn(t.world.stores.events, "hasAppliedToContractor").mockRejectedValue(new Error("falha de banco"));
+    const gravar = vi.spyOn(t.world.stores.events, "setFavorite");
+
+    await expect(t.service.setFavorite(musico, "m2", true, NOW)).rejects.toMatchObject({ status: 403, code: "PERFIL_NAO_AUTORIZADO" });
+    expect(gravar).not.toHaveBeenCalled();
+  });
+
+  it("sem o Casa a recusa continua sendo do plano, mesmo se a verificação de inscrição falhar", async () => {
+    vi.spyOn(t.world.stores.events, "hasAppliedToContractor").mockRejectedValue(new Error("falha de banco"));
+
+    await expect(t.service.setFavorite(contratante, "m1", true, NOW)).rejects.toMatchObject({ code: "RECURSO_CASA" });
+  });
+
+  it("falha na verificação de inscrição de um contratante válido não grava o favorito", async () => {
+    casa();
+    vi.spyOn(t.world.stores.events, "hasAppliedToContractor").mockRejectedValue(new Error("falha de banco"));
+    const gravar = vi.spyOn(t.world.stores.events, "setFavorite");
+
+    await expect(t.service.setFavorite(contratante, "m1", true, NOW)).rejects.toThrow("falha de banco");
+    expect(gravar).not.toHaveBeenCalled();
+  });
+
+  it("remover não consulta inscrição e funciona mesmo depois do Casa vencer", async () => {
+    casa();
+    t.world.seedCandidate(t.world.seedEvent().id, "m1");
+    await t.service.setFavorite(contratante, "m1", true, NOW);
+    t.world.accounts.get("c1")!.casaAte = hoursFromNow(-1);
+    const inscricao = vi.spyOn(t.world.stores.events, "hasAppliedToContractor");
+
+    await t.service.setFavorite(contratante, "m1", false, NOW);
+
+    expect(inscricao).not.toHaveBeenCalled();
+    expect(await t.world.stores.events.isFavorite("c1", "m1")).toBe(false);
+  });
+
+  it("músico não remove favorito de ninguém", async () => {
+    await expect(t.service.setFavorite(musico, "m2", false, NOW)).rejects.toMatchObject({ code: "PERFIL_NAO_AUTORIZADO" });
+  });
+});
+
+describe("estorno com repasse em conferência", () => {
+  async function contratadoComTentativaLegada(inicio = hoursFromNow(72)) {
+    const contratado = await hired(inicio);
+    const pagamento = t.world.payments.get(contratado.payment.id)!;
+    Object.assign(pagamento, { repasseStatus: "FALHOU", asaasTransferId: "tra_legada" });
+    const tentativa = {
+      id: "00000000-0000-4000-9000-000000000001",
+      paymentId: pagamento.id,
+      origem: "LEGADO" as const,
+      estado: "INCONCLUSIVA" as const,
+      referenciaExterna: pagamento.id,
+      asaasTransferId: "tra_legada",
+      solicitadaEm: hoursFromNow(-24 * 30),
+      verificacaoIniciadaEm: null,
+      encerradaEm: null,
+    };
+    t.world.tentativas.push(tentativa);
+    return { ...contratado, pagamento, tentativa };
+  }
+
+  it("cancelamento pelo contratante com estorno é suspenso enquanto o repasse está em conferência", async () => {
+    const { event, pagamento } = await contratadoComTentativaLegada();
+
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA", status: 409 });
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(pagamento).toMatchObject({ status: "PAGO", refundStatus: null, repasseStatus: "FALHOU" });
+    expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
+  });
+
+  it("desistência do músico também é suspensa", async () => {
+    const { event } = await contratadoComTentativaLegada();
+
+    await expect(t.service.cancelHiring(musico, event.id, undefined, NOW)).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA" });
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
+  });
+
+  it("aviso de não comparecimento não estorna nem aplica penalidade", async () => {
+    const { event } = await contratadoComTentativaLegada(hoursFromNow(1));
+
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(2))).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA" });
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.penalties).toHaveLength(0);
+  });
+
+  const avisosDeDecisao = () => t.world.notifications.filter((n) => n.titulo.startsWith("Contestação resolvida"));
+
+  it("contestação a favor do contratante continua aberta enquanto o repasse está em conferência, e pode ser decidida depois", async () => {
+    const { event, pagamento, tentativa } = await contratadoComTentativaLegada(hoursFromNow(1));
+    await t.service.openDispute(contratante, event.id, "O músico não apareceu no bar.", hoursFromNow(3));
+    const contestacao = t.world.disputes[0];
+
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA" });
+
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    expect(avisosDeDecisao()).toHaveLength(0);
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.penalties).toHaveLength(0);
+    await t.payments.payout(event.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    Object.assign(tentativa, { estado: "FALHOU", encerradaEm: hoursFromNow(4) });
+    pagamento.asaasTransferId = null;
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Ausência confirmada pelo bar.");
+
+    expect(contestacao).toMatchObject({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE" });
+    expect(t.world.asaasCalls.refundPayment).toEqual([pagamento.asaasPaymentId]);
+    expect(avisosDeDecisao()).toHaveLength(2);
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA" });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(1);
+  });
+
+  it("estorno recusado pela Asaas não encerra a contestação, e a decisão pode ser repetida", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.openDispute(contratante, event.id, "O músico não apareceu no bar.", hoursFromNow(3));
+    const contestacao = t.world.disputes[0];
+    t.world.failures.refund = true;
+
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ status: 502 });
+
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    expect(t.world.payments.get(payment.id)).toMatchObject({ status: "PAGO", refundStatus: null });
+    expect(avisosDeDecisao()).toHaveLength(0);
+
+    t.world.failures.refund = false;
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    expect(contestacao).toMatchObject({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE" });
+    expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
+    expect(avisosDeDecisao()).toHaveLength(2);
+  });
+
+  it("decisão a favor do músico continua encerrando a contestação e o repasse sai pela rotina", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.openDispute(contratante, event.id, "O músico chegou atrasado.", hoursFromNow(3));
+
+    await t.service.resolveDispute(t.world.disputes[0].id, "PAGAR_MUSICO", null);
+
+    expect(t.world.disputes[0]).toMatchObject({ status: "RESOLVIDA", decisao: "PAGAR_MUSICO" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    await t.rotina.run(hoursFromNow(4));
+    expect(t.world.asaasCalls.transferPix).toHaveLength(1);
+    expect(avisosDeDecisao()).toHaveLength(2);
+  });
+
+  it("o banco também recusa o estorno quando o serviço não percebe a tentativa aberta, e o erro diz o motivo", async () => {
+    const { event, pagamento } = await contratadoComTentativaLegada();
+    vi.spyOn(t.world.stores.payments, "findOpenAttempt").mockResolvedValueOnce(null);
+
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA", status: 409 });
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(pagamento.refundStatus).toBeNull();
+  });
+
+  it("repasse iniciado entre a checagem do serviço e o pedido de estorno: o erro diz que há repasse em andamento", async () => {
+    const { event, payment } = await hired();
+    const pedirEstorno = t.world.stores.payments.claimRefund;
+    vi.spyOn(t.world.stores.payments, "claimRefund").mockImplementationOnce(async (id, action) => {
+      await t.world.stores.payments.claimPayout(id);
+      return pedirEstorno(id, action);
+    });
+
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).rejects.toMatchObject({
+      code: "REPASSE_EM_CONFERENCIA",
+      message: expect.stringContaining("repasse deste show em andamento ou em conferência"),
+    });
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.payments.get(payment.id)).toMatchObject({ refundStatus: null, repasseStatus: "PROCESSANDO" });
+  });
+
+  it("tentativa encerrada como falha não impede o estorno", async () => {
+    const { event, pagamento, tentativa } = await contratadoComTentativaLegada();
+    Object.assign(tentativa, { estado: "FALHOU", encerradaEm: hoursFromNow(-1) });
+    pagamento.asaasTransferId = null;
+
+    await expect(t.service.cancelHiring(contratante, event.id, undefined, NOW)).resolves.toEqual({ situacao: "ESTORNADO" });
+
+    expect(t.world.asaasCalls.refundPayment).toEqual([pagamento.asaasPaymentId]);
+  });
+
+  it("estorno feito no painel da Asaas com tentativa aberta fica registrado como conflito, sem reabrir o evento nem penalizar", async () => {
+    const { event, pagamento, tentativa } = await contratadoComTentativaLegada();
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "REFUNDED", value: pagamento.valor });
+    await t.payments.handleWebhook({ id: "evt_estorno_painel", event: "PAYMENT_REFUNDED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(pagamento).toMatchObject({ status: "ESTORNADO", refundStatus: "CONFIRMADO", repasseStatus: "FALHOU", asaasTransferId: "tra_legada" });
+    expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
+    expect(t.world.penalties).toHaveLength(0);
+    expect(tentativa.estado).toBe("INCONCLUSIVA");
+    expect(console.error).toHaveBeenCalledWith("Estorno confirmado depois do início do repasse; requer conciliação manual", pagamento.id);
+  });
+});
+
+describe("decisão da contestação e efetivação do estorno", () => {
+  async function contestado() {
+    const contratado = await hired(hoursFromNow(1));
+    await t.service.openDispute(contratante, contratado.event.id, "O músico não apareceu no bar.", hoursFromNow(3));
+    const pagamento = t.world.payments.get(contratado.payment.id)!;
+    t.world.stores.asaas.refundPayment = async (id) => {
+      t.world.asaasCalls.refundPayment.push(id);
+      t.world.asaasCharges.set(id, { status: "RECEIVED", value: pagamento.valor });
+    };
+    return { ...contratado, pagamento, contestacao: t.world.disputes[0] };
+  }
+  const avisos = (prefixo: string) => t.world.notifications.filter((n) => n.titulo.startsWith(prefixo));
+  const emailsAoSuporte = () => t.world.sent.filter((m) => m.subject.includes("estorno de contestação não concluído"));
+  const avisosEnviados = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("decisões opostas: a segunda recebe conflito sem pedir estorno nem repasse", async () => {
+    const { event, contestacao } = await contestado();
+
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+    expect(contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE" });
+
+    await expect(t.service.resolveDispute(contestacao.id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA", status: 409 });
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA" });
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(1);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE" });
+    expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
+  });
+
+  it("enquanto o estorno não é confirmado, a contestação segura o repasse, a conclusão por prazo e uma nova contestação", async () => {
+    const { event, contestacao } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    await t.payments.payout(event.id);
+    await t.service.settleDueHiring(event.id, hoursFromNow(24 * 9));
+
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
+    await expect(t.service.openDispute(musico, event.id, "Quero contestar de novo.", hoursFromNow(5))).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("estorno confirmado depois encerra a contestação", async () => {
+    const { contestacao, pagamento } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "REFUNDED", value: pagamento.valor });
+    await t.payments.handleWebhook({ id: "evt_estorno_ok", event: "PAYMENT_REFUNDED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(pagamento.status).toBe("ESTORNADO");
+    expect(contestacao).toMatchObject({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE" });
+  });
+
+  it("estorno feito no painel da Asaas com a contestação aberta encerra a contestação como devolvida, sem deixá-la presa", async () => {
+    const { event, contestacao, pagamento } = await contestado();
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "REFUNDED", value: pagamento.valor });
+    await t.payments.handleWebhook({ id: "evt_estorno_painel_contestacao", event: "PAYMENT_REFUNDED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(pagamento).toMatchObject({ status: "ESTORNADO", refundStatus: "CONFIRMADO" });
+    expect(contestacao).toMatchObject({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE", observacao: "Valor devolvido ao contratante por estorno confirmado fora da decisão do suporte." });
+    expect(await t.world.stores.events.findOpenDispute(event.id)).toBeNull();
+
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA", status: 409 });
+    await expect(t.service.resolveDispute(contestacao.id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA", status: 409 });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(contestacao).toMatchObject({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE" });
+    expect(t.world.penalties).toHaveLength(0);
+  });
+
+  it("webhook repetido do estorno feito no painel não altera de novo a contestação encerrada", async () => {
+    const { contestacao, pagamento } = await contestado();
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "REFUNDED", value: pagamento.valor });
+    await t.payments.handleWebhook({ id: "evt_painel_1", event: "PAYMENT_REFUNDED", payment: { id: pagamento.asaasPaymentId } });
+    const encerrada = { ...contestacao };
+    await t.payments.handleWebhook({ id: "evt_painel_2", event: "PAYMENT_REFUNDED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(contestacao).toEqual(encerrada);
+  });
+
+  function pagamentoSecundarioEstornado(pagamento: { id: string; eventId: string | null; valor: number }) {
+    const principal = t.world.payments.get(pagamento.id)!;
+    const secundario = { ...principal, id: "p_secundario", asaasPaymentId: "pay_secundario", status: "EXPIRADO" as const, repasseStatus: null, refundStatus: "PROCESSANDO" as const, refundAction: "NENHUMA" as const, refundRequestedAt: new Date() };
+    t.world.payments.set(secundario.id, secundario);
+    t.world.asaasCharges.set(secundario.asaasPaymentId, { status: "REFUNDED", value: secundario.valor });
+    return secundario;
+  }
+
+  it("estorno de outro pagamento do mesmo evento não encerra a contestação aberta do pagamento contratado, e o repasse continua bloqueado", async () => {
+    const { event, contestacao, pagamento } = await contestado();
+    const secundario = pagamentoSecundarioEstornado(pagamento);
+
+    await t.payments.handleWebhook({ id: "evt_estorno_secundario", event: "PAYMENT_REFUNDED", payment: { id: secundario.asaasPaymentId } });
+
+    expect(t.world.payments.get(secundario.id)).toMatchObject({ status: "ESTORNADO", refundStatus: "CONFIRMADO" });
+    expect(pagamento).toMatchObject({ status: "PAGO", repasseStatus: "RETIDO" });
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null, observacao: null });
+    expect(await t.world.stores.events.findOpenDispute(event.id)).toMatchObject({ id: contestacao.id });
+
+    await t.payments.payout(event.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+
+  it("estorno de outro pagamento do mesmo evento não encerra a contestação aguardando o estorno do pagamento contratado", async () => {
+    const { event, contestacao, pagamento } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Ausência comprovada");
+    const secundario = pagamentoSecundarioEstornado(pagamento);
+
+    await t.payments.handleWebhook({ id: "evt_estorno_secundario_aguardando", event: "PAYMENT_REFUNDED", payment: { id: secundario.asaasPaymentId } });
+
+    expect(t.world.payments.get(secundario.id)).toMatchObject({ status: "ESTORNADO", refundStatus: "CONFIRMADO" });
+    expect(pagamento).toMatchObject({ status: "PAGO", refundStatus: "PROCESSANDO" });
+    expect(contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE", observacao: "Ausência comprovada" });
+
+    await t.payments.payout(event.id);
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "REFUNDED", value: pagamento.valor });
+    await t.payments.handleWebhook({ id: "evt_estorno_principal", event: "PAYMENT_REFUNDED", payment: { id: pagamento.asaasPaymentId } });
+    expect(contestacao).toMatchObject({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE", observacao: "Ausência comprovada" });
+  });
+
+  async function aguardandoComDevolucaoSecundaria() {
+    const contratado = await contestado();
+    await t.service.resolveDispute(contratado.contestacao.id, "DEVOLVER_CONTRATANTE", "Ausência comprovada");
+    const secundario = { ...contratado.pagamento, id: "p_secundario", asaasPaymentId: "pay_secundario", status: "EXPIRADO" as const, repasseStatus: null, refundStatus: "PROCESSANDO" as const, refundAction: "NENHUMA" as const, refundRequestedAt: new Date(0) };
+    t.world.payments.set(secundario.id, secundario);
+    await avisosEnviados();
+    const avisosAntes = t.world.notifications.length;
+    const emailsAntes = emailsAoSuporte().length;
+    const novosAvisos = () => t.world.notifications.slice(avisosAntes).map((n) => n.titulo);
+    const novosEmails = () => emailsAoSuporte().length - emailsAntes;
+    return { ...contratado, secundario, novosAvisos, novosEmails };
+  }
+  const continuaAguardando = { status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE", observacao: "Ausência comprovada" };
+
+  it("negativa da devolução de outro pagamento do evento pelo webhook não reabre a contestação aguardando o estorno do contratado nem avisa reabertura", async () => {
+    const { contestacao, pagamento, secundario, novosAvisos, novosEmails } = await aguardandoComDevolucaoSecundaria();
+    t.world.asaasCharges.set(secundario.asaasPaymentId, { status: "RECEIVED", value: secundario.valor, refunds: [{ status: "CANCELLED", value: secundario.valor }] } as never);
+
+    await t.payments.handleWebhook({ id: "evt_negativa_secundaria", event: "PAYMENT_REFUND_DENIED", payment: { id: secundario.asaasPaymentId } });
+    await t.payments.handleWebhook({ id: "evt_negativa_secundaria_repetida", event: "PAYMENT_REFUND_DENIED", payment: { id: secundario.asaasPaymentId } });
+    await avisosEnviados();
+
+    expect(t.world.payments.get(secundario.id)?.refundStatus).toBe("NEGADO");
+    expect(pagamento.refundStatus).toBe("PROCESSANDO");
+    expect(contestacao).toMatchObject(continuaAguardando);
+    expect(novosAvisos()).toEqual([]);
+    expect(novosEmails()).toBe(0);
+    await expect(t.service.resolveDispute(contestacao.id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA", status: 409 });
+  });
+
+  it("negativa da devolução de outro pagamento percebida ao conferir a cobrança avisa a devolução pendente, sem reabrir a contestação do contratado", async () => {
+    const { event, contestacao, secundario, novosAvisos, novosEmails } = await aguardandoComDevolucaoSecundaria();
+    t.world.asaasCharges.set(secundario.asaasPaymentId, { status: "RECEIVED", value: secundario.valor, refunds: [{ status: "CANCELLED", value: secundario.valor }] } as never);
+
+    await t.payments.handleWebhook({ id: "evt_pix_secundario_negado", event: "PAYMENT_RECEIVED", payment: { id: secundario.asaasPaymentId } });
+    await avisosEnviados();
+
+    expect(contestacao).toMatchObject(continuaAguardando);
+    expect(novosAvisos()).toContain(`Devolução pendente: "${event.titulo}"`);
+    expect(novosAvisos().some((titulo) => titulo.startsWith("Contestação em análise de novo"))).toBe(false);
+    expect(novosEmails()).toBe(0);
+  });
+
+  it("devolução de outro pagamento parada na Asaas é liberada sem reabrir a contestação do contratado", async () => {
+    const { contestacao, secundario, novosAvisos, novosEmails } = await aguardandoComDevolucaoSecundaria();
+    t.world.asaasCharges.set(secundario.asaasPaymentId, { status: "RECEIVED", value: secundario.valor });
+
+    await t.payments.handleWebhook({ id: "evt_pix_secundario_de_novo", event: "PAYMENT_RECEIVED", payment: { id: secundario.asaasPaymentId } });
+    await avisosEnviados();
+
+    expect(contestacao).toMatchObject(continuaAguardando);
+    expect(novosAvisos().some((titulo) => titulo.startsWith("Contestação em análise de novo"))).toBe(false);
+    expect(novosEmails()).toBe(0);
+  });
+
+  it("nova tentativa de devolução de outro pagamento recusada ou sem resposta não reabre a contestação do contratado", async () => {
+    const { event, contestacao, secundario } = await aguardandoComDevolucaoSecundaria();
+    Object.assign(t.world.payments.get(secundario.id)!, { refundStatus: "NEGADO" });
+    t.world.asaasCharges.set(secundario.asaasPaymentId, { status: "RECEIVED", value: secundario.valor });
+
+    t.world.stores.asaas.refundPayment = async () => {
+      throw new AppError(422, "ESTORNO_RECUSADO", "Estorno recusado.");
+    };
+    await t.payments.syncCheckout(contratante, event.id, hoursFromNow(4));
+    expect(t.world.payments.get(secundario.id)?.refundStatus).toBe("NEGADO");
+    expect(contestacao).toMatchObject(continuaAguardando);
+
+    t.world.stores.asaas.refundPayment = async () => {
+      throw new AppError(502, "ASAAS_INDISPONIVEL", "Asaas fora do ar.");
+    };
+    await t.payments.syncCheckout(contratante, event.id, hoursFromNow(5));
+    expect(t.world.payments.get(secundario.id)?.refundStatus).toBe("NEGADO");
+    expect(contestacao).toMatchObject(continuaAguardando);
+  });
+
+  it("estorno do pagamento contratado parado na Asaas continua liberado com a contestação de volta para análise e o aviso às partes", async () => {
+    const { event, contestacao, pagamento, novosAvisos, novosEmails } = await aguardandoComDevolucaoSecundaria();
+    pagamento.refundRequestedAt = new Date(0);
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "RECEIVED", value: pagamento.valor });
+
+    await t.payments.refreshRefund(event.id);
+    await t.payments.refreshRefund(event.id);
+    await avisosEnviados();
+
+    expect(pagamento.refundStatus).toBeNull();
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    expect(novosAvisos().filter((titulo) => titulo.startsWith("Contestação em análise de novo"))).toHaveLength(2);
+    expect(novosEmails()).toBe(1);
+  });
+
+  it("estorno aceito e depois negado pela Asaas devolve a contestação para análise, mantém o repasse suspenso e avisa partes e suporte", async () => {
+    const { event, contestacao, pagamento } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "RECEIVED", value: pagamento.valor, refunds: [{ status: "CANCELLED", value: pagamento.valor }] } as never);
+    await t.payments.refreshRefund(event.id);
+
+    expect(pagamento.refundStatus).toBe("NEGADO");
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    await avisosEnviados();
+    expect(avisos("Contestação em análise de novo")).toHaveLength(2);
+    expect(emailsAoSuporte()).toHaveLength(1);
+
+    await t.payments.payout(event.id);
+    await t.service.settleDueHiring(event.id, hoursFromNow(24 * 9));
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "RECEIVED", value: pagamento.valor });
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Nova tentativa de estorno.");
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(2);
+    expect(contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE" });
+  });
+
+  it("aviso de negativa enquanto o estorno aguarda autorização na Asaas mantém a contestação aguardando o estorno", async () => {
+    const { contestacao, pagamento } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+    t.world.asaasCharges.set(pagamento.asaasPaymentId, { status: "RECEIVED", value: pagamento.valor, refunds: [{ status: "AWAITING_CRITICAL_ACTION_AUTHORIZATION", value: pagamento.valor }] } as never);
+
+    await t.payments.handleWebhook({ id: "evt_negado_aguardando", event: "PAYMENT_REFUND_DENIED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(pagamento.refundStatus).toBe("PROCESSANDO");
+    expect(contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE" });
+    await avisosEnviados();
+    expect(avisos("Contestação em análise de novo")).toHaveLength(0);
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(1);
+  });
+
+  it("negativa pelo webhook também devolve a contestação para análise", async () => {
+    const { contestacao, pagamento } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    await t.payments.handleWebhook({ id: "evt_negado", event: "PAYMENT_REFUND_DENIED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(pagamento.refundStatus).toBe("NEGADO");
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    await avisosEnviados();
+    expect(avisos("Contestação em análise de novo")).toHaveLength(2);
+    expect(emailsAoSuporte()).toHaveLength(1);
+  });
+
+  it("pedido de estorno que a Asaas não registrou é desfeito e a contestação volta para análise", async () => {
+    const { event, contestacao, pagamento } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+    pagamento.refundRequestedAt = new Date(Date.now() - 5 * 60 * 1000);
+
+    await t.payments.refreshRefund(event.id);
+
+    expect(pagamento.refundStatus).toBeNull();
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    expect(avisos("Contestação em análise de novo")).toHaveLength(2);
+  });
+
+  it("estorno recusado pela Asaas na própria decisão reabre a contestação sem avisar as partes nem o suporte", async () => {
+    const { contestacao, pagamento } = await contestado();
+    vi.spyOn(t.world.stores.asaas, "refundPayment").mockRejectedValueOnce(new AppError(409, "ESTORNO_RECUSADO", "Estorno recusado."));
+
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "ESTORNO_RECUSADO" });
+
+    expect(pagamento.refundStatus).toBe("NEGADO");
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    await avisosEnviados();
+    expect(avisos("Contestação em análise de novo")).toHaveLength(0);
+    expect(avisos("Contestação resolvida")).toHaveLength(0);
+    expect(avisos("Devolução recusada")).toHaveLength(0);
+    expect(emailsAoSuporte()).toHaveLength(0);
+  });
+
+  it("pedido de estorno sem resposta e não registrado pela Asaas na própria decisão reabre a contestação sem avisos", async () => {
+    const { contestacao, pagamento } = await contestado();
+    vi.spyOn(t.world.stores.asaas, "refundPayment").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "sem resposta da Asaas"));
+
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ status: 502 });
+
+    expect(pagamento.refundStatus).toBeNull();
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    await avisosEnviados();
+    expect(avisos("Contestação em análise de novo")).toHaveLength(0);
+    expect(avisos("Contestação resolvida")).toHaveLength(0);
+    expect(emailsAoSuporte()).toHaveLength(0);
+  });
+
+  it("estorno pedido e cancelado pela Asaas ainda na própria decisão não anuncia a decisão nem a reabertura", async () => {
+    const { contestacao, pagamento } = await contestado();
+    vi.spyOn(t.world.stores.asaas, "refundPayment").mockImplementationOnce(async (paymentId) => {
+      t.world.asaasCharges.set(paymentId, { status: "RECEIVED", value: pagamento.valor, refunds: [{ status: "CANCELLED", value: pagamento.valor }] } as never);
+    });
+
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "ESTORNO_RECUSADO", status: 409 });
+
+    expect(pagamento.refundStatus).toBe("NEGADO");
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    await avisosEnviados();
+    expect(avisos("Contestação em análise de novo")).toHaveLength(0);
+    expect(avisos("Contestação resolvida")).toHaveLength(0);
+    expect(emailsAoSuporte()).toHaveLength(0);
+  });
+
+  it("depois de uma reabertura silenciosa, a negativa posterior por webhook avisa partes e suporte", async () => {
+    const { contestacao, pagamento } = await contestado();
+    vi.spyOn(t.world.stores.asaas, "refundPayment").mockRejectedValueOnce(new AppError(409, "ESTORNO_RECUSADO", "Estorno recusado."));
+    await expect(t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null)).rejects.toMatchObject({ code: "ESTORNO_RECUSADO" });
+
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Segunda tentativa.");
+    await t.payments.handleWebhook({ id: "evt_negado_depois", event: "PAYMENT_REFUND_DENIED", payment: { id: pagamento.asaasPaymentId } });
+
+    expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    await avisosEnviados();
+    expect(avisos("Contestação resolvida")).toHaveLength(2);
+    expect(avisos("Contestação em análise de novo")).toHaveLength(2);
+    expect(emailsAoSuporte()).toHaveLength(1);
+  });
+
+  it("o comprovante informa se a contestação está em análise ou aguardando o estorno", async () => {
+    const { event, contestacao } = await contestado();
+    await expect(t.service.getHiring(musico, event.id, hoursFromNow(4))).resolves.toMatchObject({ contestacao: { status: "ABERTA" } });
+
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    await expect(t.service.getHiring(contratante, event.id, hoursFromNow(4))).resolves.toMatchObject({ contestacao: { status: "AGUARDANDO_ESTORNO", abertaPorMim: true } });
+  });
+
+  it("decisão gravada sem pedido de estorno, como numa queda da API, pode ser retomada", async () => {
+    const { contestacao } = await contestado();
+    await t.world.stores.events.decideDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+    expect(contestacao.status).toBe("AGUARDANDO_ESTORNO");
+
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(1);
+    expect(avisos("Contestação resolvida")).toHaveLength(2);
+    await expect(t.service.resolveDispute(contestacao.id, "PAGAR_MUSICO", null)).rejects.toMatchObject({ code: "CONTESTACAO_RESOLVIDA" });
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+  });
+  describe("não comparecimento com contestação pendente", () => {
+    const registrarAusencia = () => t.service.reportNoShow(contratante, t.world.disputes[0].eventId, hoursFromNow(4));
+    function nadaMudou({ pagamento, contestacao, antes }: { pagamento: { refundStatus: unknown; refundAction: unknown; status: string }; contestacao: object; antes: { pedidos: number; avisos: number; contestacao: object; refund: [unknown, unknown] } }) {
+      expect(t.world.asaasCalls.refundPayment).toHaveLength(antes.pedidos);
+      expect([pagamento.refundStatus, pagamento.refundAction]).toEqual(antes.refund);
+      expect(pagamento.status).toBe("PAGO");
+      expect(t.world.penalties).toHaveLength(0);
+      expect(contestacao).toEqual(antes.contestacao);
+      expect(t.world.notifications).toHaveLength(antes.avisos);
+    }
+    const fotografar = (pagamento: { refundStatus: unknown; refundAction: unknown }, contestacao: object) => ({
+      pedidos: t.world.asaasCalls.refundPayment.length,
+      avisos: t.world.notifications.length,
+      contestacao: { ...contestacao },
+      refund: [pagamento.refundStatus, pagamento.refundAction] as [unknown, unknown],
+    });
+
+    it("com contestação aberta pelo contratante, o registro é recusado sem estorno, multa ou mudança na contestação", async () => {
+      const { pagamento, contestacao } = await contestado();
+      await avisosEnviados();
+      const antes = fotografar(pagamento, contestacao);
+
+      await expect(registrarAusencia()).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
+      await avisosEnviados();
+
+      nadaMudou({ pagamento, contestacao, antes });
+      expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    });
+
+    it("com contestação aberta pelo músico, o registro também é recusado", async () => {
+      const contratado = await hired(hoursFromNow(1));
+      await t.service.openDispute(musico, contratado.event.id, "O contratante não confirmou o show que eu fiz.", hoursFromNow(3));
+      const pagamento = t.world.payments.get(contratado.payment.id)!;
+      const contestacao = t.world.disputes[0];
+      await avisosEnviados();
+      const antes = fotografar(pagamento, contestacao);
+
+      await expect(t.service.reportNoShow(contratante, contratado.event.id, hoursFromNow(4))).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
+      await avisosEnviados();
+
+      nadaMudou({ pagamento, contestacao, antes });
+    });
+
+    it("com contestação aguardando o estorno decidido pelo suporte, o registro é recusado sem novo pedido", async () => {
+      const { pagamento, contestacao } = await contestado();
+      await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Ausência comprovada");
+      await avisosEnviados();
+      const antes = fotografar(pagamento, contestacao);
+
+      await expect(registrarAusencia()).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
+      await avisosEnviados();
+
+      nadaMudou({ pagamento, contestacao, antes });
+      expect(pagamento.refundStatus).toBe("PROCESSANDO");
+    });
+
+    it("com contestação aguardando estorno retomável, o registro é recusado e só o suporte retoma", async () => {
+      const { pagamento, contestacao } = await contestado();
+      await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Ausência comprovada");
+      Object.assign(pagamento, { refundStatus: "NEGADO" });
+      await avisosEnviados();
+      const antes = fotografar(pagamento, contestacao);
+
+      await expect(registrarAusencia()).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
+      await avisosEnviados();
+      nadaMudou({ pagamento, contestacao, antes });
+
+      const reivindicacao = vi.spyOn(t.world.stores.payments, "claimRefund");
+      await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Nova tentativa de estorno.");
+      expect(reivindicacao).toHaveBeenCalledWith(pagamento.id, "NAO_COMPARECIMENTO", contestacao.id);
+      expect(pagamento).toMatchObject({ refundStatus: "PROCESSANDO", refundAction: "NAO_COMPARECIMENTO" });
+      expect(contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO", decisao: "DEVOLVER_CONTRATANTE" });
+    });
+
+    it("a decisão de devolver do suporte pede o estorno com o id da contestação", async () => {
+      const { pagamento, contestacao } = await contestado();
+      const reivindicacao = vi.spyOn(t.world.stores.payments, "claimRefund");
+
+      await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+      expect(reivindicacao).toHaveBeenCalledWith(pagamento.id, "NAO_COMPARECIMENTO", contestacao.id);
+      expect(pagamento).toMatchObject({ refundStatus: "PROCESSANDO", refundAction: "NAO_COMPARECIMENTO" });
+      expect(t.world.asaasCalls.refundPayment).toEqual([pagamento.asaasPaymentId]);
+    });
+
+    it("contestação aberta depois da conferência do serviço é barrada no pedido de estorno e a resposta não finge estorno em andamento", async () => {
+      const { event, pagamento, contestacao } = await contestado();
+      vi.spyOn(t.world.stores.events, "findOpenDispute").mockResolvedValueOnce(null);
+      await avisosEnviados();
+      const antes = fotografar(pagamento, contestacao);
+
+      await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(4))).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
+      await avisosEnviados();
+
+      nadaMudou({ pagamento, contestacao, antes });
+    });
+
+    it("pedido de estorno sem o id certo é recusado com a contestação aguardando estorno, mesmo para a ação do suporte", async () => {
+      const { pagamento, contestacao } = await contestado();
+      await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+      Object.assign(pagamento, { refundStatus: "NEGADO" });
+
+      expect(await t.world.stores.payments.claimRefund(pagamento.id, "NAO_COMPARECIMENTO")).toBe(false);
+      expect(await t.world.stores.payments.claimRefund(pagamento.id, "NAO_COMPARECIMENTO", "outra-contestacao")).toBe(false);
+      expect(await t.world.stores.payments.claimRefund(pagamento.id, "CANCELAR", contestacao.id)).toBe(false);
+      expect(pagamento.refundStatus).toBe("NEGADO");
+      expect(await t.world.stores.payments.claimRefund(pagamento.id, "NAO_COMPARECIMENTO", contestacao.id)).toBe(true);
+    });
+
+    it("a devolução de Pix pago fora de hora continua com a contestação aberta", async () => {
+      const { event, pagamento, contestacao } = await contestado();
+      const secundario = { ...pagamento, id: "p_secundario", asaasPaymentId: "pay_secundario", status: "EXPIRADO" as const, repasseStatus: null, refundStatus: "NEGADO" as const, refundAction: "NENHUMA" as const, refundRequestedAt: null };
+      t.world.payments.set(secundario.id, secundario);
+      t.world.asaasCharges.set(secundario.asaasPaymentId, { status: "RECEIVED", value: secundario.valor });
+
+      await t.payments.syncCheckout(contratante, event.id, hoursFromNow(4));
+
+      expect(t.world.asaasCalls.refundPayment).toEqual([secundario.asaasPaymentId]);
+      expect(t.world.payments.get(secundario.id)).toMatchObject({ refundStatus: "PROCESSANDO", refundAction: "NENHUMA" });
+      expect(pagamento.refundStatus).toBeNull();
+      expect(contestacao).toMatchObject({ status: "ABERTA", decisao: null });
+    });
+
+    it("contestação não abre com estorno da contratação em andamento, mas abre com só a devolução de Pix fora de hora em andamento", async () => {
+      const contratado = await hired(hoursFromNow(1));
+      const pagamento = t.world.payments.get(contratado.payment.id)!;
+      expect(await t.world.stores.payments.claimRefund(pagamento.id, "NAO_COMPARECIMENTO")).toBe(true);
+
+      expect(await t.world.stores.events.openDispute({ eventId: contratado.event.id, abertaPor: contratante.id, motivo: "O músico não apareceu no bar." })).toBeNull();
+      expect(t.world.disputes).toHaveLength(0);
+
+      Object.assign(pagamento, { refundStatus: null, refundAction: null });
+      t.world.payments.set("p_secundario", { ...pagamento, id: "p_secundario", asaasPaymentId: "pay_secundario", status: "EXPIRADO", repasseStatus: null, refundStatus: "PROCESSANDO", refundAction: "NENHUMA" });
+      await t.service.openDispute(contratante, contratado.event.id, "O músico não apareceu no bar.", hoursFromNow(3));
+      expect(t.world.disputes).toHaveLength(1);
+    });
+  });
+});
+
+describe("histórico da contestação na contratação", () => {
+  async function contestado() {
+    const contratado = await hired(hoursFromNow(1));
+    await t.service.openDispute(contratante, contratado.event.id, "O músico não apareceu no bar.", hoursFromNow(3));
+    return { ...contratado, contestacao: t.world.disputes[0] };
+  }
+  const historico = async (usuario = contratante, eventId: string) => {
+    const resposta: Hiring = await t.service.getHiring(usuario, eventId, hoursFromNow(4));
+    return resposta;
+  };
+
+  it("sem contestação, a contratação não traz contestação pendente nem histórico", async () => {
+    const { event } = await hired(hoursFromNow(1));
+
+    const resposta = await historico(contratante, event.id);
+
+    expect(resposta.contestacao).toBeNull();
+    expect(resposta.contestacaoResolvida).toBeNull();
+    expect(historicoDaContestacao(resposta)).toBeNull();
+  });
+
+  it("contestação aberta aparece só como pendente, sem histórico", async () => {
+    const { event } = await contestado();
+
+    const resposta = await historico(musico, event.id);
+
+    expect(resposta.contestacao).toEqual({ motivo: "O músico não apareceu no bar.", abertaPorMim: false, status: "ABERTA" });
+    expect(resposta.contestacaoResolvida).toBeNull();
+    expect(historicoDaContestacao(resposta)).toBeNull();
+  });
+
+  it("contestação aguardando o estorno continua pendente, sem histórico", async () => {
+    const { event, payment, contestacao } = await contestado();
+    t.world.stores.asaas.refundPayment = async (id) => {
+      t.world.asaasCalls.refundPayment.push(id);
+      t.world.asaasCharges.set(id, { status: "RECEIVED", value: payment.valor });
+    };
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+
+    const resposta = await historico(contratante, event.id);
+
+    expect(resposta.contestacao).toMatchObject({ status: "AGUARDANDO_ESTORNO" });
+    expect(resposta.contestacaoResolvida).toBeNull();
+    expect(historicoDaContestacao(resposta)).toBeNull();
+  });
+
+  it("resolvida por devolução: as duas partes veem a decisão e a data, sem pendência", async () => {
+    const { event, contestacao } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", "Observação interna do suporte.");
+    expect(contestacao.status).toBe("RESOLVIDA");
+
+    for (const parte of [contratante, musico]) {
+      const resposta = await historico(parte, event.id);
+      expect(resposta.contestacao).toBeNull();
+      expect(resposta.contestacaoResolvida).toEqual({ status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE", resolvidaEm: t.world.resolucaoDaContestacao.get(contestacao.id)!.toISOString() });
+      expect(historicoDaContestacao(resposta)?.resultado).toBe("Resultado: o valor foi devolvido ao contratante.");
+    }
+  });
+
+  it("resolvida com repasse ao músico: mostra a decisão, e o histórico não expõe motivo nem observação do suporte", async () => {
+    const { event, contestacao } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "PAGAR_MUSICO", "Observação interna do suporte.");
+
+    const resposta = await historico(musico, event.id);
+
+    expect(resposta.contestacao).toBeNull();
+    expect(resposta.contestacaoResolvida).toMatchObject({ status: "RESOLVIDA", decisao: "PAGAR_MUSICO" });
+    expect(Object.keys(resposta.contestacaoResolvida!).sort()).toEqual(["decisao", "resolvidaEm", "status"]);
+    expect(JSON.stringify(resposta)).not.toContain("Observação interna");
+    expect(historicoDaContestacao(resposta)?.resultado).toBe("Decisão do suporte: o cachê vai para o músico.");
+  });
+
+  it("com várias contestações históricas, escolhe a resolvida mais recente do pagamento atual", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    const outro = await hired(hoursFromNow(100));
+    const registrar = (id: string, eventId: string, paymentId: string | null, decisao: "PAGAR_MUSICO" | "DEVOLVER_CONTRATANTE", resolvidaEm: string | null) => {
+      t.world.disputes.push({ id, eventId, abertaPor: "c1", motivo: "Motivo antigo da contestação.", status: "RESOLVIDA", decisao, observacao: null, createdAt: new Date("2030-01-01T00:00:00Z") });
+      t.world.pagamentoDaContestacao.set(id, paymentId);
+      if (resolvidaEm) t.world.resolucaoDaContestacao.set(id, new Date(resolvidaEm));
+    };
+    registrar("antiga", event.id, payment.id, "DEVOLVER_CONTRATANTE", "2030-01-02T00:00:00Z");
+    registrar("recente", event.id, payment.id, "PAGAR_MUSICO", "2030-01-05T00:00:00Z");
+    registrar("sem-data", event.id, payment.id, "DEVOLVER_CONTRATANTE", null);
+    registrar("outro-pagamento", event.id, "pagamento-anterior", "DEVOLVER_CONTRATANTE", "2030-02-01T00:00:00Z");
+    registrar("sem-vinculo", event.id, null, "DEVOLVER_CONTRATANTE", "2030-02-02T00:00:00Z");
+    registrar("outro-evento", outro.event.id, outro.payment.id, "DEVOLVER_CONTRATANTE", "2030-03-01T00:00:00Z");
+
+    const resposta = await historico(contratante, event.id);
+
+    expect(resposta.contestacaoResolvida).toEqual({ status: "RESOLVIDA", decisao: "PAGAR_MUSICO", resolvidaEm: "2030-01-05T00:00:00.000Z" });
+  });
+
+  it("contestação resolvida de um pagamento anterior do mesmo evento não aparece na contratação atual", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    t.world.disputes.push({ id: "anterior", eventId: event.id, abertaPor: "c1", motivo: "Motivo antigo da contestação.", status: "RESOLVIDA", decisao: "DEVOLVER_CONTRATANTE", observacao: null, createdAt: new Date() });
+    t.world.pagamentoDaContestacao.set("anterior", "pagamento-anterior");
+    t.world.resolucaoDaContestacao.set("anterior", new Date());
+
+    expect((await historico(contratante, event.id)).contestacaoResolvida).toBeNull();
+  });
+
+  it("quem não é parte da contratação não vê a contratação nem o histórico", async () => {
+    const { event, contestacao } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "PAGAR_MUSICO", null);
+
+    for (const intruso of [outroContratante, outroMusico]) {
+      await expect(t.service.getHiring(intruso, event.id, hoursFromNow(4))).rejects.toMatchObject({ status: 404, code: "EVENTO_NAO_ENCONTRADO" });
+    }
+  });
+
+  it("ler o histórico não altera a decisão registrada", async () => {
+    const { event, contestacao } = await contestado();
+    await t.service.resolveDispute(contestacao.id, "DEVOLVER_CONTRATANTE", null);
+    const antes = { ...contestacao };
+
+    await historico(contratante, event.id);
+    await historico(musico, event.id);
+
+    expect(contestacao).toEqual(antes);
   });
 });

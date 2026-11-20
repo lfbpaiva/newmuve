@@ -34,13 +34,12 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
     },
 
     async findAccount(userId) {
-      const base = await admin.from("profiles").select("role").eq("id", userId).maybeSingle();
+      const base = await admin.from("profiles").select("role, contractor_profiles(*), musician_profiles(*)").eq("id", userId).maybeSingle();
       if (base.error) throw base.error;
       if (!base.data) return null;
       const role = base.data.role as Role;
-
-      const { data, error } = await admin.from(detailTable(role)).select("*").eq("user_id", userId).maybeSingle();
-      if (error) throw error;
+      const detalhe = base.data[detailTable(role)];
+      const data = Array.isArray(detalhe) ? detalhe[0] : detalhe;
       if (!data) return null;
 
       const account: Account = {
@@ -95,11 +94,6 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
       if (error) throw error;
     },
 
-    async reduceVisibility(musicianId, until) {
-      const { error } = await admin.from("musician_profiles").update({ visibilidade_reduzida_ate: until.toISOString() }).eq("user_id", musicianId);
-      if (error) throw error;
-    },
-
     async resetPaymentCustomer(userId) {
       const { error } = await admin.from("contractor_profiles").update({ asaas_customer_id: null }).eq("user_id", userId);
       if (error) throw error;
@@ -107,11 +101,13 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
   };
 }
 
+const captchaRecusado = () => new AppError(400, "CAPTCHA_INVALIDO", "Não foi possível confirmar que você não é um robô. Tente novamente.");
+
 export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: string): AuthGateway {
   const publicClient = () => createClient(url, anonKey, serverOnly);
 
   return {
-    async signUp(email, password, termosVersao, redirectTo) {
+    async signUp(email, password, termosVersao, redirectTo, captchaToken) {
       let retryAfter: string | undefined;
       const signupClient = createClient(url, anonKey, {
         ...serverOnly,
@@ -128,9 +124,11 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
         password,
         options: {
           emailRedirectTo: redirectTo,
+          captchaToken,
           data: { termos_versao: termosVersao, termos_aceitos_em: new Date().toISOString() },
         },
       });
+      if (error?.code === "captcha_failed") throw captchaRecusado();
       if (error?.code === "user_already_exists" || error?.code === "email_exists") return { emailTaken: true };
       if (error?.status === 429 || error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {
         throw new AppError(429, "LIMITE_DE_ENVIO", "O serviço de autenticação limitou temporariamente novos cadastros.", retryAfter);
@@ -148,10 +146,11 @@ export function createAuthGateway(admin: SupabaseClient, url: string, anonKey: s
       return (data.user.identities ?? []).some((identity) => identity.provider === "email");
     },
 
-    async verifyPassword(email, password) {
-      const { error } = await publicClient().auth.signInWithPassword({ email, password });
+    async verifyPassword(email, password, captchaToken) {
+      const { error } = await publicClient().auth.signInWithPassword({ email, password, options: { captchaToken } });
       if (!error) return true;
       if (error.code === "invalid_credentials") return false;
+      if (error.code === "captcha_failed") throw captchaRecusado();
       throw error;
     },
 

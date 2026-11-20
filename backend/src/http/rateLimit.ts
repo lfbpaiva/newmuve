@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { AppError } from "../domain/errors.ts";
 
 function validIp(value: string | undefined): string | undefined {
@@ -24,8 +24,11 @@ export function rateLimit(options: {
   now?: () => number;
   remoteAddress?: (c: Context) => string | undefined;
   trustedProxyIps?: string[];
+  grupo?: string;
+  identificar?: (c: Context) => string | undefined;
+  mensagem?: string;
 }) {
-  const { limit, windowMs, now = Date.now } = options;
+  const { limit, windowMs, now = Date.now, grupo, identificar, mensagem = "Limite temporário de tentativas atingido." } = options;
   const hits = new Map<string, { count: number; resetAt: number }>();
   const remoteAddress = options.remoteAddress ?? socketIp;
   const trusted = new Set([
@@ -33,8 +36,7 @@ export function rateLimit(options: {
     ...(options.trustedProxyIps ?? (process.env.TRUSTED_PROXY_IPS ?? "").split(",")),
   ].map(validIp).filter((ip): ip is string => Boolean(ip)));
 
-  return async (c: Context, next: () => Promise<void>) => {
-    const time = now();
+  function clientIp(c: Context): string {
     const peer = validIp(remoteAddress(c));
     let client = peer ?? "desconhecido";
     if (peer && trusted.has(peer)) {
@@ -45,7 +47,18 @@ export function rateLimit(options: {
         if (!trusted.has(forwarded)) break;
       }
     }
-    const key = `${client}:${c.req.method}:${c.req.path}`;
+    return client;
+  }
+
+  function keyOf(c: Context): string {
+    if (!grupo) return `${clientIp(c)}:${c.req.method}:${c.req.path}`;
+    const usuario = identificar?.(c);
+    return usuario ? `${grupo}:usuario:${usuario}` : `${grupo}:ip:${clientIp(c)}`;
+  }
+
+  const middleware: MiddlewareHandler = async (c, next) => {
+    const time = now();
+    const key = keyOf(c);
 
     if (hits.size > 10_000) {
       for (const [k, entry] of hits) if (entry.resetAt <= time) hits.delete(k);
@@ -55,10 +68,11 @@ export function rateLimit(options: {
     if (!entry || entry.resetAt <= time) {
       hits.set(key, { count: 1, resetAt: time + windowMs });
     } else if (entry.count >= limit) {
-      throw new AppError(429, "MUITAS_TENTATIVAS", "Limite temporário de tentativas atingido.", String(Math.ceil((entry.resetAt - time) / 1000)));
+      throw new AppError(429, "MUITAS_TENTATIVAS", mensagem, String(Math.ceil((entry.resetAt - time) / 1000)));
     } else {
       entry.count++;
     }
     await next();
   };
+  return middleware;
 }

@@ -212,10 +212,15 @@ token_verifications = 30
 web3 = 30
 
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
+# O Muve usa o Cloudflare Turnstile no login, cadastro, recuperação de senha e exclusão de conta.
+# Em produção, ative em Dashboard > Authentication > Attack Protection.
+# Para testar localmente, descomente e exporte SUPABASE_AUTH_CAPTCHA_SECRET antes de "supabase start"
+# (chave de teste da Cloudflare: 1x0000000000000000000000000000000AA). Com o captcha ligado,
+# o "pnpm test:e2e" deixa de funcionar, porque ele entra com senha sem token.
 # [auth.captcha]
 # enabled = true
-# provider = "hcaptcha"
-# secret = ""
+# provider = "turnstile"
+# secret = "env(SUPABASE_AUTH_CAPTCHA_SECRET)"
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.

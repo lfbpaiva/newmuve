@@ -43,6 +43,30 @@ describe("apiRequest", () => {
     await expect(apiRequest("/health")).rejects.toMatchObject({ status: 200, code: "RESPOSTA_INVALIDA" });
   });
 
+  it.each([201, 200, 202])("aceita HTTP %i sem corpo como sucesso sem dados", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: { musicianId: "m1" } })).resolves.toBeUndefined();
+  });
+
+  it("corpo só com espaços em 2xx também é sucesso sem dados", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("  \n", { status: 201 })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: {} })).resolves.toBeUndefined();
+  });
+
+  it("HTTP de erro sem corpo continua sendo erro", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 409 })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: {} })).rejects.toMatchObject({ status: 409, code: "ERRO_DESCONHECIDO" });
+  });
+
+  it("2xx com corpo que não é JSON continua sendo resposta inválida", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("ok", { status: 201 })));
+
+    await expect(apiRequest("/events/e1/convites", { method: "POST", body: {} })).rejects.toMatchObject({ status: 201, code: "RESPOSTA_INVALIDA" });
+  });
+
   it("distingue timeout de outras falhas de rede", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn((_url: string, options: RequestInit) => new Promise((_resolve, reject) => {
@@ -60,7 +84,7 @@ describe("apiRequest", () => {
     vi.stubGlobal("fetch", vi.fn((_url: string, options: RequestInit) => Promise.resolve({
       status: 200,
       ok: true,
-      json: () => new Promise((_resolve, reject) => {
+      text: () => new Promise((_resolve, reject) => {
         options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
       }),
     })));
@@ -69,5 +93,105 @@ describe("apiRequest", () => {
     const result = expect(request).rejects.toMatchObject({ status: 0, code: "TEMPO_ESGOTADO" } satisfies Partial<ApiError>);
     await vi.advanceTimersByTimeAsync(10);
     await result;
+  });
+});
+
+describe("envio de formulários com arquivos", () => {
+  class XhrFalso {
+    static ultimo: XhrFalso | undefined;
+    metodo = "";
+    url = "";
+    cabecalhos: Record<string, string> = {};
+    corpo: unknown = null;
+    status = 0;
+    responseText = "";
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    constructor() {
+      XhrFalso.ultimo = this;
+    }
+    open(metodo: string, url: string) {
+      this.metodo = metodo;
+      this.url = url;
+    }
+    setRequestHeader(nome: string, valor: string) {
+      this.cabecalhos[nome] = valor;
+    }
+    getResponseHeader() {
+      return null;
+    }
+    send(corpo: unknown) {
+      this.corpo = corpo;
+    }
+    abort() {
+      this.onabort?.();
+    }
+    responder(status: number, texto: string) {
+      this.status = status;
+      this.responseText = texto;
+      this.onload?.();
+    }
+  }
+
+  const criado = async () => {
+    await vi.waitFor(() => {
+      if (!XhrFalso.ultimo) throw new Error("XMLHttpRequest ainda não criado");
+    });
+    return XhrFalso.ultimo!;
+  };
+
+  afterEach(() => {
+    XhrFalso.ultimo = undefined;
+  });
+
+  it("envia FormData por XMLHttpRequest, sem passar pelo fetch, e lê a resposta", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const form = new FormData();
+    form.append("dados", "{}");
+
+    const pedido = apiRequest<{ id: string }>("/events", { method: "POST", body: form });
+    (await criado()).responder(201, JSON.stringify({ id: "e1" }));
+
+    await expect(pedido).resolves.toEqual({ id: "e1" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await criado()).toMatchObject({ metodo: "POST", url: "/api/events", corpo: form });
+    expect((await criado()).cabecalhos["Content-Type"]).toBeUndefined();
+  });
+
+  it("aceita resposta 201 sem corpo no envio do formulário", async () => {
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const pedido = apiRequest("/events", { method: "POST", body: new FormData() });
+    (await criado()).responder(201, "");
+
+    await expect(pedido).resolves.toBeUndefined();
+  });
+
+  it("preserva o erro HTTP devolvido pela API no envio do formulário", async () => {
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const pedido = apiRequest("/events", { method: "POST", body: new FormData() });
+    (await criado()).responder(422, JSON.stringify({ error: { code: "DADOS_INVALIDOS", message: "Imagem inválida." } }));
+
+    await expect(pedido).rejects.toMatchObject({ status: 422, code: "DADOS_INVALIDOS", message: "Imagem inválida." });
+  });
+
+  it("falha de rede no envio do formulário vira erro de conexão", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const pedido = apiRequest("/events", { method: "POST", body: new FormData() });
+    (await criado()).onerror?.();
+
+    await expect(pedido).rejects.toMatchObject({ status: 0, code: "SEM_CONEXAO" });
+  });
+
+  it("requisição JSON continua usando o fetch", async () => {
+    vi.stubGlobal("XMLHttpRequest", XhrFalso);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiRequest("/me", { method: "POST", body: { a: 1 } })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,0 +1,65 @@
+name: Rotina financeira
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: rotina-financeira
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    if: vars.ROTINA_FINANCEIRA_ATIVA == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Disparar a rotina financeira na API
+        env:
+          MUVE_API_URL: ${{ secrets.MUVE_API_URL }}
+          FINANCIAL_ROUTINE_TOKEN: ${{ secrets.FINANCIAL_ROUTINE_TOKEN }}
+        run: |
+          set -u
+          if [ -z "${MUVE_API_URL}" ] || [ -z "${FINANCIAL_ROUTINE_TOKEN}" ]; then
+            echo "::error::Configure os secrets MUVE_API_URL e FINANCIAL_ROUTINE_TOKEN no repositório."
+            exit 1
+          fi
+          case "${MUVE_API_URL}" in
+            https://*) ;;
+            *) echo "::error::MUVE_API_URL precisa começar com https://."; exit 1 ;;
+          esac
+          url="${MUVE_API_URL%/}/admin/rotina-financeira"
+          tentativas=5
+          for tentativa in $(seq 1 "${tentativas}"); do
+            status=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
+              --connect-timeout 20 --max-time 60 \
+              --request POST --header "x-rotina-token: ${FINANCIAL_ROUTINE_TOKEN}" \
+              "${url}") || status="000"
+            case "${status}" in
+              202)
+                echo "Rotina financeira iniciada."
+                exit 0
+                ;;
+              409)
+                echo "Já havia uma execução da rotina em andamento; nenhuma outra foi iniciada."
+                exit 0
+                ;;
+              401|403)
+                echo "::error::Disparo recusado pela API (HTTP ${status}). Confira FINANCIAL_ROUTINE_TOKEN na API e nos secrets do GitHub."
+                exit 1
+                ;;
+              000|429|502|503|504)
+                echo "API indisponível (HTTP ${status}), tentativa ${tentativa} de ${tentativas}."
+                if [ "${tentativa}" -lt "${tentativas}" ]; then sleep $((tentativa * 15)); fi
+                ;;
+              *)
+                echo "::error::Falha no disparo da rotina (HTTP ${status})."
+                exit 1
+                ;;
+            esac
+          done
+          echo "::error::API indisponível depois de ${tentativas} tentativas."
+          exit 1

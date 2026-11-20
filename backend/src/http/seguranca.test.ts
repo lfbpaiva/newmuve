@@ -89,7 +89,7 @@ describe("autenticação", () => {
   it("webhook da Asaas e rotas do suporte exigem o token certo", async () => {
     const body = JSON.stringify({ id: "evt_1", event: "PAYMENT_RECEIVED" });
     const webhook = await t.app.request("/api/webhooks/asaas", { method: "POST", headers: { "asaas-access-token": "errado", "Content-Type": "application/json" }, body });
-    const repasse = await t.app.request("/api/admin/repasses/p1/liberacao", { method: "POST", headers: { "x-admin-token": "errado" } });
+    const repasse = await t.app.request("/api/admin/repasses/tentativas/t1/confirmacao", { method: "POST", headers: { "x-admin-token": "errado" } });
     const contestacao = await t.app.request("/api/admin/contestacoes/d1/resolucao", { method: "POST", headers: { "x-admin-token": "" } });
 
     expect([webhook.status, repasse.status, contestacao.status]).toEqual([401, 401, 401]);

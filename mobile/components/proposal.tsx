@@ -1,9 +1,16 @@
 import { useState } from "react";
-import { View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { formatCurrency, parseValor, toValorInput } from "../../shared/client/format.ts";
 import { isValidCache } from "../../shared/dominio.ts";
-import { space } from "../lib/theme";
-import { Alert, Button, Checkbox, Field, type IconName } from "./ui";
+import { colors, radius, space, type } from "../lib/theme";
+import { Alert, Button, Field, type IconName } from "./ui";
+
+function Opcao({ ativa, titulo, detalhe, onPress }: { ativa: boolean; titulo: string; detalhe: string; onPress: () => void }) {
+  return <Pressable accessibilityRole="radio" accessibilityState={{ checked: ativa }} onPress={onPress} style={({ pressed }) => ({ flex: 1, gap: 2, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
+    <Text style={[type.titleSmall, { fontSize: 14, color: ativa ? colors.ink : colors.ink2 }]}>{titulo}</Text>
+    <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{detalhe}</Text>
+  </Pressable>;
+}
 
 export function ProposalForm({ cacheOferecido, valorAtual, submitLabel, icon, busy, onSubmit }: {
   cacheOferecido: number;
@@ -25,7 +32,10 @@ export function ProposalForm({ cacheOferecido, valorAtual, submitLabel, icon, bu
   }
 
   return <View style={{ gap: space.md }}>
-    <Checkbox label={`Quero propor outro cachê (oferecido: ${formatCurrency(cacheOferecido)})`} checked={propor} onChange={(checked) => { setPropor(checked); setError(""); }}/>
+    <View accessibilityRole="radiogroup" style={{ flexDirection: "row", gap: space.sm }}>
+      <Opcao ativa={!propor} titulo="Aceito o cachê" detalhe={formatCurrency(cacheOferecido)} onPress={() => { setPropor(false); setError(""); }}/>
+      <Opcao ativa={propor} titulo="Propor outro valor" detalhe="O contratante decide" onPress={() => { setPropor(true); setError(""); }}/>
+    </View>
     {propor && <Field
       label="Seu cachê (R$)"
       value={valor}

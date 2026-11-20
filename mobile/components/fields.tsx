@@ -30,7 +30,7 @@ export function LocationFields({ uf, cidade, onUfChange, onCidadeChange, onError
   }, [uf, onError]);
 
   return <View style={{ flexDirection: "row", gap: space.md }}>
-    <View style={{ width: 110 }}><Select label="Estado" value={uf} options={UFS.map((u) => ({ value: u, label: u }))} onChange={(next) => { onUfChange(next); onCidadeChange(""); }}/></View>
+    <View style={{ width: 96 }}><Select label="Estado" value={uf} placeholder="UF" options={UFS.map((u) => ({ value: u, label: u }))} onChange={(next) => { onUfChange(next); onCidadeChange(""); }}/></View>
     <View style={{ flex: 1 }}><Select label="Cidade" value={cidade} options={cidades.map((c) => ({ value: c, label: c }))} searchable disabled={!uf || loading || cidades.length === 0} placeholder={loading ? "Carregando..." : uf ? "Selecione a cidade" : "Escolha o estado"} onChange={onCidadeChange}/></View>
   </View>;
 }
@@ -60,11 +60,11 @@ export function ImageField({ label, preview, shape = "circle", onPick, onError }
   }
 
   if (shape === "banner") {
-    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={pick} style={({ pressed }) => ({ height: 170, borderRadius: radius.lg, overflow: "hidden", backgroundColor: pressed ? colors.surface3 : colors.surface2, alignItems: "center", justifyContent: "center", gap: 6 })}>
-      {preview ? <Image source={{ uri: preview }} style={{ width: "100%", height: "100%" }}/> : <Icon name="image-outline" size={30} color={colors.ink2}/>}
+    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={pick} style={({ pressed }) => ({ height: 170, borderRadius: radius.lg, overflow: "hidden", backgroundColor: pressed ? colors.surface2 : colors.surface, borderWidth: preview ? 0 : 1, borderColor: colors.hairline, alignItems: "center", justifyContent: "center", gap: 6 })}>
+      {preview ? <Image source={{ uri: preview }} style={{ width: "100%", height: "100%" }}/> : <View style={{ width: 52, height: 52, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="image-outline" size={24} color={colors.accentText}/></View>}
       {!preview && <Text style={type.label}>{label}</Text>}
       {!preview && <Text style={type.bodySmall}>PNG, JPEG ou WebP, até 5 MB</Text>}
-      {preview ? <View style={{ position: "absolute", right: 10, bottom: 10, backgroundColor: "#0a0a0ccc", borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", gap: 6, alignItems: "center" }}><Icon name="camera-outline" size={14}/><Text style={type.labelSmall}>Trocar</Text></View> : null}
+      {preview ? <View style={{ position: "absolute", right: 10, bottom: 10, backgroundColor: "rgba(9,9,13,0.75)", borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6, flexDirection: "row", gap: 6, alignItems: "center" }}><Icon name="camera-outline" size={14}/><Text style={[type.label, { fontSize: 12 }]}>Trocar</Text></View> : null}
     </Pressable>;
   }
 

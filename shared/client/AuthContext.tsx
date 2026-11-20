@@ -15,7 +15,7 @@ interface AuthContextValue {
   recoveringPassword: boolean;
   beginPasswordRecovery(): void;
   finishPasswordRecovery(): void;
-  refreshMe(): Promise<void>;
+  refreshMe(atualizado?: Me): Promise<void>;
   retrySession(): Promise<void>;
   signOut(): Promise<void>;
 }
@@ -73,8 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const refreshMe = useCallback(async () => {
-    const me = await fetchMe();
+  const refreshMe = useCallback(async (atualizado?: Me) => {
+    const me = atualizado ?? (await fetchMe());
     setState({ status: "signedIn", me });
   }, []);
 

@@ -1,6 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { ApiError, apiRequest } from "./api.ts";
 import { appendFile, supabase, type UploadFile } from "./config.ts";
+import { CHECKOUT_TEMPO_LIMITE_APP_MS } from "../dominio.ts";
 
 export type EventStatus = "ABERTO" | "CONTRATADO" | "CANCELADO" | "CONCLUIDO";
 export type CandidateStatus = "PENDENTE" | "APROVADO" | "RECUSADO";
@@ -85,6 +86,8 @@ export interface Review {
   rating: number;
   comment: string | null;
   createdAt: string;
+  autor: string | null;
+  evento: string | null;
 }
 
 export interface Checkout {
@@ -122,7 +125,8 @@ export interface Hiring {
   musico: { nome: string; telefone: string; fotoPerfilUrl: string } | null;
   pagamento: { cache: number; comissao: number; total: number; status: PaymentStatus; repasseStatus: PayoutStatus | null; refundStatus: "PROCESSANDO" | "NEGADO" | "CONFIRMADO" | null; multaDescontada: number } | null;
   avaliou: boolean;
-  contestacao: { motivo: string; abertaPorMim: boolean } | null;
+  contestacao: { motivo: string; abertaPorMim: boolean; status: "ABERTA" | "AGUARDANDO_ESTORNO" } | null;
+  contestacaoResolvida: { status: "RESOLVIDA"; decisao: "PAGAR_MUSICO" | "DEVOLVER_CONTRATANTE"; resolvidaEm: string | null } | null;
   podeContestar: boolean;
   naoComparecimento: { permitido: boolean };
   cancelamento: { permitido: boolean; reembolso: boolean };
@@ -171,7 +175,10 @@ interface CandidateRow {
   musician: ProfileRow & { bio: string | null; estilos_musicais: string[] | null; portfolio_url: string | null; pro_ate: string | null };
 }
 
-export function unwrap<T>(result: { data: unknown; error: PostgrestError | null }): T {
+export const SEM_CONEXAO_MENSAGEM = "Sem conexão com a internet. Os dados não puderam ser carregados; confira a rede e tente novamente.";
+
+export function unwrap<T>(result: { data: unknown; error: PostgrestError | null; status?: number }): T {
+  if (result.error && result.status === 0) throw new ApiError(SEM_CONEXAO_MENSAGEM, 0, "SEM_CONEXAO");
   if (result.error || result.data === null) {
     throw new ApiError("Não foi possível carregar os dados. Verifique sua conexão e tente novamente.", 0, "FALHA_DE_LEITURA");
   }
@@ -239,11 +246,17 @@ const toCandidate = (row: CandidateRow): Candidate => ({
 export async function fetchFeed(raioKm: number): Promise<EventItem[]> {
   const matches = unwrap<{ event_id: string; distancia_km: number | null }[]>(await supabase().rpc("musician_feed", { p_raio_km: raioKm }));
   if (matches.length === 0) return [];
-  const rows = unwrap<EventRow[]>(await supabase().from("events").select("*").in("id", matches.map((m) => m.event_id)));
+  const ids = matches.map((m) => m.event_id);
+  const [eventos, recusas] = await Promise.all([
+    supabase().from("events").select("*").in("id", ids),
+    supabase().from("event_candidates").select("event_id").in("event_id", ids).eq("status", "RECUSADO"),
+  ]);
+  const rows = unwrap<EventRow[]>(eventos);
+  const recusados = new Set(unwrap<{ event_id: string }[]>(recusas).map((r) => r.event_id));
   const byId = new Map(rows.map((row) => [row.id, toEvent(row)]));
   return matches.flatMap((m) => {
     const event = byId.get(m.event_id);
-    return event ? [{ ...event, distanciaKm: m.distancia_km === null ? undefined : Number(m.distancia_km) }] : [];
+    return event && !recusados.has(m.event_id) ? [{ ...event, distanciaKm: m.distancia_km === null ? undefined : Number(m.distancia_km) }] : [];
   });
 }
 
@@ -254,16 +267,19 @@ export async function fetchEvent(id: string): Promise<EventItem> {
   return toEvent(data);
 }
 
+export async function fetchEventWithContractor(id: string): Promise<{ event: EventItem; contractor: PublicProfile | null }> {
+  const { data, error } = await supabase().from("events").select(`*, contratante:contractor_profiles(nome_fantasia, ${PUBLIC_PROFILE})`).eq("id", id).maybeSingle<EventRow & { contratante: ProfileRow | ProfileRow[] | null }>();
+  if (error) unwrap({ data: null, error });
+  if (!data) throw new ApiError("Este evento não está mais disponível para você.", 404, "EVENTO_NAO_ENCONTRADO");
+  const { contratante, ...evento } = data;
+  const perfil = Array.isArray(contratante) ? contratante[0] ?? null : contratante;
+  return { event: toEvent(evento), contractor: perfil ? toPublicProfile(perfil, "nome_fantasia") : null };
+}
+
 export async function fetchEventAddress(eventId: string): Promise<string> {
   const { data, error } = await supabase().from("event_locations").select("endereco").eq("event_id", eventId).maybeSingle();
   if (error) unwrap({ data: null, error });
   return data?.endereco ?? "";
-}
-
-export async function fetchContractor(id: string | null): Promise<PublicProfile | null> {
-  if (!id) return null;
-  const result = await supabase().from("contractor_profiles").select(`nome_fantasia, ${PUBLIC_PROFILE}`).eq("user_id", id).single();
-  return toPublicProfile(unwrap<ProfileRow>(result), "nome_fantasia");
 }
 
 export async function fetchMyEvents(contractorId: string): Promise<EventItem[]> {
@@ -316,13 +332,42 @@ export async function fetchCandidateProfile(eventId: string, candidateId: string
   return data?.musician ? toCandidate(data) : null;
 }
 
+interface ReviewRow {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  author_id: string | null;
+  event: { titulo: string } | null;
+}
+
+async function nomesDosAutores(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const [musicos, contratantes] = await Promise.all([
+    supabase().from("musician_profiles").select("user_id, nome_completo").in("user_id", ids),
+    supabase().from("contractor_profiles").select("user_id, nome_fantasia").in("user_id", ids),
+  ]);
+  const nomes = new Map<string, string>();
+  for (const row of unwrap<{ user_id: string; nome_completo: string }[]>(musicos)) nomes.set(row.user_id, row.nome_completo);
+  for (const row of unwrap<{ user_id: string; nome_fantasia: string }[]>(contratantes)) nomes.set(row.user_id, row.nome_fantasia);
+  return nomes;
+}
+
 export async function fetchReviewsOf(userId: string): Promise<Review[]> {
-  const result = await supabase().from("reviews").select("id, rating, comment, created_at").eq("reviewed_id", userId).order("created_at", { ascending: false });
-  return unwrap<{ id: string; rating: number; comment: string | null; created_at: string }[]>(result).map((row) => ({
+  const result = await supabase()
+    .from("reviews")
+    .select("id, rating, comment, created_at, author_id, event:events(titulo)")
+    .eq("reviewed_id", userId)
+    .order("created_at", { ascending: false });
+  const rows = unwrap<ReviewRow[]>(result);
+  const nomes = await nomesDosAutores([...new Set(rows.flatMap((row) => (row.author_id ? [row.author_id] : [])))]);
+  return rows.map((row) => ({
     id: row.id,
     rating: row.rating,
     comment: row.comment,
     createdAt: row.created_at,
+    autor: row.author_id ? nomes.get(row.author_id) ?? null : null,
+    evento: row.event?.titulo ?? null,
   }));
 }
 
@@ -366,7 +411,8 @@ export const confirmCompletion = (id: string) =>
 export const reviewEvent = (id: string, rating: number, comment: string) =>
   apiRequest(`/events/${id}/avaliacao`, { method: "POST", body: { rating, comment: comment.trim() || undefined } });
 
-export const fetchCheckoutStatus = (eventId: string) => apiRequest<Checkout | null>(`/events/${eventId}/checkout`);
+export const fetchCheckoutStatus = async (eventId: string): Promise<Checkout | null> =>
+  (await apiRequest<Checkout | undefined>(`/events/${eventId}/checkout`)) ?? null;
 
 const checkoutsInFlight = new Map<string, Promise<Checkout>>();
 
@@ -374,10 +420,27 @@ export function startCheckout(eventId: string, candidateId: string): Promise<Che
   const key = `${eventId}:${candidateId}`;
   let request = checkoutsInFlight.get(key);
   if (!request) {
-    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId }, timeoutMs: 60_000 }).finally(() =>
+    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId }, timeoutMs: CHECKOUT_TEMPO_LIMITE_APP_MS }).finally(() =>
       checkoutsInFlight.delete(key),
     );
     checkoutsInFlight.set(key, request);
+  }
+  return request;
+}
+
+const checkoutAproveitavel = (atual: Checkout | null, candidateId: string): atual is Checkout =>
+  atual !== null && (atual.status === "PAGO" || (atual.status === "PENDENTE" && atual.candidateId === candidateId));
+
+const consultasEmAndamento = new Map<string, Promise<Checkout | null>>();
+
+export function consultarCobrancaAproveitavel(eventId: string, candidateId: string): Promise<Checkout | null> {
+  const key = `${eventId}:${candidateId}`;
+  let request = consultasEmAndamento.get(key);
+  if (!request) {
+    request = fetchCheckoutStatus(eventId)
+      .then((atual) => (checkoutAproveitavel(atual, candidateId) ? atual : null))
+      .finally(() => consultasEmAndamento.delete(key));
+    consultasEmAndamento.set(key, request);
   }
   return request;
 }

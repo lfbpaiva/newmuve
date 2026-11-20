@@ -1,12 +1,19 @@
 import type { Account } from "../domain/account.ts";
+import { MULTA_AUSENCIA_PERCENTUAL, VISIBILIDADE_REDUZIDA_DIAS } from "../../../shared/dominio.ts";
 import { AppError } from "../domain/errors.ts";
-import type { CandidateRecord, DisputeRecord, EventRecord, MessageRecord, PaymentRecord, PenaltyRecord } from "../domain/event.ts";
+import type { CandidateRecord, DisputeRecord, EventRecord, MessageRecord, PaymentRecord, PayoutAttempt, PenaltyRecord, PendingDisputeRecord } from "../domain/event.ts";
 import type { AccountStore, ImageStore } from "./accountService.ts";
 import type { Inbox, Mailer, NotificationInput } from "./notifications.ts";
-import type { AsaasGateway, EventStore, PaymentStore } from "./ports.ts";
+import type { AlertaRepasse, AsaasGateway, EventStore, EvidenciaDeAusencia, PaymentStore, TravaDaRotina } from "./ports.ts";
 
 export const NOW = new Date("2030-06-10T12:00:00Z");
 export const hoursFromNow = (hours: number) => new Date(NOW.getTime() + hours * 60 * 60 * 1000);
+
+export const DECLARACAO_AUSENCIA = "Declaro que conferi no painel da Asaas que esta tentativa de repasse não gerou transferência. Entendo que as buscas automáticas e os prazos de espera reduzem o risco de Pix duplicado, mas não comprovam a ausência.";
+
+const ABERTAS: PayoutAttempt["estado"][] = ["SOLICITANDO", "PENDENTE", "INCONCLUSIVA", "EM_VERIFICACAO"];
+const PENDENTES: DisputeRecord["status"][] = ["ABERTA", "AGUARDANDO_ESTORNO"];
+const HORA_MS = 60 * 60 * 1000;
 
 export const contratante = { id: "c1", email: "bar@exemplo.com" };
 export const outroContratante = { id: "c2", email: "outro@exemplo.com" };
@@ -38,8 +45,13 @@ export function memoryWorld() {
   const enderecos = new Map<string, string>();
   const candidates = new Map<string, CandidateRecord>();
   const messages: MessageRecord[] = [];
-  const penalties: (PenaltyRecord & { quitada: boolean })[] = [];
+  const penalties: (PenaltyRecord & { quitada: boolean; estornoPaymentId: string | null; reservaPaymentId: string | null })[] = [];
+  const tentativas: (PayoutAttempt & { encerradaEm: Date | null; pedidoEnviadoEm?: Date | null })[] = [];
+  const alertas: { tentativaId: string; tipo: AlertaRepasse; asaasTransferId: string; status: string | null; detalhes?: Record<string, unknown> }[] = [];
+  const decisoes: { tentativaId: string; etapa: "VERIFICACAO" | "CONFIRMACAO"; operadorNomeInformado: string; identidadeAutenticada: false; declaracao: string | null; paginas: number; listadas: number }[] = [];
   const disputes: DisputeRecord[] = [];
+  const pagamentoDaContestacao = new Map<string, string | null>();
+  const resolucaoDaContestacao = new Map<string, Date>();
   const favorites = new Set<string>();
   const invites = new Set<string>();
   const notifications: (NotificationInput & { lida: boolean })[] = [];
@@ -56,9 +68,10 @@ export function memoryWorld() {
     createPixCharge: [] as { value: number; customer: string }[],
     cancelCharge: [] as string[],
     refundPayment: [] as string[],
-    transferPix: [] as { value: number; pixAddressKey: string; pixAddressKeyType: string }[],
+    transferPix: [] as { value: number; pixAddressKey: string; pixAddressKeyType: string; externalReference: string }[],
+    findTransfersByReference: [] as { reference: string; maxPages: number | undefined }[],
   };
-  const failures = { refund: false, transfer: false, transferLost: false, staleCustomer: false };
+  const failures = { refund: false, transfer: false, transferLost: false, transferUnavailable: false, staleCustomer: false, transferSearchIncomplete: false };
   const asaasTransferDetails = new Map<string, { externalReference: string; value: number }>();
   const toTransfer = (id: string) => ({ id, status: asaasTransfers.get(id)!, externalReference: asaasTransferDetails.get(id)!.externalReference, value: asaasTransferDetails.get(id)!.value });
   let sequence = 1;
@@ -74,10 +87,6 @@ export function memoryWorld() {
   const accountStore = {
     findAccount: async (id: string) => accounts.get(id) ?? null,
     findEmail: async (id: string) => (accounts.has(id) ? `${id}@exemplo.com` : null),
-    reduceVisibility: async (id: string, until: Date) => {
-      const account = accounts.get(id);
-      if (account) account.visibilidadeReduzidaAte = until;
-    },
   } as unknown as AccountStore;
   const distances = new Map<string, number>([["PR/toledo", 38.5], ["PR/foz do iguacu", 140], ["PR/curitiba", 430], ["PR/londrina", 380]]);
   const sent: { to: string; subject: string; text: string }[] = [];
@@ -91,6 +100,80 @@ export function memoryWorld() {
     },
     removeByUrl: async (_bucket, url) => void images.delete(url),
     removeAllOf: async () => {},
+  };
+
+  const marcarParada = (attemptId: string): "SEM_MUDANCA" | "FALHOU" | "INCONCLUSIVA" => {
+    const tentativa = tentativas.find((t) => t.id === attemptId);
+    if (tentativa?.estado !== "SOLICITANDO" || tentativa.solicitadaEm.getTime() > Date.now() - 10 * 60 * 1000) return "SEM_MUDANCA";
+    if (!tentativa.pedidoEnviadoEm) {
+      encerrarSemRepasse(tentativa, "FALHOU");
+      return "FALHOU";
+    }
+    tentativa.estado = "INCONCLUSIVA";
+    return "INCONCLUSIVA";
+  };
+  const copiaDaTentativa = (tentativa: (PayoutAttempt & { encerradaEm: Date | null }) | undefined): PayoutAttempt | null => {
+    if (!tentativa) return null;
+    const { encerradaEm: _encerradaEm, ...copia } = tentativa;
+    return { ...copia };
+  };
+  const registrarAlerta = (tentativaId: string, tipo: AlertaRepasse, asaasTransferId: string, status: string | null) => {
+    if (!alertas.some((a) => a.tentativaId === tentativaId && a.tipo === tipo && a.asaasTransferId === asaasTransferId)) alertas.push({ tentativaId, tipo, asaasTransferId, status });
+  };
+  const registrarRepasseEEstorno = (tentativa: PayoutAttempt, ordem: "ESTORNO_ANTES_DA_CONCLUSAO" | "ESTORNO_DEPOIS_DA_CONCLUSAO") => {
+    const payment = payments.get(tentativa.paymentId)!;
+    if (payment.status !== "ESTORNADO" || tentativa.estado !== "CONCLUIDA" || !tentativa.asaasTransferId) return false;
+    if (alertas.some((a) => a.tentativaId === tentativa.id && a.tipo === "REPASSE_E_ESTORNO")) return false;
+    const multas = penalties.filter((p) => p.reservaPaymentId === payment.id);
+    alertas.push({
+      tentativaId: tentativa.id,
+      tipo: "REPASSE_E_ESTORNO",
+      asaasTransferId: tentativa.asaasTransferId,
+      status: "DONE",
+      detalhes: {
+        ordem,
+        paymentId: payment.id,
+        valorRetido: payment.multaDescontada,
+        valorTransferido: Math.round((payment.valorCache - payment.multaDescontada) * 100) / 100,
+        valorPendente: multas.reduce((soma, p) => Math.round((soma + p.multa) * 100) / 100, 0),
+        multas: multas.map((p) => ({ id: p.id, multa: p.multa, reservaPaymentId: p.reservaPaymentId, quitada: p.quitada })),
+      },
+    });
+    for (const penalty of multas) penalty.quitada = false;
+    return true;
+  };
+  const encerrarSemRepasse = (tentativa: PayoutAttempt & { encerradaEm: Date | null }, estado: "FALHOU" | "AUSENCIA_CONFIRMADA") => {
+    Object.assign(tentativa, { estado, encerradaEm: new Date() });
+    Object.assign(payments.get(tentativa.paymentId)!, { repasseStatus: "FALHOU", multaDescontada: 0, asaasTransferId: null });
+    for (const penalty of penalties) if (penalty.reservaPaymentId === tentativa.paymentId && !penalty.quitada) penalty.reservaPaymentId = null;
+  };
+  const validarBusca = (tentativa: PayoutAttempt, inicioMinimo: number, evidencia: EvidenciaDeAusencia): string | null => {
+    const agora = Date.now();
+    const busca = evidencia.iniciadaEm.getTime();
+    const limiteDaJanela = new Date(tentativa.solicitadaEm.getTime() - 24 * HORA_MS).toISOString().slice(0, 10);
+    if (agora < inicioMinimo) return "PRAZO_NAO_ATINGIDO";
+    if (busca < inicioMinimo) return "BUSCA_ANTES_DO_PRAZO";
+    if (busca > agora || busca < agora - 10 * 60 * 1000) return "BUSCA_DESATUALIZADA";
+    if (!evidencia.completa || evidencia.paginas < 1 || evidencia.listadas < 0) return "BUSCA_INCOMPLETA";
+    if (evidencia.encontradas !== 0) return "TRANSFERENCIA_ENCONTRADA";
+    if (evidencia.referencia !== tentativa.referenciaExterna) return "REFERENCIA_DIVERGENTE";
+    if (evidencia.desde > limiteDaJanela) return "JANELA_INSUFICIENTE";
+    if (evidencia.operador.trim().length < 3) return "OPERADOR_INVALIDO";
+    return null;
+  };
+
+  const pagoDoEvento = (eventId: string) => [...payments.values()].find((p) => p.eventId === eventId && p.status === "PAGO");
+  const reabrirContestacaoDoEvento = (eventId: string) => {
+    const dispute = disputes.find((d) => d.eventId === eventId && d.status === "AGUARDANDO_ESTORNO");
+    if (!dispute) return null;
+    Object.assign(dispute, { status: "ABERTA", decisao: null });
+    return dispute.id;
+  };
+  const reabrirContestacaoDoPagamento = (paymentId: string) => {
+    const dispute = disputes.find((d) => pagamentoDaContestacao.get(d.id) === paymentId && d.status === "AGUARDANDO_ESTORNO");
+    if (!dispute) return null;
+    Object.assign(dispute, { status: "ABERTA", decisao: null });
+    return dispute.id;
   };
 
   const reopenEvent = (event: EventRecord) => {
@@ -176,22 +259,45 @@ export function memoryWorld() {
         ? [...events.values()].filter((e) => e.contractorId === userId)
         : [...candidates.values()].filter((c) => c.musicianId === userId && c.status === "PENDENTE").map((c) => events.get(c.eventId)!),
     openDispute: async (dispute) => {
-      if (disputes.some((d) => d.eventId === dispute.eventId && d.status === "ABERTA")) {
+      const pago = [...payments.values()].find((p) => p.eventId === dispute.eventId && p.status === "PAGO");
+      if (pago?.repasseStatus === "PROCESSANDO" || pago?.repasseStatus === "REPASSADO") return null;
+      if ([...payments.values()].some((p) => p.eventId === dispute.eventId && p.refundStatus === "PROCESSANDO" && p.refundAction !== "NENHUMA")) return null;
+      if (disputes.some((d) => d.eventId === dispute.eventId && PENDENTES.includes(d.status))) {
         throw new AppError(409, "CONTESTACAO_EXISTENTE", "Já existe uma contestação aberta para este evento.");
       }
       const record: DisputeRecord = { ...dispute, id: nextId("disp"), status: "ABERTA", decisao: null, observacao: null, createdAt: new Date() };
       disputes.push(record);
+      pagamentoDaContestacao.set(record.id, pago?.id ?? null);
       return record;
     },
     findDueHirings: async (startedBefore) =>
       [...events.values()].filter((event) => event.status === "CONTRATADO" && event.inicio <= startedBefore).map((event) => event.id),
-    findOpenDispute: async (eventId) => disputes.find((d) => d.eventId === eventId && d.status === "ABERTA") ?? null,
+    findOpenDispute: async (eventId) => disputes.find((d): d is PendingDisputeRecord => d.eventId === eventId && PENDENTES.includes(d.status)) ?? null,
+    findLatestResolvedDispute: async (eventId, paymentId) => {
+      const instante = (d: DisputeRecord) => resolucaoDaContestacao.get(d.id)?.getTime() ?? -Infinity;
+      const resolvida = disputes
+        .filter((d) => d.eventId === eventId && pagamentoDaContestacao.get(d.id) === paymentId && d.status === "RESOLVIDA" && d.decisao)
+        .sort((a, b) => instante(b) - instante(a) || b.createdAt.getTime() - a.createdAt.getTime())[0];
+      return resolvida?.decisao ? { decisao: resolvida.decisao, resolvidaEm: resolucaoDaContestacao.get(resolvida.id) ?? null } : null;
+    },
     findDispute: async (id) => disputes.find((d) => d.id === id) ?? null,
-    resolveDispute: async (id, decisao, observacao) => {
+    decideDispute: async (id, decisao, observacao) => {
       const dispute = disputes.find((d) => d.id === id);
-      if (dispute?.status !== "ABERTA") return false;
-      Object.assign(dispute, { status: "RESOLVIDA", decisao, observacao });
-      return true;
+      if (!dispute) return "NAO_ENCONTRADA";
+      if (dispute.status === "ABERTA") {
+        Object.assign(dispute, { status: decisao === "PAGAR_MUSICO" ? "RESOLVIDA" : "AGUARDANDO_ESTORNO", decisao, observacao });
+        if (decisao === "PAGAR_MUSICO") resolucaoDaContestacao.set(dispute.id, new Date());
+        return "DECIDIDA";
+      }
+      const estorno = pagoDoEvento(dispute.eventId)?.refundStatus;
+      if (dispute.status === "AGUARDANDO_ESTORNO" && decisao === "DEVOLVER_CONTRATANTE" && estorno !== "PROCESSANDO" && estorno !== "CONFIRMADO") return "RETOMADA";
+      return "JA_DECIDIDA";
+    },
+    reopenDisputeWithoutRefund: async (id) => {
+      const dispute = disputes.find((d) => d.id === id);
+      const pago = dispute && pagoDoEvento(dispute.eventId);
+      if (!dispute || !pago || pago.refundStatus === "PROCESSANDO" || pago.refundStatus === "CONFIRMADO") return false;
+      return reabrirContestacaoDoEvento(dispute.eventId) !== null;
     },
     hasAppliedToContractor: async (musicianId, contractorId) =>
       [...candidates.values()].some((c) => c.musicianId === musicianId && events.get(c.eventId)?.contractorId === contractorId),
@@ -252,12 +358,11 @@ export function memoryWorld() {
   };
 
   const paymentStore: PaymentStore = {
-    addPenalty: async (penalty) => void penalties.push({ ...penalty, id: nextId("pen"), quitada: false }),
-    openFines: async (musicianId) => penalties.filter((p) => p.musicianId === musicianId && !p.quitada && p.multa > 0),
-    settleFines: async (ids) => {
-      for (const penalty of penalties) if (ids.includes(penalty.id)) penalty.quitada = true;
+    findRefundPenalty: async (paymentId) => {
+      const penalty = penalties.find((p) => p.estornoPaymentId === paymentId);
+      const ate = penalty && accounts.get(penalty.musicianId)?.visibilidadeReduzidaAte;
+      return penalty && ate ? { musicianId: penalty.musicianId, tipo: penalty.tipo, multa: penalty.multa, visibilidadeReduzidaAte: ate } : null;
     },
-    setPayoutDiscount: async (paymentId, valor) => void (payments.get(paymentId)!.multaDescontada = valor),
     findPendingPayment: async (eventId) => [...payments.values()].find((p) => p.eventId === eventId && p.status === "PENDENTE") ?? null,
     findLatestPayment: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId).sort((a, b) => b.createdAt - a.createdAt)[0] ?? null,
@@ -269,10 +374,9 @@ export function memoryWorld() {
       return {
         expiredCharges: eventIds((p) => p.status === "PENDENTE" && p.expiraEm <= now),
         refunds: eventIds((p) => p.refundStatus === "PROCESSANDO"),
-        payouts: eventIds((p) => p.status === "PAGO" && p.repasseStatus === "PROCESSANDO"),
+        payouts: eventIds((p) => p.status === "PAGO" && (p.repasseStatus === "PROCESSANDO" || (p.repasseStatus === "RETIDO" && ["CONCLUIDO", "CANCELADO"].includes(events.get(p.eventId ?? "")?.status ?? "")))),
       };
     },
-    findPaymentByTransferId: async (transferId) => [...payments.values()].find((p) => p.asaasTransferId === transferId) ?? null,
     findLateRefundsToRetry: async (eventId) =>
       [...payments.values()].filter((p) => p.eventId === eventId && p.refundAction === "NENHUMA" && p.status !== "ESTORNADO" && (p.refundStatus === null || p.refundStatus === "NEGADO")),
     insertPayment: async (data) => {
@@ -300,38 +404,69 @@ export function memoryWorld() {
       if ((status === "EXPIRADO" || status === "CANCELADO") && payment.status !== "PENDENTE") return;
       payment.status = status;
     },
-    claimRefund: async (id, action) => {
+    claimRefund: async (id, action, contestacaoId = null) => {
       const payment = payments.get(id)!;
+      if (tentativas.some((t) => t.paymentId === id && ABERTAS.includes(t.estado))) return false;
+      const pendente = payment.status === "PAGO" ? disputes.find((d) => d.eventId === payment.eventId && PENDENTES.includes(d.status)) : undefined;
+      if (pendente && !(pendente.status === "AGUARDANDO_ESTORNO" && pendente.id === contestacaoId && action === "NAO_COMPARECIMENTO")) return false;
       if (!((payment.status === "PAGO" && (payment.repasseStatus === "RETIDO" || payment.repasseStatus === "FALHOU")) || (action === "NENHUMA" && (payment.status === "PENDENTE" || payment.status === "EXPIRADO" || payment.status === "CANCELADO"))) || (payment.refundStatus !== null && payment.refundStatus !== "NEGADO")) return false;
       payment.refundStatus = "PROCESSANDO";
       payment.refundAction = action;
       payment.refundRequestedAt = new Date();
       return true;
     },
-    setRefundStatus: async (id, status) => {
+    denyRefund: async (id) => {
       const payment = payments.get(id)!;
-      if (payment.refundStatus === "PROCESSANDO") payment.refundStatus = status;
+      if (payment.refundStatus !== "PROCESSANDO") return null;
+      payment.refundStatus = "NEGADO";
+      return reabrirContestacaoDoPagamento(id);
     },
     releaseRefund: async (id, previous) => {
       const payment = payments.get(id)!;
-      if (payment.refundStatus !== "PROCESSANDO") return;
+      if (payment.refundStatus !== "PROCESSANDO") return null;
       payment.refundStatus = previous.refundStatus;
       payment.refundAction = previous.refundAction;
+      return reabrirContestacaoDoPagamento(id);
     },
     finalizeRefund: async (id) => {
       const payment = payments.get(id)!;
       if (payment.status === "ESTORNADO") return "JA_PROCESSADO";
       if (payment.status !== "PAGO" && payment.refundAction !== "NENHUMA") throw new Error("pagamento nao esta elegivel para estorno");
-      const payoutConflict = payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO";
+      const payoutConflict = payment.repasseStatus === "PROCESSANDO" || payment.repasseStatus === "REPASSADO"
+        || tentativas.some((t) => t.paymentId === id && ABERTAS.includes(t.estado));
       const event = payment.eventId ? events.get(payment.eventId) : null;
+      const musicianId = event?.musicoContratadoId ?? null;
       if (event?.status === "CONTRATADO" && payment.refundAction !== "NENHUMA") {
         if (payment.refundAction === "REABRIR" && !payoutConflict) reopenEvent(event);
-        else await eventStore.cancelEvent(event.id);
+        else event.status = "CANCELADO";
       }
       payment.status = "ESTORNADO";
+      for (const dispute of disputes) {
+        if (pagamentoDaContestacao.get(dispute.id) !== id || dispute.status === "RESOLVIDA") continue;
+        if (dispute.status === "ABERTA") dispute.observacao = [dispute.observacao, "Valor devolvido ao contratante por estorno confirmado fora da decisão do suporte."].filter(Boolean).join("\n");
+        dispute.status = "RESOLVIDA";
+        dispute.decisao = "DEVOLVER_CONTRATANTE";
+        resolucaoDaContestacao.set(dispute.id, new Date());
+      }
       payment.refundStatus = "CONFIRMADO";
       if (!payoutConflict) payment.repasseStatus = null;
-      return payoutConflict ? "REPASSE_CONFLITANTE" : "CONFIRMADO";
+      if (payoutConflict) {
+        for (const tentativa of tentativas.filter((t) => t.paymentId === id && t.estado === "CONCLUIDA")) registrarRepasseEEstorno(tentativa, "ESTORNO_DEPOIS_DA_CONCLUSAO");
+        return "REPASSE_CONFLITANTE";
+      }
+      const ausencia = payment.refundAction === "NAO_COMPARECIMENTO";
+      const tardia = payment.refundAction === "REABRIR" && payment.refundRequestedAt !== null && event !== null && event !== undefined
+        && event.inicio.getTime() - payment.refundRequestedAt.getTime() <= 24 * 60 * 60 * 1000;
+      if (event && musicianId && (ausencia || tardia) && !penalties.some((p) => p.estornoPaymentId === id)) {
+        penalties.push({
+          id: nextId("pen"), musicianId, eventId: event.id, tipo: ausencia ? "AUSENCIA" : "DESISTENCIA_TARDIA",
+          multa: ausencia ? Math.round(payment.valorCache * MULTA_AUSENCIA_PERCENTUAL) / 100 : 0, quitada: false, estornoPaymentId: id, reservaPaymentId: null,
+        });
+        const account = accounts.get(musicianId);
+        const ate = new Date(Date.now() + VISIBILIDADE_REDUZIDA_DIAS * 24 * 60 * 60 * 1000);
+        if (account) account.visibilidadeReduzidaAte = account.visibilidadeReduzidaAte && account.visibilidadeReduzidaAte > ate ? account.visibilidadeReduzidaAte : ate;
+      }
+      return "CONFIRMADO";
     },
     confirmPayment: async (asaasPaymentId) => {
       const payment = [...payments.values()].find((p) => p.asaasPaymentId === asaasPaymentId);
@@ -354,15 +489,123 @@ export function memoryWorld() {
     },
     claimPayout: async (id) => {
       const payment = payments.get(id)!;
-      if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU")) return false;
+      const aberta = tentativas.some((t) => t.paymentId === id && ABERTAS.includes(t.estado));
+      const contestada = disputes.some((d) => d.eventId === payment.eventId && PENDENTES.includes(d.status));
+      if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU") || payment.asaasTransferId || aberta || contestada) {
+        return { tentativaId: null, desconto: payment.multaDescontada };
+      }
+      const musicianId = payment.eventId ? events.get(payment.eventId)?.musicoContratadoId : null;
+      let desconto = 0;
+      if (musicianId) {
+        const reservadas = penalties.filter((p) => p.reservaPaymentId === id && !p.quitada);
+        if (reservadas.length > 0) desconto = reservadas.reduce((soma, p) => Math.round((soma + p.multa) * 100) / 100, 0);
+        else {
+          let restante = payment.valorCache;
+          for (const penalty of penalties.filter((p) => p.musicianId === musicianId && !p.quitada && !p.reservaPaymentId && p.multa > 0)) {
+            if (penalty.multa >= restante) continue;
+            penalty.reservaPaymentId = id;
+            restante = Math.round((restante - penalty.multa) * 100) / 100;
+            desconto = Math.round((desconto + penalty.multa) * 100) / 100;
+          }
+        }
+      }
+      const tentativaId = `00000000-0000-4000-8000-${String(sequence++).padStart(12, "0")}`;
+      tentativas.push({ id: tentativaId, paymentId: id, origem: "ATUAL", estado: "SOLICITANDO", referenciaExterna: tentativaId, asaasTransferId: null, solicitadaEm: new Date(), verificacaoIniciadaEm: null, encerradaEm: null, pedidoEnviadoEm: null });
       payment.repasseStatus = "PROCESSANDO";
-      payment.asaasTransferId = null;
+      payment.multaDescontada = desconto;
+      return { tentativaId, desconto };
+    },
+    findOpenAttempt: async (paymentId) => copiaDaTentativa(tentativas.find((t) => t.paymentId === paymentId && ABERTAS.includes(t.estado))),
+    findOpenAttempts: async () => tentativas.filter((t) => ABERTAS.includes(t.estado)).map((t) => copiaDaTentativa(t)!),
+    findAttempt: async (id) => copiaDaTentativa(tentativas.find((t) => t.id === id)),
+    findAttemptByTransferId: async (transferId) => copiaDaTentativa(tentativas.find((t) => t.asaasTransferId === transferId)),
+    registerTransfer: async (attemptId, transferId) => {
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (!tentativa || !transferId) return "RECUSADA";
+      if (tentativa.asaasTransferId === transferId) return "JA_REGISTRADA";
+      if (tentativas.some((t) => t.asaasTransferId === transferId)) return "RECUSADA";
+      if (tentativa.estado === "FALHOU" || tentativa.estado === "AUSENCIA_CONFIRMADA") {
+        registrarAlerta(attemptId, "RESPOSTA_TARDIA", transferId, null);
+        return "TARDIA";
+      }
+      if (tentativa.asaasTransferId) {
+        registrarAlerta(attemptId, "POSSIVEL_DUPLICIDADE", transferId, null);
+        return "RECUSADA";
+      }
+      Object.assign(tentativa, { estado: "PENDENTE", asaasTransferId: transferId });
+      payments.get(tentativa.paymentId)!.asaasTransferId = transferId;
+      return "REGISTRADA";
+    },
+    markAttemptInconclusive: async (attemptId) => {
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (tentativa?.estado !== "SOLICITANDO") return false;
+      tentativa.estado = "INCONCLUSIVA";
       return true;
     },
-    setPayout: async (id, payout) => {
-      const payment = payments.get(id)!;
-      payment.repasseStatus = payout.status;
-      if (payout.asaasTransferId) payment.asaasTransferId = payout.asaasTransferId;
+    registerRequestSent: async (attemptId) => {
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (tentativa?.estado !== "SOLICITANDO") return false;
+      tentativa.pedidoEnviadoEm ??= new Date();
+      return true;
+    },
+    markStaleAttempt: async (attemptId) => marcarParada(attemptId),
+    markStaleAttempts: async () => {
+      const paradas = tentativas.filter((t) => t.estado === "SOLICITANDO" && t.solicitadaEm.getTime() <= Date.now() - 10 * 60 * 1000);
+      return paradas.filter((tentativa) => marcarParada(tentativa.id) !== "SEM_MUDANCA").length;
+    },
+    completeAttempt: async (attemptId, transferId) => {
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (!tentativa || !transferId) return "RECUSADA";
+      if (tentativa.estado === "FALHOU" || tentativa.estado === "AUSENCIA_CONFIRMADA") {
+        registrarAlerta(attemptId, "POSSIVEL_DUPLICIDADE", transferId, "DONE");
+        return "ALERTA";
+      }
+      if (tentativa.asaasTransferId !== transferId) return "RECUSADA";
+      const payment = payments.get(tentativa.paymentId)!;
+      if (payment.status === "ESTORNADO") {
+        if (tentativa.estado !== "CONCLUIDA") {
+          Object.assign(tentativa, { estado: "CONCLUIDA", encerradaEm: new Date() });
+          payment.repasseStatus = "REPASSADO";
+        }
+        registrarRepasseEEstorno(tentativa, "ESTORNO_ANTES_DA_CONCLUSAO");
+        return "REPASSE_E_ESTORNO";
+      }
+      for (const penalty of penalties) if (penalty.reservaPaymentId === tentativa.paymentId && !penalty.quitada) penalty.quitada = true;
+      if (tentativa.estado === "CONCLUIDA") return "JA_CONCLUIDA";
+      Object.assign(tentativa, { estado: "CONCLUIDA", encerradaEm: new Date() });
+      payments.get(tentativa.paymentId)!.repasseStatus = "REPASSADO";
+      return "CONCLUIDA";
+    },
+    failAttempt: async (attemptId, transferId) => {
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (!tentativa) return false;
+      if (transferId === null ? tentativa.estado !== "SOLICITANDO" || tentativa.asaasTransferId !== null : !["PENDENTE", "INCONCLUSIVA"].includes(tentativa.estado) || tentativa.asaasTransferId !== transferId) return false;
+      encerrarSemRepasse(tentativa, "FALHOU");
+      return true;
+    },
+    recordAttemptAlert: async (attemptId, tipo, transferId, status) => registrarAlerta(attemptId, tipo, transferId, status),
+    absenceDeclaration: async () => DECLARACAO_AUSENCIA,
+    startAbsenceCheck: async (attemptId, evidencia) => {
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (!tentativa) return "TENTATIVA_NAO_ENCONTRADA";
+      if (tentativa.estado !== "INCONCLUSIVA") return "ESTADO_INVALIDO";
+      if (tentativa.asaasTransferId) return "TRANSFERENCIA_CONHECIDA";
+      const recusa = validarBusca(tentativa, tentativa.solicitadaEm.getTime() + 24 * HORA_MS, evidencia);
+      if (recusa) return recusa;
+      Object.assign(tentativa, { estado: "EM_VERIFICACAO", verificacaoIniciadaEm: new Date() });
+      decisoes.push({ tentativaId: attemptId, etapa: "VERIFICACAO", operadorNomeInformado: evidencia.operador.trim(), identidadeAutenticada: false, declaracao: null, paginas: evidencia.paginas, listadas: evidencia.listadas });
+      return "VERIFICACAO_INICIADA";
+    },
+    confirmAbsence: async (attemptId, evidencia, declaracao) => {
+      if (declaracao !== DECLARACAO_AUSENCIA) return "DECLARACAO_INVALIDA";
+      const tentativa = tentativas.find((t) => t.id === attemptId);
+      if (!tentativa) return "TENTATIVA_NAO_ENCONTRADA";
+      if (tentativa.estado !== "EM_VERIFICACAO" || payments.get(tentativa.paymentId)!.repasseStatus !== "PROCESSANDO") return "ESTADO_INVALIDO";
+      const recusa = validarBusca(tentativa, tentativa.verificacaoIniciadaEm!.getTime() + HORA_MS, evidencia);
+      if (recusa) return recusa;
+      encerrarSemRepasse(tentativa, "AUSENCIA_CONFIRMADA");
+      decisoes.push({ tentativaId: attemptId, etapa: "CONFIRMACAO", operadorNomeInformado: evidencia.operador.trim(), identidadeAutenticada: false, declaracao, paginas: evidencia.paginas, listadas: evidencia.listadas });
+      return "AUSENCIA_CONFIRMADA";
     },
     getAsaasCustomerId: async (contractorId) => customers.get(contractorId) ?? null,
     setAsaasCustomerId: async (contractorId, customerId) => void customers.set(contractorId, customerId),
@@ -390,6 +633,7 @@ export function memoryWorld() {
     cancelCharge: async (paymentId) => {
       asaasCalls.cancelCharge.push(paymentId);
       asaasCharges.delete(paymentId);
+      return { removida: true };
     },
     refundPayment: async (paymentId) => {
       if (failures.refund) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "falha simulada no estorno");
@@ -398,16 +642,28 @@ export function memoryWorld() {
     },
     transferPix: async (transfer) => {
       if (failures.transfer) throw new AppError(422, "PAGAMENTO_DADOS_INVALIDOS", "falha simulada na transferência");
-      asaasCalls.transferPix.push({ value: transfer.value, pixAddressKey: transfer.pixAddressKey, pixAddressKeyType: transfer.pixAddressKeyType });
+      if (failures.transferUnavailable) throw new AppError(503, "PAGAMENTO_LIMITE", "a Asaas recusou o pedido antes de criar a transferência");
+      asaasCalls.transferPix.push({ value: transfer.value, pixAddressKey: transfer.pixAddressKey, pixAddressKeyType: transfer.pixAddressKeyType, externalReference: transfer.externalReference });
       const id = nextId("tra_");
       asaasTransfers.set(id, "PENDING");
       asaasTransferDetails.set(id, { externalReference: transfer.externalReference, value: transfer.value });
       if (failures.transferLost) throw new AppError(502, "PAGAMENTO_INDISPONIVEL", "resposta perdida depois de a Asaas criar a transferência");
-      return { id, status: "PENDING" };
+      return { id, status: asaasTransfers.get(id)! };
     },
     getTransfer: async (transferId) => (asaasTransfers.has(transferId) ? toTransfer(transferId) : null),
-    findTransfersByReference: async (reference) =>
-      [...asaasTransfers.keys()].map(toTransfer).filter((transfer) => transfer.externalReference === reference),
+    findTransfersByReference: async (reference, createdSince, maxPages) => {
+      asaasCalls.findTransfersByReference.push({ reference, maxPages });
+      if (failures.transferSearchIncomplete) throw new AppError(502, "PAGAMENTO_BUSCA_INCOMPLETA", "busca de transferências incompleta");
+      const todas = [...asaasTransfers.keys()].map(toTransfer);
+      return {
+        encontradas: todas.filter((transfer) => transfer.externalReference === reference),
+        referencia: reference,
+        desde: new Date(createdSince.getTime() - 24 * HORA_MS).toISOString().slice(0, 10),
+        iniciadaEm: new Date(),
+        paginas: 1,
+        listadas: todas.length,
+      };
+    },
     createSubscription: async (subscription) => {
       if (failures.staleCustomer) {
         failures.staleCustomer = false;
@@ -424,6 +680,8 @@ export function memoryWorld() {
     },
   };
 
+  const travaDaRotina = criarTravaEmMemoria();
+
   return {
     accounts,
     events,
@@ -431,7 +689,13 @@ export function memoryWorld() {
     candidates,
     messages,
     penalties,
+    tentativas,
+    alertas,
+    decisoes,
+    asaasTransferDetails,
     disputes,
+    pagamentoDaContestacao,
+    resolucaoDaContestacao,
     favorites,
     invites,
     notifications,
@@ -445,7 +709,8 @@ export function memoryWorld() {
     asaasCalls,
     failures,
     sent,
-    stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer, inbox },
+    stores: { accounts: accountStore, events: eventStore, payments: paymentStore, images: imageStore, asaas, mailer, inbox, trava: travaDaRotina.store },
+    travaDaRotina: travaDaRotina.estado,
     seedEvent(overrides: Partial<EventRecord> = {}): EventRecord {
       const event: EventRecord = {
         id: nextId("e"),
@@ -485,4 +750,46 @@ export function memoryWorld() {
 export function payAtAsaas(world: ReturnType<typeof memoryWorld>, asaasPaymentId: string): void {
   const charge = world.asaasCharges.get(asaasPaymentId)!;
   world.asaasCharges.set(asaasPaymentId, { ...charge, status: "RECEIVED" });
+}
+
+export function criarTravaEmMemoria(relogio: () => number = Date.now) {
+  const estado = {
+    dono: null as string | null,
+    geracao: 0,
+    validaAte: null as number | null,
+    ultimoResultado: null as "SUCESSO" | "FALHA" | "EXPIRADA" | null,
+    ultimoSucessoEm: null as number | null,
+    ultimoErro: null as string | null,
+    chamadas: { adquirir: 0, renovar: 0, encerrar: 0 },
+  };
+  const store: TravaDaRotina = {
+    adquirir: async (dono, validadeSegundos) => {
+      estado.chamadas.adquirir++;
+      const agora = relogio();
+      if (estado.dono && estado.validaAte !== null && estado.validaAte > agora) return null;
+      if (estado.dono) Object.assign(estado, { ultimoResultado: "EXPIRADA", ultimoErro: "A execução anterior perdeu a validade sem encerrar." });
+      Object.assign(estado, { dono, geracao: estado.geracao + 1, validaAte: agora + validadeSegundos * 1000 });
+      return estado.geracao;
+    },
+    renovar: async (dono, geracao, validadeSegundos) => {
+      estado.chamadas.renovar++;
+      const agora = relogio();
+      if (estado.dono !== dono || estado.geracao !== geracao || estado.validaAte === null || estado.validaAte <= agora) return false;
+      estado.validaAte = agora + validadeSegundos * 1000;
+      return true;
+    },
+    encerrar: async (dono, geracao, resultado, erro) => {
+      estado.chamadas.encerrar++;
+      if (estado.dono !== dono || estado.geracao !== geracao) return false;
+      Object.assign(estado, {
+        dono: null,
+        validaAte: null,
+        ultimoResultado: resultado,
+        ultimoSucessoEm: resultado === "SUCESSO" ? relogio() : estado.ultimoSucessoEm,
+        ultimoErro: resultado === "SUCESSO" ? null : (erro ?? "Falha sem detalhe.").slice(0, 500),
+      });
+      return true;
+    },
+  };
+  return { estado, store };
 }

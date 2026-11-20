@@ -6,10 +6,10 @@ import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
 import { eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
 import { calcularCobranca, CASA_SEMANAS_MAXIMAS, comissaoPercentual, ESTILOS_EVENTO, FORMACOES, horarioLocalDoEvento, isPro, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
-import { space, type } from "../lib/theme";
+import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
 import { ImageField, LocationFields } from "./fields";
-import { Alert, Button, Checkbox, Chips, Field, Section, Select } from "./ui";
+import { Alert, Button, Checkbox, Chips, Field, Grupo, Select } from "./ui";
 
 type EditableEvent = EventItem & { endereco: string };
 
@@ -113,7 +113,7 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
 
   return <>
     <ImageField shape="banner" label={event ? "Trocar foto do evento" : "Foto do evento"} preview={preview} onPick={(file, uri) => { setImagem(file); setPreview(uri); setError(""); }} onError={setError}/>
-    <Section title="O evento">
+    <Grupo titulo="O evento" icone="calendar-outline">
       <Field label="Título" value={form.titulo} onChangeText={(titulo) => set({ titulo })} placeholder="Ex: Noite acústica no terraço"/>
       <Select label="Tipo de evento" value={form.tipoEvento} options={options(TIPOS_EVENTO)} onChange={(tipoEvento) => set({ tipoEvento })}/>
       <View style={{ flexDirection: "row", gap: space.md }}>
@@ -122,28 +122,33 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
         <View style={{ flex: 1 }}><Field label="Duração" value={form.duracao} onChangeText={(v) => set({ duracao: maskTime(v) })} keyboardType="numeric" placeholder="HH:MM"/></View>
       </View>
       <Field label="Descrição" value={form.descricao} onChangeText={(descricao) => set({ descricao })} multiline maxLength={2000} placeholder="Repertório esperado, público, estrutura disponível..."/>
-    </Section>
-    <Section title="Onde">
+    </Grupo>
+    <Grupo titulo="Onde" icone="location-outline">
       <Field label="CEP (opcional)" value={cep} onChangeText={(v) => void buscarCep(v)} keyboardType="numeric" placeholder="00000-000" hint={cepAviso || "Preenche estado, cidade e rua para você."}/>
       <LocationFields uf={form.uf} cidade={form.cidade} onUfChange={(uf) => set({ uf, cidade: "" })} onCidadeChange={(cidade) => set({ cidade })} onError={setError}/>
       <Field label="Endereço" value={form.endereco} onChangeText={(endereco) => set({ endereco })} placeholder="Rua, número, bairro e referência" hint="Visível apenas para o músico contratado."/>
-    </Section>
-    <Section title="Quem você procura">
+    </Grupo>
+    <Grupo titulo="Quem você procura" icone="musical-notes-outline">
       <Chips options={ESTILOS_EVENTO} selected={form.estilosMusicais} onToggle={(estilo) => {
         const selected = form.estilosMusicais.includes(estilo);
         set({ estilosMusicais: estilo === QUALQUER_ESTILO ? (selected ? [] : [QUALQUER_ESTILO]) : selected ? form.estilosMusicais.filter((x) => x !== estilo) : [...form.estilosMusicais.filter((x) => x !== QUALQUER_ESTILO), estilo] });
       }}/>
       <Select label="Formação" value={form.formacao} options={options(FORMACOES)} onChange={(formacao) => set({ formacao })}/>
       <Checkbox label="O local oferece equipamento de som (caixas, mesa e microfones)" checked={form.somDisponivel} onChange={(somDisponivel) => set({ somDisponivel })}/>
-    </Section>
-    <Section title="Cachê">
-      <Field label="Valor oferecido (R$)" value={form.cache} onChangeText={(v) => set({ cache: v.replace(/[^\d.,]/g, "") })} keyboardType="decimal-pad" placeholder="100,00 ou mais" hint={cacheNumber >= 100 ? `Com a taxa de serviço de ${taxa}%, você pagará ${formatCurrency(calcularCobranca(cacheNumber, taxa).total)}. O músico recebe ${formatCurrency(cacheNumber)}.` : `Mínimo de R$ 100,00. A taxa de serviço de ${taxa}% é somada ao cachê.`}/>
-    </Section>
-    {!event && <Section title="Repetir">
+    </Grupo>
+    <Grupo titulo="Cachê" icone="cash-outline">
+      <Field label="Valor oferecido (R$)" value={form.cache} onChangeText={(v) => set({ cache: v.replace(/[^\d.,]/g, "") })} keyboardType="decimal-pad" placeholder="100,00 ou mais" hint={cacheNumber >= 100 ? undefined : `Mínimo de R$ 100,00. A taxa de serviço de ${taxa}% é somada ao cachê.`}/>
+      {cacheNumber >= 100 && <View style={[styles.row, { alignItems: "stretch", padding: space.md, borderRadius: radius.md, backgroundColor: colors.accentSoft }]}>
+        <View style={{ flex: 1, gap: 2 }}><Text style={type.labelSmall}>Você paga</Text><Text style={[type.price, { fontSize: 22, lineHeight: 26 }]}>{formatCurrency(calcularCobranca(cacheNumber, taxa).total)}</Text><Text style={[type.bodySmall, { fontSize: 12 }]}>Inclui a taxa de {taxa}%</Text></View>
+        <View style={{ width: 1, backgroundColor: colors.hairline, marginHorizontal: space.md }}/>
+        <View style={{ flex: 1, gap: 2 }}><Text style={type.labelSmall}>Músico recebe</Text><Text style={[type.price, { fontSize: 22, lineHeight: 26, color: colors.accentText }]}>{formatCurrency(cacheNumber)}</Text><Text style={[type.bodySmall, { fontSize: 12 }]}>Guardado até o show</Text></View>
+      </View>}
+    </Grupo>
+    {!event && <Grupo titulo="Repetir" icone="repeat-outline">
       {casa
         ? <Select label="Quantas semanas" value={String(form.repetirSemanas)} options={SEMANAS} onChange={(v) => set({ repetirSemanas: Number(v) })}/>
         : <Text style={type.bodySmall}>Com o Muve Casa, um evento semanal vira até {CASA_SEMANAS_MAXIMAS} eventos de uma vez.</Text>}
-    </Section>}
+    </Grupo>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button title={event ? "Salvar alterações" : "Publicar evento"} icon={event ? "save-outline" : "megaphone-outline"} onPress={submit} loading={submitting}/>
   </>;

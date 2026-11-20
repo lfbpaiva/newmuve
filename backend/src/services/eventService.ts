@@ -1,4 +1,4 @@
-import { CONCLUSAO_AUTOMATICA_MS, emAcessoAntecipado, eventMatchesMusician, hasCancellationNotice, imageProblem, isPro, liberadoParaTodosEm, PRO_RAIO_MAXIMO_KM, RAIO_MAXIMO_KM } from "../../../shared/dominio.ts";
+import { CONCLUSAO_AUTOMATICA_MS, emAcessoAntecipado, eventMatchesMusician, hasCancellationNotice, imageProblem, isPro, liberadoParaTodosEm, PRO_RAIO_MAXIMO_KM, RAIO_MAXIMO_KM, valorDaInscricao } from "../../../shared/dominio.ts";
 import { formatCurrency, formatDateTime } from "../../../shared/formato.ts";
 import type { Account, Role } from "../domain/account.ts";
 import type { CandidateRecord, DecisaoContestacao, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
@@ -18,6 +18,9 @@ const podeContestar = (event: EventRecord, payment: { status: string; repasseSta
   && payment.refundStatus !== "PROCESSANDO";
 
 const musicoOcupado = () => new AppError(409, "MUSICO_OCUPADO", "O músico já tem um show contratado nesse horário.");
+const contestacaoPendente = () => new AppError(409, "CONTESTACAO_ABERTA", "Há uma contestação aberta; o suporte vai decidir o resultado do show.");
+const contestacaoIndisponivel = () =>
+  new AppError(409, "CONTESTACAO_INDISPONIVEL", "A contestação fica disponível depois do início do show e até o repasse do cachê.");
 
 const naoEncontrado = () => new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
 
@@ -43,7 +46,7 @@ export function createEventService(deps: {
   events: EventStore;
   accounts: AccountStore;
   images: ImageStore;
-  payments: Pick<PaymentService, "ensureNoActiveCheckout" | "payout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
+  payments: Pick<PaymentService, "ensureNoActiveCheckout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
   notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved" | "invited">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
@@ -124,14 +127,22 @@ export function createEventService(deps: {
         throw new AppError(403, "RECURSO_CASA", "Eventos recorrentes fazem parte do Muve Casa.");
       }
 
+      const envios = await Promise.allSettled(Array.from({ length: input.repetirSemanas }, () => images.upload("event-banners", user.id, imagem)));
+      const descartar = (urls: string[]) => Promise.all(urls.map((url) => images.removeByUrl("event-banners", url).catch(() => {})));
       const criados: EventRecord[] = [];
-      for (let semana = 0; semana < input.repetirSemanas; semana++) {
+      for (let semana = 0; semana < envios.length; semana++) {
+        const envio = envios[semana];
+        const restantes = envios.slice(semana + 1).flatMap((e) => (e.status === "fulfilled" ? [e.value] : []));
+        if (envio.status === "rejected") {
+          await descartar(restantes);
+          if (criados.length === 0) throw envio.reason;
+          break;
+        }
         const inicio = new Date(input.inicio.getTime() + semana * 7 * 24 * 60 * 60 * 1000);
-        const imagemUrl = await images.upload("event-banners", user.id, imagem);
         try {
-          criados.push(await events.insertEvent(user.id, { ...input, inicio, imagemUrl }));
+          criados.push(await events.insertEvent(user.id, { ...input, inicio, imagemUrl: envio.value }));
         } catch (error) {
-          await images.removeByUrl("event-banners", imagemUrl).catch(() => {});
+          await descartar([envio.value, ...restantes]);
           if (criados.length === 0) throw error;
           break;
         }
@@ -164,15 +175,24 @@ export function createEventService(deps: {
 
     async deleteEvent(user: AuthUser, eventId: string, now = new Date()): Promise<void> {
       const event = await findEditableEvent(user, eventId, now);
-      const pending = (await events.listCandidates(eventId)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);
-      await events.deleteEvent(eventId);
-      await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
+      const candidatos = await events.listCandidates(eventId);
+      const pending = candidatos.filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);
+      if (candidatos.length > 0) {
+        await events.cancelEvent(eventId);
+      } else {
+        await events.deleteEvent(eventId);
+        await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
+      }
       if (pending.length > 0) void notifier.eventDeleted(event, pending);
     },
 
     async apply(user: AuthUser, eventId: string, valorProposto: number | null = null, now = new Date()): Promise<void> {
       const musician = await requireRole(user, "MUSICIAN", "Apenas músicos podem se inscrever em eventos.");
       assertProfileComplete(musician, "candidatar");
+      if (musician.visibilidadeReduzidaAte && musician.visibilidadeReduzidaAte > now) {
+        const ate = formatDateTime(musician.visibilidadeReduzidaAte, musician.uf ?? undefined);
+        throw new AppError(403, "VISIBILIDADE_REDUZIDA", `Por causa de uma desistência em cima da hora ou de uma ausência, você não pode se inscrever em novos eventos até ${ate}.`);
+      }
       const event = await events.findEvent(eventId);
       if (!event) throw naoEncontrado();
       const convidado = await events.hasInvite(eventId, user.id);
@@ -189,17 +209,15 @@ export function createEventService(deps: {
         throw new AppError(403, "EVENTO_INCOMPATIVEL", "Este evento não é compatível com a região e os estilos do seu perfil.");
       }
       if (await events.musicianHasConflict(user.id, eventId)) throw musicoOcupado();
-      const candidate = await events.insertCandidate(eventId, user.id, valorProposto === event.cache ? null : valorProposto);
+      const candidate = await events.insertCandidate(eventId, user.id, valorDaInscricao(valorProposto, event.cache));
       void notifier.newApplication(event, candidate.valorProposto);
     },
 
     async openDispute(user: AuthUser, eventId: string, motivo: string, now = new Date()): Promise<void> {
       const { event, party } = await findEventAsParty(user, eventId);
       const payment = await payments.findPayment(eventId);
-      if (!podeContestar(event, payment, now)) {
-        throw new AppError(409, "CONTESTACAO_INDISPONIVEL", "A contestação fica disponível depois do início do show e até o repasse do cachê.");
-      }
-      await events.openDispute({ eventId, abertaPor: user.id, motivo });
+      if (!podeContestar(event, payment, now)) throw contestacaoIndisponivel();
+      if (!(await events.openDispute({ eventId, abertaPor: user.id, motivo }))) throw contestacaoIndisponivel();
       void notifier.disputeOpened(event, party, motivo);
     },
 
@@ -207,22 +225,34 @@ export function createEventService(deps: {
       const dispute = await events.findDispute(disputeId);
       const event = dispute && (await events.findEvent(dispute.eventId));
       if (!dispute || !event) throw new AppError(404, "CONTESTACAO_NAO_ENCONTRADA", "Contestação não encontrada.");
-      if (!(await events.resolveDispute(disputeId, decisao, observacao))) {
-        throw new AppError(409, "CONTESTACAO_RESOLVIDA", "Esta contestação já foi resolvida.");
-      }
+      const resultado = await events.decideDispute(disputeId, decisao, observacao);
+      if (resultado === "NAO_ENCONTRADA") throw new AppError(404, "CONTESTACAO_NAO_ENCONTRADA", "Contestação não encontrada.");
+      if (resultado === "JA_DECIDIDA") throw new AppError(409, "CONTESTACAO_RESOLVIDA", "Esta contestação já foi decidida.");
       if (decisao === "PAGAR_MUSICO") {
         if (event.status === "CONTRATADO") await events.concludeEvent(event.id);
-        await payments.payout(event.id);
       } else {
-        await payments.refundHiring(event.id, "NAO_COMPARECIMENTO");
+        try {
+          await payments.refundHiring(event.id, "NAO_COMPARECIMENTO", disputeId);
+        } catch (error) {
+          await events.reopenDisputeWithoutRefund(disputeId).catch((falha: unknown) => console.error("Falha ao devolver a contestação para análise", disputeId, falha));
+          throw error;
+        }
+        if ((await events.findDispute(disputeId))?.status === "ABERTA") {
+          throw new AppError(409, "ESTORNO_RECUSADO", "A Asaas recusou o estorno, e a contestação voltou para análise.");
+        }
       }
       void notifier.disputeResolved(event, decisao, observacao);
     },
 
     async setFavorite(user: AuthUser, musicianId: string, favorite: boolean, now = new Date()): Promise<void> {
-      const contractor = await requireRole(user, "CONTRACTOR", "Apenas contratantes salvam músicos favoritos.");
-      if (favorite && !isPro(contractor.casaAte, now)) throw new AppError(403, "RECURSO_CASA", "Músicos favoritos fazem parte do Muve Casa.");
-      if (favorite && !(await events.hasAppliedToContractor(musicianId, user.id))) {
+      const [contratante, inscreveu] = await Promise.allSettled([
+        requireRole(user, "CONTRACTOR", "Apenas contratantes salvam músicos favoritos."),
+        favorite ? events.hasAppliedToContractor(musicianId, user.id) : Promise.resolve(true),
+      ]);
+      if (contratante.status === "rejected") throw contratante.reason;
+      if (favorite && !isPro(contratante.value.casaAte, now)) throw new AppError(403, "RECURSO_CASA", "Músicos favoritos fazem parte do Muve Casa.");
+      if (inscreveu.status === "rejected") throw inscreveu.reason;
+      if (favorite && !inscreveu.value) {
         throw new AppError(404, "MUSICO_NAO_ENCONTRADO", "Só é possível favoritar músicos que já se inscreveram nos seus eventos.");
       }
       await events.setFavorite(user.id, musicianId, favorite);
@@ -280,7 +310,7 @@ export function createEventService(deps: {
         throw new AppError(409, "PROPOSTA_INDISPONIVEL", "O valor só pode ser alterado enquanto a inscrição aguarda resposta.");
       }
       await payments.ensureNoActiveCheckout(eventId, now);
-      await events.updateCandidateProposal(candidate.id, valorProposto === event.cache ? null : valorProposto);
+      await events.updateCandidateProposal(candidate.id, valorDaInscricao(valorProposto, event.cache));
     },
 
     async proposeValue(user: AuthUser, candidateId: string, valor: number, now = new Date()): Promise<MessageRecord> {
@@ -301,7 +331,7 @@ export function createEventService(deps: {
       if (!(await events.answerProposal(messageId, aceitar ? "ACEITA" : "RECUSADA"))) {
         throw new AppError(409, "PROPOSTA_ENCERRADA", "Esta proposta já foi respondida ou substituída.");
       }
-      if (aceitar) await events.updateCandidateProposal(candidate.id, proposal.valor === event.cache ? null : proposal.valor);
+      if (aceitar) await events.updateCandidateProposal(candidate.id, valorDaInscricao(proposal.valor, event.cache));
       const texto = aceitar ? `Proposta de ${formatCurrency(proposal.valor!)} aceita. Esse é o valor da contratação.` : `Proposta de ${formatCurrency(proposal.valor!)} recusada.`;
       const message = await events.insertMessage({ candidateId, authorId: user.id, texto });
       void notifier.newMessage(event, candidate, user.id);
@@ -326,6 +356,9 @@ export function createEventService(deps: {
       if (candidate.status === "APROVADO") {
         throw new AppError(409, "JA_CONTRATADO", "Você já foi contratado para este evento. Para desistir, cancele a contratação.");
       }
+      if (event.status !== "ABERTO" || candidate.status !== "PENDENTE") {
+        throw new AppError(409, "INSCRICAO_ENCERRADA", "Esta inscrição não está mais aguardando resposta e continua no histórico.");
+      }
       if (!hasCancellationNotice(event.inicio, now)) {
         throw new AppError(409, "CANCELAMENTO_INDISPONIVEL", "Cancelamento indisponível (menos de 24h para o evento).");
       }
@@ -338,7 +371,6 @@ export function createEventService(deps: {
       if (event?.status !== "CONTRATADO" || !prazoEncerrado(event, now)) return;
       if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO" || (await events.findOpenDispute(eventId))) return;
       await events.concludeEvent(eventId);
-      await payments.payout(eventId);
     },
 
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
@@ -357,7 +389,6 @@ export function createEventService(deps: {
       if (event.status === "CONTRATADO" && !estornoPendente && !contestacao && prazoEncerrado(event, now)) {
         event = await events.concludeEvent(eventId);
       }
-      if ((event.status === "CONCLUIDO" || event.status === "CANCELADO") && !estornoPendente) await payments.payout(eventId);
 
       const [contratante, musico, endereco, payment, avaliou] = await Promise.all([
         event.contractorId ? accounts.findAccount(event.contractorId) : null,
@@ -366,6 +397,7 @@ export function createEventService(deps: {
         payments.findPayment(eventId),
         events.hasReviewed(eventId, user.id),
       ]);
+      const contestacaoResolvida = payment ? await events.findLatestResolvedDispute(eventId, payment.id) : null;
       const antesDoInicio = event.inicio > now;
 
       return {
@@ -398,7 +430,8 @@ export function createEventService(deps: {
           multaDescontada: payment.multaDescontada,
         },
         avaliou,
-        contestacao: contestacao && { motivo: contestacao.motivo, abertaPorMim: contestacao.abertaPor === user.id },
+        contestacao: contestacao && { motivo: contestacao.motivo, abertaPorMim: contestacao.abertaPor === user.id, status: contestacao.status },
+        contestacaoResolvida: contestacaoResolvida && { status: "RESOLVIDA" as const, decisao: contestacaoResolvida.decisao, resolvidaEm: contestacaoResolvida.resolvidaEm?.toISOString() ?? null },
         podeContestar: !contestacao && podeContestar(event, payment, now),
         naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && !prazoEncerrado(event, now) && !contestacao && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
@@ -429,7 +462,6 @@ export function createEventService(deps: {
       }
       await payments.ensurePaidForNoRefund(eventId);
       await events.cancelEvent(eventId);
-      await payments.payout(eventId);
       void notifier.hiringCancelled(event, "contratante", false);
       return { situacao: "SEM_ESTORNO" };
     },
@@ -448,6 +480,7 @@ export function createEventService(deps: {
       if (prazoEncerrado(event, now)) {
         throw new AppError(409, "PRAZO_ENCERRADO", "O prazo de 7 dias para registrar o não comparecimento terminou.");
       }
+      if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
       const status = await payments.refundHiring(eventId, "NAO_COMPARECIMENTO");
       return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
     },
@@ -460,13 +493,10 @@ export function createEventService(deps: {
       if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO") {
         throw new AppError(409, "ESTORNO_PENDENTE", "A confirmação do show fica suspensa até a resolução do estorno.");
       }
-      if (await events.findOpenDispute(eventId)) {
-        throw new AppError(409, "CONTESTACAO_ABERTA", "Há uma contestação aberta; o suporte vai decidir o resultado do show.");
-      }
+      if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
 
       const updated = await events.setConfirmation(eventId, party);
-      if (updated.status === "CONCLUIDO") await payments.payout(eventId);
-      else void notifier.completionConfirmed(updated, party);
+      if (updated.status !== "CONCLUIDO") void notifier.completionConfirmed(updated, party);
       return updated;
     },
 

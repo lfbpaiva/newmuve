@@ -161,10 +161,17 @@ export interface DisputeRecord {
   eventId: string;
   abertaPor: string | null;
   motivo: string;
-  status: "ABERTA" | "RESOLVIDA";
+  status: "ABERTA" | "AGUARDANDO_ESTORNO" | "RESOLVIDA";
   decisao: DecisaoContestacao | null;
   observacao: string | null;
   createdAt: Date;
+}
+
+export type PendingDisputeRecord = DisputeRecord & { status: "ABERTA" | "AGUARDANDO_ESTORNO" };
+
+export interface ResolvedDisputeRecord {
+  decisao: DecisaoContestacao;
+  resolvidaEm: Date | null;
 }
 
 export type MotivoRecusa = "CONTRATANTE" | "OUTRO_CONTRATADO" | "EVENTO_ALTERADO";
@@ -188,6 +195,27 @@ export interface PaymentRecord {
   pixQrCode: string | null;
   expiraEm: Date;
 }
+
+export type EstadoTentativa = "SOLICITANDO" | "PENDENTE" | "INCONCLUSIVA" | "EM_VERIFICACAO" | "CONCLUIDA" | "FALHOU" | "AUSENCIA_CONFIRMADA";
+
+export interface PayoutAttempt {
+  id: string;
+  paymentId: string;
+  origem: "ATUAL" | "LEGADO";
+  estado: EstadoTentativa;
+  referenciaExterna: string;
+  asaasTransferId: string | null;
+  solicitadaEm: Date;
+  verificacaoIniciadaEm: Date | null;
+}
+
+export const liberacaoRepasseSchema = z.object({
+  operador: z.string().trim().min(3, "Informe o nome de quem está fazendo a conferência.").max(120),
+});
+
+export const confirmacaoAusenciaSchema = liberacaoRepasseSchema.extend({
+  declaracao: z.string().max(500),
+});
 
 export function toCheckoutView(payment: PaymentRecord) {
   return {

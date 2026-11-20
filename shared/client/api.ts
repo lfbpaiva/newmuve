@@ -43,6 +43,57 @@ function waitDescription(seconds: number): string {
   return `${hours} hora${hours === 1 ? "" : "s"}`;
 }
 
+interface RespostaDaApi {
+  status: number;
+  ok: boolean;
+  cabecalho(nome: string): string | null;
+  texto(): Promise<string>;
+}
+
+interface CorpoDaResposta {
+  error?: { message?: string; code?: string };
+}
+
+interface Envio {
+  method: string;
+  headers: Record<string, string>;
+  body: FormData | string | undefined;
+  signal: AbortSignal;
+}
+
+async function enviarPorFetch(url: string, envio: Envio): Promise<RespostaDaApi> {
+  const response = await fetch(url, envio);
+  return { status: response.status, ok: response.ok, cabecalho: (nome) => response.headers.get(nome), texto: () => response.text() };
+}
+
+function enviarFormularioPorXhr(url: string, envio: Envio): Promise<RespostaDaApi> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(envio.method, url);
+    for (const [nome, valor] of Object.entries(envio.headers)) xhr.setRequestHeader(nome, valor);
+    xhr.onload = () => resolve({
+      status: xhr.status,
+      ok: xhr.status >= 200 && xhr.status < 300,
+      cabecalho: (nome) => xhr.getResponseHeader(nome),
+      texto: async () => xhr.responseText,
+    });
+    xhr.onerror = () => reject(new TypeError("Falha de rede no envio do formulário."));
+    xhr.onabort = () => reject(new Error("Envio do formulário cancelado."));
+    envio.signal.addEventListener("abort", () => xhr.abort());
+    xhr.send(envio.body ?? null);
+  });
+}
+
+function lerJson(texto: string): CorpoDaResposta | null {
+  try {
+    return JSON.parse(texto) as CorpoDaResposta;
+  } catch {
+    return null;
+  }
+}
+
+const deveEnviarPorXhr = (body: unknown) => body instanceof FormData && typeof XMLHttpRequest !== "undefined";
+
 export async function apiRequest<T = void>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body } = options;
   const token = options.accessToken ?? (await supabase().auth.getSession()).data.session?.access_token;
@@ -51,8 +102,9 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body && !(body instanceof FormData)) headers["Content-Type"] = "application/json";
 
-  let response: Response;
-  let payload: { error?: { message?: string; code?: string } } | null = null;
+  let response: RespostaDaApi;
+  let payload: CorpoDaResposta | null = null;
+  let corpoVazio = false;
   const controller = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
@@ -60,34 +112,30 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
     controller.abort();
   }, options.timeoutMs ?? (body instanceof FormData ? 120_000 : 30_000));
   try {
-    response = await fetch(`${clientConfig().apiUrl}${path}`, {
-      method,
-      headers,
-      body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    });
+    const envio: Envio = { method, headers, body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined, signal: controller.signal };
+    const url = `${clientConfig().apiUrl}${path}`;
+    response = deveEnviarPorXhr(body) ? await enviarFormularioPorXhr(url, envio) : await enviarPorFetch(url, envio);
     if (response.status !== 204) {
-      try {
-        payload = await response.json();
-      } catch (error) {
-        if (!(error instanceof SyntaxError) || timedOut) throw error;
-      }
+      const texto = await response.texto();
+      corpoVazio = texto.trim() === "";
+      payload = corpoVazio ? null : lerJson(texto);
     }
-  } catch {
+  } catch (error) {
     if (timedOut) throw new ApiError("O servidor demorou para responder. Tente novamente.", 0, "TEMPO_ESGOTADO");
+    console.warn("Falha de rede ao chamar a API", path, error instanceof Error ? error.message : "erro desconhecido");
     throw new ApiError("Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.", 0, "SEM_CONEXAO");
   } finally {
     clearTimeout(timeout);
   }
 
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204 || (response.ok && corpoVazio)) return undefined as T;
 
   if (!response.ok) {
     throw new ApiError(
       payload?.error?.message ?? httpErrorMessage(response.status),
       response.status,
       payload?.error?.code ?? "ERRO_DESCONHECIDO",
-      response.status === 429 ? retryAfterSeconds(response.headers.get("Retry-After")) : null,
+      response.status === 429 ? retryAfterSeconds(response.cabecalho("Retry-After")) : null,
     );
   }
   if (payload === null) {

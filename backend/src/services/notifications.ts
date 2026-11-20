@@ -225,7 +225,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       await notify(
         event.musicoContratadoId,
         `Repasse não concluído: "${event.titulo}"`,
-        "A transferência do cachê falhou. Confira sua chave Pix em Editar perfil; tentaremos de novo quando o comprovante for aberto.",
+        "A transferência do cachê falhou. Confira sua chave Pix em Editar perfil e fale com o suporte da Muve.",
         hiringLink(event),
       );
     },
@@ -235,7 +235,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       await notify(
         musicianId,
         multa > 0 ? `Multa por ausência: "${event.titulo}"` : `Desistência em cima da hora: "${event.titulo}"`,
-        `${multa > 0 ? `Foi registrada uma multa de ${formatCurrency(multa)}, que será descontada do seu próximo cachê. ` : ""}Até ${quando}, novos eventos não aparecem no seu início. Se discordar, escreva para ${EMAIL_SUPORTE}.`,
+        `${multa > 0 ? `Foi registrada uma multa de ${formatCurrency(multa)}, que será descontada do seu próximo cachê. ` : ""}A penalidade é de 15 dias: até ${quando}, você não verá novos eventos no feed e não poderá fazer novas inscrições, nem por convite, mesmo com o Muve Pro. As inscrições que você já fez continuam valendo. Se discordar, escreva para ${EMAIL_SUPORTE}.`,
         hiringLink(event),
       );
     },
@@ -260,6 +260,19 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
         notify(event.contractorId, `Contestação resolvida: "${event.titulo}"`, texto, hiringLink(event)),
         notify(event.musicoContratadoId, `Contestação resolvida: "${event.titulo}"`, texto, hiringLink(event)),
       ]);
+    },
+
+    async disputeReopened(event: EventRecord): Promise<void> {
+      const texto = "A Asaas não concluiu o estorno decidido pelo suporte. A contestação voltou para análise e o repasse continua suspenso até uma nova decisão.";
+      await Promise.all([
+        notify(event.contractorId, `Contestação em análise de novo: "${event.titulo}"`, texto, hiringLink(event)),
+        notify(event.musicoContratadoId, `Contestação em análise de novo: "${event.titulo}"`, texto, hiringLink(event)),
+      ]);
+      await mailer.send({
+        to: EMAIL_SUPORTE,
+        subject: `Muve — estorno de contestação não concluído em "${event.titulo}"`,
+        text: `Evento ${event.id} (${when(event)}).\nO estorno decidido na contestação foi negado ou desfeito pela Asaas, e a contestação voltou a ficar aberta.\n\nPara decidir de novo: node scripts/resolver-contestacao.mjs`,
+      }).catch((error: unknown) => console.error("Falha ao avisar o suporte", error));
     },
 
     async planActivated(userId: string, plano: "PRO" | "CASA", ate: Date): Promise<void> {

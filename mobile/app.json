@@ -6,8 +6,7 @@
     "scheme": "muve",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0a0a0c",
-    "newArchEnabled": true,
+    "backgroundColor": "#09090d",
     "android": {
       "package": "br.com.muve.app",
       "adaptiveIcon": {
@@ -28,9 +27,9 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 220,
-          "backgroundColor": "#0a0a0c"
+          "image": "./assets/splash-vazio.png",
+          "imageWidth": 64,
+          "backgroundColor": "#09090d"
         }
       ],
       [
@@ -44,9 +43,10 @@
       [
         "expo-notifications",
         {
-          "color": "#6d4aff"
+          "color": "#7c4de1"
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": false

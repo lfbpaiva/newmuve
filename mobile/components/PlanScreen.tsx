@@ -1,5 +1,5 @@
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { errorMessage } from "../../shared/client/api.ts";
 import { useAuth } from "../../shared/client/AuthContext.tsx";
@@ -9,7 +9,7 @@ import { camposFaltantes, descreverFaltantes, isPro } from "../../shared/dominio
 import { confirmAction } from "../lib/confirm";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
-import { Alert, Button, ErrorState, Heading, Icon, Loading, Screen, Snackbar, type IconName } from "./ui";
+import { Alert, Button, ErrorState, Icon, Loading, Pill, Reveal, Screen, Snackbar, Surface, type IconName } from "./ui";
 
 export interface Beneficio {
   icon: IconName;
@@ -24,6 +24,7 @@ export function PlanScreen({ nome, preco, beneficios, observacao }: { nome: stri
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState("");
+  const hideSnack = useCallback(() => setSnack(""), []);
   const faltando = camposFaltantes(me, "pagar");
   const ativoNoPerfil = me.role === "MUSICIAN" ? me.proAte : me.casaAte;
   const aguardando = status?.assinatura?.status === "AGUARDANDO_PAGAMENTO";
@@ -75,17 +76,26 @@ export function PlanScreen({ nome, preco, beneficios, observacao }: { nome: stri
 
   return <View style={styles.screen}>
     <Screen>
-      <Heading size="display" title={nome} subtitle={`${formatCurrency(preco)} por mês, no Pix. Cancele quando quiser.`}/>
+      <Reveal><Surface destaque>
+        <View style={[styles.row, { gap: space.sm }]}>
+          <View style={{ width: 32, height: 32, borderRadius: radius.sm, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="flash" size={16} color={colors.accentText}/></View>
+          <Text style={type.title} accessibilityRole="header">{nome}</Text>
+          {ativo ? <Pill text="Ativo" tone="success"/> : null}
+        </View>
+        <View style={[styles.row, { alignItems: "flex-end", gap: space.xs }]}>
+          <Text style={[type.stat, { fontSize: 44, lineHeight: 48 }]}>{formatCurrency(preco)}</Text>
+          <Text style={[type.bodySmall, { marginBottom: 8 }]}>/mês no Pix</Text>
+        </View>
+        <View style={{ gap: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.hairline }}>
+          {beneficios.map((b) => <View key={b.titulo} style={[styles.row, { gap: space.md, alignItems: "flex-start" }]}>
+            <View style={{ width: 32, height: 32, borderRadius: radius.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.hairline, alignItems: "center", justifyContent: "center" }}><Icon name={b.icon} size={16} color={colors.accentText}/></View>
+            <View style={{ flex: 1, gap: 2 }}><Text style={type.titleSmall}>{b.titulo}</Text><Text style={type.bodySmall}>{b.texto}</Text></View>
+          </View>)}
+        </View>
+      </Surface></Reveal>
       {ativo && <Alert tone="success">Seu {nome} está ativo até {new Date(status.ativoAte!).toLocaleDateString("pt-BR")}{renovando ? ", com renovação mensal." : ". A renovação foi cancelada."}</Alert>}
 
-      <View style={{ gap: space.md }}>
-        {beneficios.map((b) => <View key={b.titulo} style={[styles.card, styles.row, { gap: space.md, alignItems: "flex-start" }]}>
-          <Icon name={b.icon} size={22} color={colors.accentText}/>
-          <View style={{ flex: 1, gap: 2 }}><Text style={type.titleSmall}>{b.titulo}</Text><Text style={type.bodySmall}>{b.texto}</Text></View>
-        </View>)}
-      </View>
-
-      <Text style={type.bodySmall}>{observacao}</Text>
+      <Text style={type.bodySmall}>{observacao} Cancele quando quiser.</Text>
 
       {assinatura?.cobranca && <View style={[styles.cardRaised, { alignItems: "center", gap: space.md }]}>
         <Text style={type.title}>{ativo ? "Próxima mensalidade" : "Pague para ativar"}</Text>
@@ -102,6 +112,6 @@ export function PlanScreen({ nome, preco, beneficios, observacao }: { nome: stri
       {(!assinatura || assinatura.status === "CANCELADA") && <Button title={ativo ? "Voltar a renovar" : `Assinar por ${formatCurrency(preco)}/mês`} icon="flash" loading={busy} disabled={faltando.length > 0} onPress={() => void run(subscribePlan)}/>}
       {assinatura && assinatura.status !== "CANCELADA" && <Button title="Cancelar renovação" variant="text" loading={busy} onPress={cancelar}/>}
     </Screen>
-    {snack ? <Snackbar message={snack} onHide={() => setSnack("")}/> : null}
+    {snack ? <Snackbar message={snack} onHide={hideSnack}/> : null}
   </View>;
 }

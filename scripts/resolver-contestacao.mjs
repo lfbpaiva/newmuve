@@ -15,16 +15,38 @@ if (!id) {
   const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const { data, error } = await admin
     .from("disputes")
-    .select("id, motivo, created_at, aberta_por, event:events(titulo, inicio, contractor_id, musico_contratado_id)")
-    .eq("status", "ABERTA")
+    .select("id, event_id, status, motivo, observacao, created_at, aberta_por, event:events(titulo, inicio, contractor_id, musico_contratado_id)")
+    .in("status", ["ABERTA", "AGUARDANDO_ESTORNO"])
     .order("created_at");
   if (error) throw error;
-  if (data.length === 0) console.log("Nenhuma contestação aberta.");
+  if (data.length === 0) console.log("Nenhuma contestação aberta ou aguardando estorno.");
   for (const disputa of data) {
     const quem = disputa.aberta_por === disputa.event?.contractor_id ? "contratante" : "músico";
-    console.log(`\n${disputa.id}\n  Evento: ${disputa.event?.titulo} (${new Date(disputa.event?.inicio).toLocaleString("pt-BR")})\n  Aberta pelo ${quem} em ${new Date(disputa.created_at).toLocaleString("pt-BR")}\n  Motivo: ${disputa.motivo}`);
+    console.log(`\n${disputa.id} [${disputa.status}]\n  Evento: ${disputa.event?.titulo} (${new Date(disputa.event?.inicio).toLocaleString("pt-BR")})\n  Aberta pelo ${quem} em ${new Date(disputa.created_at).toLocaleString("pt-BR")}\n  Motivo: ${disputa.motivo}`);
+    if (disputa.status === "ABERTA") {
+      console.log("  Situação: em análise, sem decisão. Decida com pagar ou devolver.");
+      continue;
+    }
+    const pagamento = await admin
+      .from("payments")
+      .select("status, refund_status")
+      .eq("event_id", disputa.event_id)
+      .eq("status", "PAGO")
+      .maybeSingle();
+    if (pagamento.error) throw pagamento.error;
+    const estorno = pagamento.data?.refund_status ?? null;
+    console.log(`  Decisão já tomada: devolver ao contratante.${disputa.observacao ? ` Observação: ${disputa.observacao}` : ""}`);
+    if (!pagamento.data) {
+      console.log("  Situação: não há pagamento confirmado para estornar. Não retome; concilie manualmente.");
+    } else if (estorno === "PROCESSANDO" || estorno === "CONFIRMADO") {
+      console.log(`  Situação: estorno ${estorno === "PROCESSANDO" ? "pedido e aguardando a Asaas" : "confirmado"}. Nada a fazer; a contestação é encerrada quando a Asaas confirmar.`);
+    } else {
+      console.log(`  Situação: estorno não pedido (estorno: ${estorno ?? "nenhum"}). Pode ser retomada com: node scripts/resolver-contestacao.mjs ${disputa.id} devolver`);
+    }
   }
-  console.log("\nPara decidir: node scripts/resolver-contestacao.mjs <id> pagar|devolver \"observação opcional\"");
+  console.log(`\nPara decidir uma contestação em análise: node scripts/resolver-contestacao.mjs <id> pagar|devolver "observação opcional"
+Para retomar uma devolução sem estorno pedido: node scripts/resolver-contestacao.mjs <id> devolver
+Uma contestação aguardando estorno não aceita decisão diferente; a API recusa.`);
   process.exit(0);
 }
 

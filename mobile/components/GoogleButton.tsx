@@ -33,9 +33,9 @@ export function GoogleButton({ onError }: { onError: (message: string) => void }
 
   return <View style={{ gap: space.md }}>
     <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
-      <View style={{ flex: 1, height: 1, backgroundColor: colors.line }}/>
+      <View style={{ flex: 1, height: 1, backgroundColor: colors.hairline }}/>
       <Text style={type.labelSmall}>ou</Text>
-      <View style={{ flex: 1, height: 1, backgroundColor: colors.line }}/>
+      <View style={{ flex: 1, height: 1, backgroundColor: colors.hairline }}/>
     </View>
     <Button title="Continuar com Google" variant="outlined" icon="logo-google" loading={loading} onPress={() => void entrar()}/>
   </View>;

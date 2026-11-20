@@ -67,6 +67,7 @@ export const horarioLocalDoEvento = (data: string, horario: string, uf: string) 
 export const TERMOS_VERSAO = "2026-10-29";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
+export const CHECKOUT_TEMPO_LIMITE_APP_MS = 60_000;
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const onlyDigits = (value: string) => value.replace(/\D/g, "");
@@ -74,6 +75,9 @@ export const onlyDigits = (value: string) => value.replace(/\D/g, "");
 export const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) && email.trim().length <= 254;
 
 export const isValidCache = (value: number) => value >= CACHE_MINIMO;
+
+export const valorDaInscricao = (valorProposto: number | null, cacheOferecido: number): number | null =>
+  valorProposto === cacheOferecido ? null : valorProposto;
 
 export const isValidUrl = (value: string) => /^https?:\/\/\S+\.\S+$/.test(value.trim()) && value.trim().length <= 300;
 
@@ -179,6 +183,21 @@ export function calcularCobranca(cache: number, percentual: number = COMISSAO_PE
   const centavos = Math.round(cache * 100);
   const comissao = Math.round((centavos * percentual) / 100);
   return { cache: centavos / 100, comissao: comissao / 100, total: (centavos + comissao) / 100 };
+}
+
+export interface EstimativaDoContratante {
+  cache: number;
+  comissao: number;
+  total: number;
+  percentual: number;
+  casaAte: Date | null;
+}
+
+export function estimarCobrancaDoContratante(valor: number | null | undefined, casaAte: Date | string | null | undefined, now = new Date()): EstimativaDoContratante | null {
+  if (typeof valor !== "number" || !Number.isFinite(valor) || valor <= 0) return null;
+  const percentual = comissaoPercentual(casaAte, now);
+  const { cache, comissao, total } = calcularCobranca(valor, percentual);
+  return { cache, comissao, total, percentual, casaAte: casaAte && isPro(casaAte, now) ? new Date(casaAte) : null };
 }
 
 export type AcaoPerfil = "feed" | "candidatar" | "criarEvento" | "pagar";
