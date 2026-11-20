@@ -133,7 +133,11 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | CEP do evento | Campo opcional no cadastro do evento: consulta o ViaCEP e preenche estado, cidade e rua. O CEP não é gravado |
 | Entrada | E-mail e senha ou conta Google; quem entra pelo Google escolhe o tipo de conta e aceita os Termos na primeira vez. Entrar com senha, criar conta, recuperar a senha e excluir uma conta com senha exigem a verificação anti-robô (Cloudflare Turnstile), conferida pelo Supabase Auth, quando ela está configurada |
 | Dados privados | CPF/CNPJ e chave Pix nunca aparecem a terceiros; endereço e telefone só depois da contratação |
-| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria |
+| Exclusão de conta | Bloqueada com show contratado, cachê a repassar ou estorno em processamento. Eventos abertos do contratante são excluídos e os inscritos avisados; shows passados continuam no histórico do músico; as avaliações que a pessoa deixou ficam, sem autoria. Cobrança Pix ainda no prazo também bloqueia; a vencida é cancelada na Asaas antes de apagar os eventos |
+| Chave Pix | Trocar uma chave já cadastrada exige a senha da conta (e o captcha, quando ligado) e gera um aviso ao músico. A primeira chave não pede senha |
+| Valor no pagamento | A tela de pagamento mostra o valor da inscrição (o proposto pelo músico ou o cachê do evento). O app envia esse valor, e a API recusa a cobrança com `VALOR_ALTERADO` se ele mudou depois da conferência |
+| Valores digitados | Vírgula ou ponto valem como decimal (150,50 ou 150.50); ponto seguido de três dígitos é milhar (1.500). O que não dá para ler sem adivinhar é recusado |
+| Senha e imagens | Senha com pelo menos 8 caracteres. Imagens enviadas precisam ser PNG, JPEG ou WebP de verdade, conferidas pelo conteúdo do arquivo |
 
 ## 5. Notificações
 

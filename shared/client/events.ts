@@ -378,7 +378,7 @@ function withImage(dados: EventData, imagem: UploadFile | null): FormData {
   return form;
 }
 
-export function createEvent(dados: EventData, imagem: UploadFile): Promise<{ id: string }> {
+export function createEvent(dados: EventData, imagem: UploadFile): Promise<{ id: string; semanasCriadas?: number; semanasPedidas?: number }> {
   return apiRequest("/events", { method: "POST", body: withImage(dados, imagem) });
 }
 

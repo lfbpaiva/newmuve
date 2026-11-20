@@ -139,6 +139,18 @@ export function normalizeChavePix(tipo: string, chave: string): string {
   return chave.trim().toLowerCase();
 }
 
+const ASSINATURAS_DE_IMAGEM: Record<string, (bytes: Uint8Array) => boolean> = {
+  "image/png": (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+  "image/jpeg": (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  "image/webp": (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+};
+
+export async function conteudoDeImagemConfere(file: Blob): Promise<boolean> {
+  const confere = ASSINATURAS_DE_IMAGEM[file.type];
+  if (!confere) return false;
+  return confere(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
+}
+
 export function imageProblem(file: { type: string; size: number }): string | null {
   if (!(IMAGEM_TIPOS_ACEITOS as readonly string[]).includes(file.type)) {
     return "Formato inválido. Use PNG, JPEG ou WebP.";

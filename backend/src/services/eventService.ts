@@ -117,7 +117,7 @@ export function createEventService(deps: {
   const contact = (account: Account | null) => account && { nome: account.nome, telefone: account.telefone ?? "", fotoPerfilUrl: account.fotoPerfilUrl ?? "" };
 
   return {
-    async createEvent(user: AuthUser, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord> {
+    async createEvent(user: AuthUser, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord & { semanasCriadas: number }> {
       const contractor = await requireRole(user, "CONTRACTOR", "Apenas contratantes podem criar eventos.");
       assertProfileComplete(contractor, "criarEvento");
       assertFuture(input.inicio, now);
@@ -147,7 +147,7 @@ export function createEventService(deps: {
           break;
         }
       }
-      return criados[0];
+      return { ...criados[0], semanasCriadas: criados.length };
     },
 
     async updateEvent(user: AuthUser, eventId: string, input: EventInput, imagem: File | null, now = new Date()): Promise<EventRecord> {

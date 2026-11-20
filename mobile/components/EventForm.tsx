@@ -10,6 +10,7 @@ import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
 import { ImageField, LocationFields } from "./fields";
 import { Alert, Button, Checkbox, Chips, Field, Grupo, Select } from "./ui";
+import { avisar } from "../lib/confirm";
 
 type EditableEvent = EventItem & { endereco: string };
 
@@ -102,7 +103,11 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
     };
     setSubmitting(true);
     try {
-      const saved = event ? await updateEvent(event.id, dados, imagem) : await createEvent(dados, imagem!);
+      if (event) return onSaved((await updateEvent(event.id, dados, imagem)).id);
+      const saved = await createEvent(dados, imagem!);
+      if (saved.semanasCriadas && saved.semanasPedidas && saved.semanasCriadas < saved.semanasPedidas) {
+        return avisar("Recorrência incompleta", `Foram criadas ${saved.semanasCriadas} de ${saved.semanasPedidas} semanas. Crie as que faltam a partir da última data.`, () => onSaved(saved.id));
+      }
       onSaved(saved.id);
     } catch (e) {
       setError(errorMessage(e));

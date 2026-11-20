@@ -131,6 +131,7 @@ export async function apiRequest<T = void>(path: string, options: RequestOptions
   if (response.status === 204 || (response.ok && corpoVazio)) return undefined as T;
 
   if (!response.ok) {
+    if (response.status === 401 && token && !options.accessToken) void supabase().auth.signOut({ scope: "local" }).catch(() => {});
     throw new ApiError(
       payload?.error?.message ?? httpErrorMessage(response.status),
       response.status,

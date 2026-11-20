@@ -46,8 +46,8 @@ const registrarCheckout = (registro: Record<string, unknown>, falha: boolean) =>
   else console.info(linha);
 };
 
-const ESPERA_VERIFICACAO_MS = 24 * 60 * 60 * 1000;
-const ESPERA_CONFIRMACAO_MS = 60 * 60 * 1000;
+export const ESPERA_VERIFICACAO_MS = 24 * 60 * 60 * 1000;
+export const ESPERA_CONFIRMACAO_MS = 60 * 60 * 1000;
 const ESTADOS_SEM_RESPOSTA = ["INCONCLUSIVA", "EM_VERIFICACAO"];
 
 const RECUSAS_DA_LIBERACAO: Record<string, string> = {

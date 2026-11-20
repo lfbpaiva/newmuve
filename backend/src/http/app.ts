@@ -230,8 +230,9 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.post("/events", limites.eventos, async (c) => {
     const { dados, file } = await readMultipart(c, "imagem");
-    const event = await events.createEvent(c.get("user"), eventSchema.parse(dados), file);
-    return c.json({ id: event.id }, 201);
+    const input = eventSchema.parse(dados);
+    const event = await events.createEvent(c.get("user"), input, file);
+    return c.json({ id: event.id, semanasCriadas: event.semanasCriadas, semanasPedidas: input.repetirSemanas }, 201);
   });
 
   app.patch("/events/:id", limites.eventos, async (c) => {

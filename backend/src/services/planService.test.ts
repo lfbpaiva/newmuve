@@ -75,6 +75,25 @@ describe("assinaturas Muve Pro e Muve Casa", () => {
     expect(t.world.notifications.filter((n) => n.userId === "c1").map((n) => n.titulo)).toEqual(["Muve Casa ativo"]);
   });
 
+  it("assinar de novo enquanto a primeira aguarda pagamento não cria outra cobrança na Asaas", async () => {
+    await t.service.subscribe(musico, NOW);
+    const assinaturas = t.world.asaasSubscriptions.size;
+
+    await expect(t.service.subscribe(musico, NOW)).resolves.toMatchObject({ assinatura: { status: "AGUARDANDO_PAGAMENTO" } });
+    expect(t.world.asaasSubscriptions.size).toBe(assinaturas);
+  });
+
+  it("cancelar sem assinatura responde SEM_ASSINATURA", async () => {
+    await expect(t.service.cancel(contratante)).rejects.toMatchObject({ code: "SEM_ASSINATURA" });
+  });
+
+  it("aviso de uma assinatura desconhecida não ativa nenhum plano", async () => {
+    await t.service.handleWebhook("sub_que_nao_existe");
+
+    expect(t.world.accounts.get("m1")?.proAte ?? null).toBeNull();
+    expect(t.world.accounts.get("c1")?.casaAte ?? null).toBeNull();
+  });
+
   it("cancelar encerra a renovação, mas mantém o plano até o fim do período pago", async () => {
     await t.service.subscribe(musico, NOW);
     const subscription = await t.pagarPrimeira();
