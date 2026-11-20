@@ -2,6 +2,7 @@ import { camposFaltantes, descreverFaltantes, EMAIL_SUPORTE, imageProblem, TERMO
 import type { Account, CompletarPerfilInput, DeleteAccountInput, ProfileChanges, Role, SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import type { Inbox, PushGateway } from "./notifications.ts";
+import { seguirApesarDe } from "./falhas.ts";
 
 export interface AccountStore {
   documentExists(documento: string, exceptUserId?: string): Promise<boolean>;
@@ -136,10 +137,10 @@ export function createAccountService(deps: {
       try {
         await store.updateProfile(user.id, role, { ...changes, fotoPerfilUrl });
       } catch (error) {
-        await images.removeByUrl("avatars", fotoPerfilUrl).catch(() => {});
+        await images.removeByUrl("avatars", fotoPerfilUrl).catch(seguirApesarDe("Foto nova não removida depois da falha", undefined));
         throw error;
       }
-      if (current.fotoPerfilUrl) await images.removeByUrl("avatars", current.fotoPerfilUrl).catch(() => {});
+      if (current.fotoPerfilUrl) await images.removeByUrl("avatars", current.fotoPerfilUrl).catch(seguirApesarDe("Foto antiga não removida", undefined));
       await avisarTrocaDaChave();
     },
 
@@ -159,8 +160,8 @@ export function createAccountService(deps: {
       const account = await store.findAccount(user.id);
       if (account) await deps.releaseAccount(user, account.role);
       await auth.deleteUser(user.id);
-      await images.removeAllOf("avatars", user.id).catch(() => {});
-      await images.removeAllOf("event-banners", user.id).catch(() => {});
+      await images.removeAllOf("avatars", user.id).catch(seguirApesarDe("Fotos da conta excluída não removidas", undefined));
+      await images.removeAllOf("event-banners", user.id).catch(seguirApesarDe("Capas da conta excluída não removidas", undefined));
     },
   };
 }

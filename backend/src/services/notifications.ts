@@ -3,6 +3,7 @@ import { formatCurrency, formatDateTime } from "../../../shared/formato.ts";
 import type { CandidateRecord, EventRecord } from "../domain/event.ts";
 import type { AccountStore } from "./accountService.ts";
 import type { EventStore } from "./ports.ts";
+import { seguirApesarDe } from "./falhas.ts";
 
 export interface Mailer {
   send(message: { to: string; subject: string; text: string }): Promise<void>;
@@ -55,7 +56,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
 
   return {
     async hiringConfirmed(eventId: string, cache: number): Promise<void> {
-      const event = await events.findEvent(eventId).catch(() => null);
+      const event = await events.findEvent(eventId).catch(seguirApesarDe("Evento do aviso de contratação não encontrado", null));
       if (!event) return;
       const others = (await events.listCandidates(eventId).catch(() => [] as CandidateRecord[])).filter((c) => c.motivoRecusa === "OUTRO_CONTRATADO");
       await Promise.all([
@@ -83,7 +84,7 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
 
     async hiringCancelled(event: EventRecord, cancelledBy: "contratante" | "musico", refunded: boolean): Promise<void> {
       if (cancelledBy === "musico") {
-        const reopened = await events.findEvent(event.id).catch(() => null);
+        const reopened = await events.findEvent(event.id).catch(seguirApesarDe("Evento do aviso de cancelamento não encontrado", null));
         const back = (await events.listCandidates(event.id).catch(() => [] as CandidateRecord[])).filter((c) => c.status === "PENDENTE");
         await Promise.all([
           notify(

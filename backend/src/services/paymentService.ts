@@ -5,6 +5,7 @@ import { AppError } from "../domain/errors.ts";
 import { assertProfileComplete, type AccountStore, type AuthUser } from "./accountService.ts";
 import type { Notifier } from "./notifications.ts";
 import { COBRANCA_REMOVIDA_NA_ASAAS, cobrancaQuitada, type AsaasGateway, type AsaasPayment, type AsaasTransfer, type BuscaDeTransferencias, type ContextoAsaas, type EventStore, type PaymentStore } from "./ports.ts";
+import { seguirApesarDe } from "./falhas.ts";
 
 export const CHECKOUT_MARGEM_DO_APP_MS = 10_000;
 export const CHECKOUT_ORCAMENTO_MS = CHECKOUT_TEMPO_LIMITE_APP_MS - CHECKOUT_MARGEM_DO_APP_MS;
@@ -281,7 +282,7 @@ export function createPaymentService(deps: {
       await undoFailedRefund(claimed, previous, error);
       return;
     }
-    await atualizarEstorno(claimed).catch(() => {});
+    await atualizarEstorno(claimed).catch(seguirApesarDe("Estorno de pagamento fora de hora sem confirmação", undefined));
   }
 
   async function confirm(asaasPaymentId: string): Promise<void> {
@@ -470,7 +471,7 @@ export function createPaymentService(deps: {
       if (!evento.value || evento.value.contractorId !== user.id) throw new AppError(404, "EVENTO_NAO_ENCONTRADO", "Evento não encontrado.");
       if (atrasados.status === "rejected") throw atrasados.reason;
       if (atrasados.value.length > 0) {
-        for (const late of atrasados.value) await refundLatePayment(late).catch(() => {});
+        for (const late of atrasados.value) await refundLatePayment(late).catch(seguirApesarDe("Estorno de pagamento fora de hora não solicitado", undefined));
         return syncPending(eventId, now);
       }
       if (ultimo.status === "rejected") throw ultimo.reason;
@@ -529,10 +530,10 @@ export function createPaymentService(deps: {
       } catch (error) {
         console.error("Falha no repasse do pagamento", payment.id, error instanceof AppError ? error.code : error);
         if (transferRequested && transferMayExist(error)) {
-          await payments.markAttemptInconclusive(tentativaId).catch(() => false);
+          await payments.markAttemptInconclusive(tentativaId).catch(seguirApesarDe("Tentativa de repasse não marcada como inconclusiva", false));
           return;
         }
-        if (await payments.failAttempt(tentativaId, null).catch(() => false)) await warnPayout(payment.id, false).catch(() => {});
+        if (await payments.failAttempt(tentativaId, null).catch(seguirApesarDe("Tentativa de repasse não encerrada como falha", false))) await warnPayout(payment.id, false).catch(seguirApesarDe("Aviso de repasse com falha não enviado", undefined));
         return;
       }
 
@@ -654,7 +655,7 @@ export function createPaymentService(deps: {
           ? error
           : new AppError(503, "ESTORNO_INDISPONIVEL", "Não foi possível solicitar o estorno agora. A contratação continua ativa; tente novamente em instantes.");
       }
-      const latest = await atualizarEstorno(claimed, false).catch(() => claimed);
+      const latest = await atualizarEstorno(claimed, false).catch(seguirApesarDe("Situação do estorno não atualizada", claimed));
       return latest.status === "ESTORNADO" ? "ESTORNADO" : "PROCESSANDO";
     },
 

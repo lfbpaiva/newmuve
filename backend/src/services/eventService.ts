@@ -7,6 +7,7 @@ import { assertProfileComplete, type AccountStore, type AuthUser, type ImageStor
 import type { Notifier } from "./notifications.ts";
 import type { PaymentService } from "./paymentService.ts";
 import type { EventStore } from "./ports.ts";
+import { seguirApesarDe } from "./falhas.ts";
 
 const prazoEncerrado = (event: EventRecord, now: Date) => now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS;
 
@@ -81,10 +82,10 @@ export function createEventService(deps: {
     const imagemUrl = await images.upload("event-banners", user.id, imagem);
     try {
       const updated = await events.updateEvent(current.id, { ...input, imagemUrl });
-      await images.removeByUrl("event-banners", current.imagemUrl).catch(() => {});
+      await images.removeByUrl("event-banners", current.imagemUrl).catch(seguirApesarDe("Capa antiga do evento não removida", undefined));
       return updated;
     } catch (error) {
-      await images.removeByUrl("event-banners", imagemUrl).catch(() => {});
+      await images.removeByUrl("event-banners", imagemUrl).catch(seguirApesarDe("Capa nova do evento não removida depois da falha", undefined));
       throw error;
     }
   }
@@ -128,7 +129,7 @@ export function createEventService(deps: {
       }
 
       const envios = await Promise.allSettled(Array.from({ length: input.repetirSemanas }, () => images.upload("event-banners", user.id, imagem)));
-      const descartar = (urls: string[]) => Promise.all(urls.map((url) => images.removeByUrl("event-banners", url).catch(() => {})));
+      const descartar = (urls: string[]) => Promise.all(urls.map((url) => images.removeByUrl("event-banners", url).catch(seguirApesarDe("Capa da recorrência não removida", undefined))));
       const criados: EventRecord[] = [];
       for (let semana = 0; semana < envios.length; semana++) {
         const envio = envios[semana];
@@ -181,7 +182,7 @@ export function createEventService(deps: {
         await events.cancelEvent(eventId);
       } else {
         await events.deleteEvent(eventId);
-        await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
+        await images.removeByUrl("event-banners", event.imagemUrl).catch(seguirApesarDe("Capa do evento excluído não removida", undefined));
       }
       if (pending.length > 0) void notifier.eventDeleted(event, pending);
     },
@@ -279,7 +280,7 @@ export function createEventService(deps: {
         if (role === "CONTRACTOR" && event.status === "ABERTO") {
           const pending = (await events.listCandidates(event.id)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);
           await events.deleteEvent(event.id);
-          await images.removeByUrl("event-banners", event.imagemUrl).catch(() => {});
+          await images.removeByUrl("event-banners", event.imagemUrl).catch(seguirApesarDe("Capa do evento excluído não removida", undefined));
           if (pending.length > 0) void notifier.eventDeleted(event, pending);
         }
         if (role === "MUSICIAN" && event.status === "ABERTO") void notifier.applicantLeft(event);
