@@ -678,6 +678,22 @@ describe("repasse ao músico", () => {
     expect(t.world.notifications.filter((n) => n.titulo.startsWith("Repasse não concluído"))).toHaveLength(1);
   });
 
+  it("repasse que falhou volta para a fila quando o músico troca a chave e sai na próxima rodada", async () => {
+    const payment = await contratado();
+    t.world.failures.transfer = true;
+    await t.service.payout(t.event.id);
+    expect(t.world.payments.get(payment.id)?.repasseStatus).toBe("FALHOU");
+    t.world.failures.transfer = false;
+
+    const musico = t.world.events.get(t.event.id)!.musicoContratadoId!;
+    expect(await t.world.stores.payments.reopenFailedPayouts(musico)).toBe(1);
+    await t.service.payout(t.event.id);
+
+    expect(t.world.payments.get(payment.id)?.repasseStatus).not.toBe("FALHOU");
+    expect(tentativasDo(payment.id).map((tentativa) => tentativa.estado)).toEqual(["FALHOU", expect.not.stringMatching("FALHOU")]);
+    expect(await t.world.stores.payments.reopenFailedPayouts(musico)).toBe(0);
+  });
+
   it("resposta perdida da Asaas não gera segunda transferência: a tentativa é localizada pela própria referência", async () => {
     const payment = await contratado();
     t.world.failures.transferLost = true;

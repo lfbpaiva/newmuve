@@ -698,6 +698,12 @@ export function createPaymentStore(admin: SupabaseClient): PaymentStore {
       return data === true;
     },
 
+    async reopenFailedPayouts(musicianId) {
+      const { data, error } = await admin.rpc("reabrir_repasses_falhos", { p_musician_id: musicianId });
+      if (error) throw error;
+      return Number(data ?? 0);
+    },
+
     async recordAttemptAlert(attemptId, tipo, asaasTransferId, status) {
       const { error } = await admin.rpc("registrar_alerta_repasse", { p_tentativa_id: attemptId, p_tipo: tipo, p_transfer_id: asaasTransferId, p_status: status });
       if (error) throw error;

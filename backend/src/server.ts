@@ -73,6 +73,7 @@ const app = createApp({
     hasOngoingHiring: eventStore.hasOngoingHiring,
     inbox,
     releaseAccount: (user, role) => events.releaseAccount(user, role),
+    reopenFailedPayouts: paymentStore.reopenFailedPayouts,
     cnpj: createCnpjLookup(),
     devices: push,
   }),
