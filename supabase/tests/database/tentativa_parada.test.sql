@@ -53,7 +53,8 @@ select results_eq(
 select is((select reserva_payment_id from public.penalties where id = '00000000-0000-0000-0000-0000000c7a01'), null, 'a multa reservada volta a ficar livre');
 select is(public.registrar_pedido_enviado((select id from parada_sem_envio)), false, 'tentativa encerrada nao aceita registro de envio');
 select is(public.marcar_tentativa_parada((select id from parada_sem_envio)), 'SEM_MUDANCA', 'marcar de novo nao muda nada');
-select isnt((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c7f01')), null, 'uma nova tentativa pode ser criada');
+select public.reabrir_repasses_falhos((select e.musico_contratado_id from public.events e join public.payments p on p.event_id = e.id where p.id = '00000000-0000-0000-0000-0000000c7f01'));
+select isnt((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c7f01')), null, 'depois da troca da chave, uma nova tentativa pode ser criada');
 
 select isnt((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c7f02')), null, 'tentativa do segundo pagamento criada');
 select is(public.registrar_pedido_enviado(pg_temp.tentativa('00000000-0000-0000-0000-0000000c7f02')), true, 'envio registrado antes de chamar a Asaas');

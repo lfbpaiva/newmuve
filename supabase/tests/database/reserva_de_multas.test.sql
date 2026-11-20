@@ -129,10 +129,11 @@ select results_eq(
   'falha zera o desconto, libera o pagamento e guarda o identificador na tentativa encerrada');
 select is((select reserva_payment_id from public.penalties where id = '00000000-0000-0000-0000-0000000b2a04'), null, 'falha definitiva devolve a multa reservada');
 select is(public.falhar_tentativa((select id from t2), 'tra_res_2'), false, 'liberacao idempotente');
+select public.reabrir_repasses_falhos((select e.musico_contratado_id from public.events e join public.payments p on p.event_id = e.id where p.id = '00000000-0000-0000-0000-00000000b2f2'));
 select results_eq(
   $$ select tentativa_id is not null and tentativa_id <> (select id from t2), desconto from public.claim_payout('00000000-0000-0000-0000-00000000b2f2') $$,
   $$ values (true, 450.00::numeric) $$,
-  'depois da falha definitiva, nova tentativa reserva a multa de novo');
+  'depois da falha definitiva e da troca da chave, nova tentativa reserva a multa de novo');
 
 select is(public.registrar_transferencia((select id from t2), 'tra_tardia'), 'TARDIA', 'resposta tardia de tentativa encerrada nao e adotada');
 select is(public.concluir_tentativa((select id from t2), 'tra_res_2'), 'ALERTA', 'conclusao de tentativa encerrada vira alerta e nao conclui o repasse');

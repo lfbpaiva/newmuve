@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(8);
+select plan(9);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000c4a1', 'chave-musico@example.com'),
@@ -19,25 +19,32 @@ insert into public.events (id, contractor_id, titulo, tipo_evento, inicio, durac
   ('00000000-0000-0000-0000-0000000c4e01', '00000000-0000-0000-0000-00000000c4c1', 'Falhou sem transferencia', 'Bar e restaurante', now() + interval '2 days', 60, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e.png'),
   ('00000000-0000-0000-0000-0000000c4e02', '00000000-0000-0000-0000-00000000c4c1', 'Falhou com estorno', 'Bar e restaurante', now() + interval '3 days', 60, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e.png'),
   ('00000000-0000-0000-0000-0000000c4e03', '00000000-0000-0000-0000-00000000c4c1', 'Falhou de outro musico', 'Bar e restaurante', now() + interval '4 days', 60, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000c4e04', '00000000-0000-0000-0000-00000000c4c1', 'Falhou com tentativa concluida', 'Bar e restaurante', now() + interval '5 days', 60, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e.png');
+  ('00000000-0000-0000-0000-0000000c4e04', '00000000-0000-0000-0000-00000000c4c1', 'Falhou com tentativa concluida', 'Bar e restaurante', now() + interval '5 days', 60, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000c4e05', '00000000-0000-0000-0000-00000000c4c1', 'Falhou com alerta', 'Bar e restaurante', now() + interval '6 days', 60, 'PR', 'Cascavel', '{Rock}', 500, 'https://x/e.png');
 insert into public.event_candidates (id, event_id, musician_id) values
   ('00000000-0000-0000-0000-0000000c4d01', '00000000-0000-0000-0000-0000000c4e01', '00000000-0000-0000-0000-00000000c4a1'),
   ('00000000-0000-0000-0000-0000000c4d02', '00000000-0000-0000-0000-0000000c4e02', '00000000-0000-0000-0000-00000000c4a1'),
   ('00000000-0000-0000-0000-0000000c4d03', '00000000-0000-0000-0000-0000000c4e03', '00000000-0000-0000-0000-00000000c4a2'),
-  ('00000000-0000-0000-0000-0000000c4d04', '00000000-0000-0000-0000-0000000c4e04', '00000000-0000-0000-0000-00000000c4a1');
+  ('00000000-0000-0000-0000-0000000c4d04', '00000000-0000-0000-0000-0000000c4e04', '00000000-0000-0000-0000-00000000c4a1'),
+  ('00000000-0000-0000-0000-0000000c4d05', '00000000-0000-0000-0000-0000000c4e05', '00000000-0000-0000-0000-00000000c4a1');
 insert into public.payments (id, event_id, candidate_id, contractor_id, asaas_payment_id, valor, valor_comissao, expira_em) values
   ('00000000-0000-0000-0000-0000000c4f01', '00000000-0000-0000-0000-0000000c4e01', '00000000-0000-0000-0000-0000000c4d01', '00000000-0000-0000-0000-00000000c4c1', 'pay_chave_1', 550, 50, now() + interval '15 minutes'),
   ('00000000-0000-0000-0000-0000000c4f02', '00000000-0000-0000-0000-0000000c4e02', '00000000-0000-0000-0000-0000000c4d02', '00000000-0000-0000-0000-00000000c4c1', 'pay_chave_2', 550, 50, now() + interval '15 minutes'),
   ('00000000-0000-0000-0000-0000000c4f03', '00000000-0000-0000-0000-0000000c4e03', '00000000-0000-0000-0000-0000000c4d03', '00000000-0000-0000-0000-00000000c4c1', 'pay_chave_3', 550, 50, now() + interval '15 minutes'),
-  ('00000000-0000-0000-0000-0000000c4f04', '00000000-0000-0000-0000-0000000c4e04', '00000000-0000-0000-0000-0000000c4d04', '00000000-0000-0000-0000-00000000c4c1', 'pay_chave_4', 550, 50, now() + interval '15 minutes');
+  ('00000000-0000-0000-0000-0000000c4f04', '00000000-0000-0000-0000-0000000c4e04', '00000000-0000-0000-0000-0000000c4d04', '00000000-0000-0000-0000-00000000c4c1', 'pay_chave_4', 550, 50, now() + interval '15 minutes'),
+  ('00000000-0000-0000-0000-0000000c4f05', '00000000-0000-0000-0000-0000000c4e05', '00000000-0000-0000-0000-0000000c4d05', '00000000-0000-0000-0000-00000000c4c1', 'pay_chave_5', 550, 50, now() + interval '15 minutes');
 select public.confirm_asaas_payment('pay_chave_1');
 select public.confirm_asaas_payment('pay_chave_2');
 select public.confirm_asaas_payment('pay_chave_3');
 select public.confirm_asaas_payment('pay_chave_4');
+select public.confirm_asaas_payment('pay_chave_5');
 
 select public.falhar_tentativa((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c4f01')), null);
 select public.falhar_tentativa((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c4f02')), null);
 select public.falhar_tentativa((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c4f03')), null);
+create temp table tentativa_com_alerta as select tentativa_id as id from public.claim_payout('00000000-0000-0000-0000-0000000c4f05');
+select public.falhar_tentativa((select id from tentativa_com_alerta), null);
+insert into public.repasse_alertas (tentativa_id, tipo, asaas_transfer_id) values ((select id from tentativa_com_alerta), 'POSSIVEL_DUPLICIDADE', 'tra_tardia_concluida');
 update public.payments set repasse_status = 'FALHOU' where id = '00000000-0000-0000-0000-0000000c4f04';
 insert into public.repasse_tentativas (id, payment_id, estado, referencia_externa, asaas_transfer_id, valor, encerrada_em) values
   ('00000000-0000-0000-0000-0000000c4b04', '00000000-0000-0000-0000-0000000c4f04', 'CONCLUIDA', '00000000-0000-0000-0000-0000000c4b04', 'tra_concluida', 500, now());
@@ -48,6 +55,7 @@ select is((select repasse_status::text from public.payments where id = '00000000
 select is((select repasse_status::text from public.payments where id = '00000000-0000-0000-0000-0000000c4f02'), 'FALHOU', 'repasse com estorno em andamento nao volta');
 select is((select repasse_status::text from public.payments where id = '00000000-0000-0000-0000-0000000c4f04'), 'FALHOU', 'repasse com transferencia concluida nao volta');
 select is((select repasse_status::text from public.payments where id = '00000000-0000-0000-0000-0000000c4f03'), 'FALHOU', 'repasse de outro musico nao muda');
+select is((select repasse_status::text from public.payments where id = '00000000-0000-0000-0000-0000000c4f05'), 'FALHOU', 'repasse com alerta de transferencia tardia nao volta, para nao pagar duas vezes');
 select isnt((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c4f01')), null, 'repasse reaberto e reivindicado de novo');
 select is(public.reabrir_repasses_falhos('00000000-0000-0000-0000-00000000c4a1'), 0, 'repasse em andamento nao e reaberto');
 select ok(

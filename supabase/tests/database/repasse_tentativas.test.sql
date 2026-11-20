@@ -155,7 +155,8 @@ select results_eq(
   $$ values ('POSSIVEL_DUPLICIDADE'), ('RESPOSTA_TARDIA') $$,
   'alertas de resposta tardia e possivel duplicidade registrados');
 select is((select repasse_status::text from public.payments where id = '00000000-0000-0000-0000-0000000c3f01'), 'FALHOU', 'o alerta nao conclui o repasse');
-select isnt((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c3f01')), null, 'depois da ausencia confirmada, uma nova tentativa pode ser criada');
+select public.reabrir_repasses_falhos((select e.musico_contratado_id from public.events e join public.payments p on p.event_id = e.id where p.id = '00000000-0000-0000-0000-0000000c3f01'));
+select is((select tentativa_id from public.claim_payout('00000000-0000-0000-0000-0000000c3f01')), null, 'repasse com alerta de transferencia tardia nao volta para a fila, nem com chave nova');
 
 update public.repasse_tentativas set solicitada_em = now() - interval '25 hours' where payment_id = '00000000-0000-0000-0000-0000000c3f02';
 select is(pg_temp.verificar((select id from public.repasse_tentativas where payment_id = '00000000-0000-0000-0000-0000000c3f02')), 'VERIFICACAO_INICIADA', 'segunda tentativa entra em verificacao');
