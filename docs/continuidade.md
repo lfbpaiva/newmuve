@@ -4,12 +4,12 @@ Guia para quem pegar o Muve a partir daqui. Regras do produto em [produto.md](pr
 
 ## Estado atual
 
-O fluxo completo funciona no sandbox da Asaas e foi testado de ponta a ponta com dinheiro fictício: publicar evento, inscrever músico, pagar por Pix, contratar, confirmar o show e repassar o cachê.
+O fluxo completo (publicar evento, inscrever músico, pagar por Pix, contratar, confirmar o show e repassar o cachê) foi testado de ponta a ponta no sandbox da Asaas com dinheiro fictício em rodadas anteriores. Nas tentativas manuais mais recentes pelo Expo Go, a obtenção do QR Code Pix falhou com `invalid_action` e `TimeoutError` e nenhum pagamento foi concluído; a validação manual desse trecho do checkout continua pendente (ver [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md), "Lote 2: falha do QR Code Pix"). O fluxo não deve ser considerado validado na totalidade até essa tentativa ser concluída.
 
-- **Código:** `main` de `lfbpaiva/newmuve`. O repositório `Cleiton-Martins/MUVE` é antigo; não use.
-- **PR #6 (`integracao/redesign-lote1`):** reúne o trabalho das branches `cloudflare`, `feature/redesign-muve` e `fix/lote1-estabilidade-mobile` (PRs #3, #4 e #5) e o redesign visual. Essas branches começavam num histórico próprio, sem ancestral comum com o `main`, por isso os arquivos foram trazidos sobre o `main` em vez de mesclados. Depois do merge do #6, feche o #3 e o #5.
+- **Código:** a referência desta transferência é a branch `handoff/luiz-newmuve-2026-11-20` de `lfbpaiva/newmuve`, no commit `7e785fb980c0c5e4f30f691869165b710c5683ef`, criada a partir de `continuidade/estado-atual-2026-11-18`. Luiz deve partir dessa branch para continuar o trabalho recebido. A `main` não contém necessariamente todas as alterações desta entrega. O repositório `Cleiton-Martins/MUVE` é antigo; não use.
+- **PR #6 (`integracao/redesign-lote1`):** reúne o trabalho das branches `cloudflare`, `feature/redesign-muve` e `fix/lote1-estabilidade-mobile` (PRs #3, #4 e #5) e o redesign visual. Essas branches começavam num histórico próprio, sem ancestral comum com o `main`, por isso os arquivos foram trazidos sobre o `main` em vez de mesclados. O PR #6 permanece separado e não foi modificado por esta publicação. Depois do merge do #6, feche o #3 e o #5.
 - **PRs 1 e 2:** partem de uma versão antiga e desfazem regras atuais (show duplo, multa, contestação). Não faça merge deles.
-- **Banco:** 21 migrations aplicadas no projeto Supabase do grupo, iguais às de `supabase/migrations/`. O redesign não mudou o banco nem a API.
+- **Banco:** última contagem conhecida: 33 migrations em `supabase/migrations/`, 21 aplicadas no Supabase hospedado do grupo (até `20261029180000_muve_casa`) e 12 pendentes (de `20261113120000` a `20261116150000`), conforme [PLANO_MIGRATIONS_HOSPEDADO.md](PLANO_MIGRATIONS_HOSPEDADO.md). Esses números são referência histórica: o estado real do hospedado precisa ser revalidado antes de qualquer execução. O redesign não mudou o banco nem a API.
 - **Verificação:** o GitHub Actions roda `pnpm typecheck`, `pnpm lint` e `pnpm test` a cada push e pull request. O `pnpm lint` ignora a pasta `mobile/` (ver a seção 19 da auditoria).
 
 ## Transferência para continuidade (20/11/2026)
