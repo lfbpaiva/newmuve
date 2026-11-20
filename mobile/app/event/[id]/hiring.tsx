@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { errorMessage } from "../../../../shared/client/api.ts";
-import { acaoDeContestacao, avisoDoEstorno, confirmacaoDaParte, etapasDaContratacao, historicoDaContestacao, motivoDaConfirmacaoSuspensa, situacaoDoCache } from "../../../../shared/client/contratacao.ts";
+import { acaoDeContestacao, avisoDaAusencia, avisoDoEstorno, confirmacaoDaParte, etapasDaContratacao, historicoDaContestacao, motivoDaConfirmacaoSuspensa, situacaoDoCache } from "../../../../shared/client/contratacao.ts";
 import { cancelHiring, confirmCompletion, fetchHiring, openDispute, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
 import { formatCurrency, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
@@ -20,7 +20,7 @@ import { denunciar } from "../../../lib/suporte";
 import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
 
-const finishedMessages: Record<Exclude<CancellationResult["situacao"], "ESTORNO_PROCESSANDO">, string> = {
+const finishedMessages: Record<Exclude<CancellationResult["situacao"], "ESTORNO_PROCESSANDO" | "AGUARDANDO_MUSICO">, string> = {
   ESTORNADO: "O Asaas confirmou o estorno ao contratante. A contratação foi encerrada.",
   SEM_ESTORNO: "A contratação foi cancelada sem estorno, conforme a regra de prazo. O cachê será repassado ao músico.",
   COBRANCA_CANCELADA: "A cobrança pendente foi cancelada. Nenhum valor havia sido recebido, portanto não há reembolso.",
@@ -70,7 +70,10 @@ export default function HiringScreen() {
     setRetorno(null);
     try {
       const { situacao } = await action();
-      if (situacao === "ESTORNO_PROCESSANDO") {
+      if (situacao === "AGUARDANDO_MUSICO") {
+        setRetorno({ area: "confirmacao", tom: "info", texto: "Não comparecimento informado. O músico tem 24 horas para responder; sem resposta, o estorno integral é pedido automaticamente." });
+        hiring.reload();
+      } else if (situacao === "ESTORNO_PROCESSANDO") {
         setRetorno({ area: "desfazer", tom: "info", texto: "Estorno solicitado ao Asaas. A contratação continua ativa até a confirmação da devolução." });
         hiring.reload();
       } else {
@@ -101,6 +104,7 @@ export default function HiringScreen() {
   ];
   const motivoSuspensao = motivoDaConfirmacaoSuspensa(hiring.data);
   const estorno = avisoDoEstorno(hiring.data);
+  const ausencia = avisoDaAusencia(hiring.data);
   const historico = historicoDaContestacao(hiring.data);
   const acaoContestar = acaoDeContestacao(hiring.data);
   const desfazerVisivel = naoComparecimento.permitido || cancelamento.permitido;
@@ -125,7 +129,7 @@ export default function HiringScreen() {
   }
 
   function noShow() {
-    confirmAction({ title: "Não comparecimento", message: "Registrar que o músico não compareceu e solicitar o estorno integral? A devolução será confirmada pelo Asaas.", onConfirm: () => void runCancellation(() => reportNoShow(evento.id)) });
+    confirmAction({ title: "Não comparecimento", message: "Informar que o músico não compareceu? Ele terá 24 horas para confirmar que fez o show ou contestar. Sem resposta, o estorno integral é pedido automaticamente.", onConfirm: () => void runCancellation(() => reportNoShow(evento.id)) });
   }
 
   return <View style={styles.screen}>
@@ -190,6 +194,7 @@ export default function HiringScreen() {
 
       {active && <Section title="Confirmação do show">
         <Text style={type.bodySmall}>Após o evento, cada parte confirma pelo próprio acesso. Com as duas confirmações, o cachê é repassado ao músico. Sem elas, e sem registro de não comparecimento, o show é dado como realizado 7 dias após a data.</Text>
+        {ausencia && <Alert tone={ausencia.tom}>{ausencia.texto}</Alert>}
         {motivoSuspensao && <Text style={type.bodySmall}>{motivoSuspensao}</Text>}
         {parties.map((party) => {
           const confirmacao = confirmacaoDaParte(hiring.data!, party.parte);
@@ -197,7 +202,7 @@ export default function HiringScreen() {
           return <View key={party.title} style={[styles.card, styles.between]}>
             <View style={[styles.row, { gap: 10 }]}><Icon name={feita ? "checkmark-circle" : "ellipse-outline"} size={22} color={feita ? colors.success : colors.line}/><Text style={type.titleSmall}>{party.title}</Text></View>
             {confirmacao.situacao === "disponivel"
-              ? <Button title={confirmacao.texto} block={false} loading={busy} onPress={() => run("confirmacao", () => confirmCompletion(evento.id), "Confirmação registrada.")}/>
+              ? <Button title={confirmacao.texto} block={false} loading={busy} onPress={() => run("confirmacao", () => confirmCompletion(evento.id), hiring.data?.ausencia && !isContractor ? "Confirmação registrada. Como o contratante informou ausência, o suporte vai analisar as duas versões." : "Confirmação registrada.")}/>
               : <Text style={[type.bodySmall, feita ? { color: colors.success } : null]}>{confirmacao.texto}</Text>}
           </View>;
         })}
@@ -239,8 +244,8 @@ export default function HiringScreen() {
 
       {desfazerVisivel && <Section title="Precisa desfazer?">
         {naoComparecimento.permitido && <View style={[styles.card, { gap: space.sm }]}>
-          <Text style={type.bodySmall}>O músico não apareceu? Enquanto ele não confirmar o show, você pode registrar o não comparecimento e solicitar o estorno integral.</Text>
-          <Button variant="danger" title="Registrar não comparecimento" block={false} loading={busy} onPress={noShow}/>
+          <Text style={type.bodySmall}>O músico não apareceu? Enquanto ele não confirmar o show, você pode informar o não comparecimento. Ele terá 24 horas para responder; sem resposta, o estorno integral é pedido automaticamente.</Text>
+          <Button variant="danger" title="Informar não comparecimento" block={false} loading={busy} onPress={noShow}/>
         </View>}
         {cancelamento.permitido && <View style={[styles.card, { gap: space.sm }]}>
           <Text style={type.bodySmall}>{isContractor

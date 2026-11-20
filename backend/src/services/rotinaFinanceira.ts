@@ -4,7 +4,7 @@ import { AppError } from "../domain/errors.ts";
 import type { EventService } from "./eventService.ts";
 import type { PaymentService } from "./paymentService.ts";
 import type { EventStore, PaymentStore, TravaDaRotina } from "./ports.ts";
-import { CONCLUSAO_AUTOMATICA_MS } from "../../../shared/dominio.ts";
+import { AUSENCIA_PRAZO_RESPOSTA_MS, CONCLUSAO_AUTOMATICA_MS } from "../../../shared/dominio.ts";
 
 export const VALIDADE_DA_TRAVA_S = 600;
 export const RENOVACAO_DA_TRAVA_MS = 2 * 60 * 1000;
@@ -29,7 +29,7 @@ const descreverFalha = (error: unknown) =>
 
 export function createRotinaFinanceira(deps: {
   paymentStore: Pick<PaymentStore, "findFinanceFollowUps">;
-  eventStore: Pick<EventStore, "findDueHirings">;
+  eventStore: Pick<EventStore, "findDueHirings" | "findExpiredAbsences">;
   payments: Pick<PaymentService, "syncPending" | "refreshRefund" | "payout" | "markStalePayoutRequests" | "reconcileOutsidePayout">;
   events: Pick<EventService, "settleDueHiring">;
   trava: TravaDaRotina;
@@ -101,7 +101,10 @@ export function createRotinaFinanceira(deps: {
     });
     await each(payouts, "repasse", autorizacao, (eventId) => payments.payout(eventId));
     autorizacao.exigir();
-    const vencidos = await eventStore.findDueHirings(new Date(now.getTime() - CONCLUSAO_AUTOMATICA_MS));
+    const vencidos = [
+      ...(await eventStore.findExpiredAbsences(new Date(now.getTime() - AUSENCIA_PRAZO_RESPOSTA_MS))),
+      ...(await eventStore.findDueHirings(new Date(now.getTime() - CONCLUSAO_AUTOMATICA_MS))),
+    ];
     await each(vencidos, "conclusão", autorizacao, (eventId) => events.settleDueHiring(eventId, now));
   }
 

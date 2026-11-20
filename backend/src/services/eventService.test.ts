@@ -8,6 +8,7 @@ import { createRotinaFinanceira } from "./rotinaFinanceira.ts";
 import { contratante, hoursFromNow, memoryWorld, musico, NOW, outroContratante, outroMusico, payAtAsaas } from "./testing.ts";
 import type { Hiring } from "../../../shared/client/events.ts";
 import { historicoDaContestacao } from "../../../shared/client/contratacao.ts";
+import { AUSENCIA_PRAZO_RESPOSTA_MS } from "../../../shared/dominio.ts";
 
 function setup() {
   const world = memoryWorld();
@@ -41,6 +42,13 @@ beforeEach(() => {
   t = setup();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
+
+const depoisDoPrazoDeResposta = (quando: Date) => new Date(quando.getTime() + AUSENCIA_PRAZO_RESPOSTA_MS);
+
+async function ausenciaSemResposta(eventId: string, quando: Date) {
+  await t.service.reportNoShow(contratante, eventId, quando);
+  return t.service.applyExpiredAbsence(eventId, depoisDoPrazoDeResposta(quando));
+}
 
 describe("criação de evento", () => {
   it("grava o evento do contratante com a imagem enviada", async () => {
@@ -353,13 +361,13 @@ describe("cancelamento da contratação", () => {
       t.world.asaasCharges.set(id, { status: "REFUND_REQUESTED", value: payment.valor });
     };
 
-    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(2))).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
+    await expect(ausenciaSemResposta(event.id, hoursFromNow(2))).resolves.toEqual({ situacao: "ESTORNO_PROCESSANDO" });
     await expect(t.service.confirmCompletion(musico, event.id, hoursFromNow(3))).rejects.toMatchObject({ code: "ESTORNO_PENDENTE" });
     expect((await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 9))).evento.status).toBe("CONTRATADO");
     expect(t.world.asaasCalls.transferPix).toHaveLength(0);
 
     t.world.asaasCharges.set(payment.asaasPaymentId, { status: "REFUNDED", value: payment.valor });
-    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(24 * 3))).resolves.toEqual({ situacao: "ESTORNADO" });
+    await expect(t.service.applyExpiredAbsence(event.id, hoursFromNow(24 * 3))).resolves.toEqual({ situacao: "ESTORNADO" });
     expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
     expect(t.world.payments.get(payment.id)?.status).toBe("ESTORNADO");
   });
@@ -370,7 +378,7 @@ describe("cancelamento da contratação", () => {
       throw new AppError(409, "ESTORNO_RECUSADO", "Estorno recusado.");
     };
 
-    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(2))).rejects.toMatchObject({ code: "ESTORNO_RECUSADO" });
+    await expect(ausenciaSemResposta(event.id, hoursFromNow(2))).rejects.toMatchObject({ code: "ESTORNO_RECUSADO" });
     expect((await t.service.getHiring(contratante, event.id, hoursFromNow(2))).pagamento?.refundStatus).toBe("NEGADO");
 
     await t.service.confirmCompletion(contratante, event.id, hoursFromNow(3));
@@ -625,7 +633,7 @@ describe("não comparecimento (garantia do contratante)", () => {
   it("após o horário, sem confirmação do músico: estorno integral e evento cancelado", async () => {
     const { event, payment } = await hired(hoursFromNow(1));
 
-    await t.service.reportNoShow(contratante, event.id, hoursFromNow(4));
+    await ausenciaSemResposta(event.id, hoursFromNow(4));
 
     expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
     expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
@@ -640,6 +648,99 @@ describe("não comparecimento (garantia do contratante)", () => {
     await t.service.confirmCompletion(musico, event.id, hoursFromNow(4));
     await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(5))).rejects.toMatchObject({ code: "MUSICO_CONFIRMOU" });
     expect(t.world.events.get(event.id)?.status).toBe("CONTRATADO");
+  });
+});
+
+describe("prazo de resposta do músico ao não comparecimento", () => {
+  it("informar a ausência não estorna na hora: abre 24h para o músico e o avisa", async () => {
+    const { event } = await hired(hoursFromNow(1));
+
+    const resposta = await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    expect(resposta).toEqual({ situacao: "AGUARDANDO_MUSICO", prazo: hoursFromNow(27).toISOString() });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.penalties).toHaveLength(0);
+    expect(t.world.notifications).toEqual(expect.arrayContaining([expect.objectContaining({ userId: "m1", titulo: expect.stringContaining("Não comparecimento informado") })]));
+    const vista = await t.service.getHiring(musico, event.id, hoursFromNow(4));
+    expect(vista.ausencia).toEqual({ informadaEm: hoursFromNow(3).toISOString(), prazo: hoursFromNow(27).toISOString() });
+    expect((await t.service.getHiring(contratante, event.id, hoursFromNow(4))).naoComparecimento.permitido).toBe(false);
+    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(5))).rejects.toMatchObject({ code: "AUSENCIA_JA_INFORMADA" });
+  });
+
+  it("antes do prazo nada é estornado; depois, a rotina pede o estorno com multa", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    await t.service.settleDueHiring(event.id, hoursFromNow(26));
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+
+    await t.service.settleDueHiring(event.id, hoursFromNow(27));
+    expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
+    expect(t.world.events.get(event.id)?.status).toBe("CANCELADO");
+    expect(t.world.penalties).toEqual([expect.objectContaining({ tipo: "AUSENCIA", multa: 100 })]);
+  });
+
+  it("com a ausência pendente, o show não é concluído sozinho nem paga o músico", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(24 * 7 - 2));
+
+    await t.service.settleDueHiring(event.id, hoursFromNow(24 * 7 + 1));
+    const vista = await t.service.getHiring(contratante, event.id, hoursFromNow(24 * 7 + 1));
+
+    expect(vista.evento.status).toBe("CONTRATADO");
+    expect(t.world.asaasCalls.transferPix).toHaveLength(0);
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+  });
+
+  it("abrir a contratação depois do prazo pede o estorno, mesmo sem a rotina", async () => {
+    const { event, payment } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    await t.service.getHiring(contratante, event.id, hoursFromNow(28));
+
+    expect(t.world.asaasCalls.refundPayment).toEqual([payment.asaasPaymentId]);
+  });
+
+  it("músico que confirma o show dentro do prazo abre contestação para o suporte decidir", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    const confirmado = await t.service.confirmCompletion(musico, event.id, hoursFromNow(10));
+    await t.service.settleDueHiring(event.id, hoursFromNow(30));
+
+    expect(confirmado).toMatchObject({ status: "CONTRATADO", confirmacaoMusico: true });
+    expect(t.world.disputes).toEqual([expect.objectContaining({ eventId: event.id, abertaPor: "m1", status: "ABERTA" })]);
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+    expect(t.world.notifications).toEqual(expect.arrayContaining([expect.objectContaining({ userId: "c1", titulo: expect.stringContaining("Contestação aberta") })]));
+  });
+
+  it("músico também pode contestar dentro do prazo, e a contestação segura o estorno", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    await t.service.openDispute(musico, event.id, "Eu toquei o show inteiro, tenho fotos e vídeos.", hoursFromNow(5));
+    await t.service.settleDueHiring(event.id, hoursFromNow(30));
+
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
+  });
+
+  it("depois do prazo, o músico não responde mais", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    await expect(t.service.confirmCompletion(musico, event.id, hoursFromNow(28))).rejects.toMatchObject({ code: "PRAZO_DE_RESPOSTA_ENCERRADO" });
+    await expect(t.service.openDispute(musico, event.id, "Eu toquei o show inteiro, tenho fotos.", hoursFromNow(28))).rejects.toMatchObject({ code: "PRAZO_DE_RESPOSTA_ENCERRADO" });
+  });
+
+  it("contratante que confirma o show retira a ausência informada", async () => {
+    const { event } = await hired(hoursFromNow(1));
+    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+
+    await t.service.confirmCompletion(contratante, event.id, hoursFromNow(5));
+    await t.service.settleDueHiring(event.id, hoursFromNow(30));
+
+    expect(t.world.events.get(event.id)).toMatchObject({ status: "CONTRATADO", ausenciaInformadaEm: null, confirmacaoContratante: true });
+    expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
   });
 });
 
@@ -662,12 +763,14 @@ describe("avisos por e-mail", () => {
 
     const outro = await hired(hoursFromNow(1));
     t.world.sent.length = 0;
-    await t.service.reportNoShow(contratante, outro.event.id, hoursFromNow(4));
+    await ausenciaSemResposta(outro.event.id, hoursFromNow(4));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(t.world.sent).toEqual([
-      expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Não comparecimento") }),
+    expect(t.world.sent).toHaveLength(3);
+    expect(t.world.sent).toEqual(expect.arrayContaining([
+      expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Não comparecimento informado") }),
+      expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Não comparecimento registrado") }),
       expect.objectContaining({ to: "m1@exemplo.com", subject: expect.stringContaining("Multa por ausência") }),
-    ]);
+    ]));
   });
 
   it("falha no envio não afeta a operação", async () => {
@@ -1016,7 +1119,7 @@ const concluirTransferencia = (paymentId: string) => t.world.asaasTransfers.set(
 describe("penalidades do músico", () => {
   it("ausência registrada gera multa de 20% e visibilidade reduzida; a multa sai do próximo cachê", async () => {
     const { event } = await hired(hoursFromNow(1));
-    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+    await ausenciaSemResposta(event.id, hoursFromNow(3));
 
     expect(t.world.penalties).toEqual([expect.objectContaining({ musicianId: "m1", tipo: "AUSENCIA", multa: 100 })]);
     expect(t.world.accounts.get("m1")?.visibilidadeReduzidaAte).toBeInstanceOf(Date);
@@ -1082,7 +1185,7 @@ describe("penalidades do músico", () => {
     const { event } = await hired(hoursFromNow(1));
     vi.spyOn(t.world.stores.payments, "findRefundPenalty").mockRejectedValueOnce(new Error("falha simulada no aviso"));
 
-    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(3))).resolves.toMatchObject({ situacao: "ESTORNADO" });
+    await expect(ausenciaSemResposta(event.id, hoursFromNow(3))).resolves.toMatchObject({ situacao: "ESTORNADO" });
     await flush();
 
     expect(t.world.penalties).toEqual([expect.objectContaining({ tipo: "AUSENCIA", multa: 100 })]);
@@ -1094,7 +1197,7 @@ describe("penalidades do músico", () => {
   it("multas antigas, sem estorno de origem, continuam sendo descontadas junto com as novas", async () => {
     t.world.penalties.push({ id: "pen_antiga", musicianId: "m1", eventId: null, tipo: "AUSENCIA", multa: 50, quitada: false, estornoPaymentId: null, reservaPaymentId: null });
     const { event } = await hired(hoursFromNow(1));
-    await t.service.reportNoShow(contratante, event.id, hoursFromNow(3));
+    await ausenciaSemResposta(event.id, hoursFromNow(3));
 
     const proximo = await hired(hoursFromNow(48));
     await t.service.confirmCompletion(contratante, proximo.event.id, hoursFromNow(50));
@@ -1480,7 +1583,7 @@ describe("estorno com repasse em conferência", () => {
   it("aviso de não comparecimento não estorna nem aplica penalidade", async () => {
     const { event } = await contratadoComTentativaLegada(hoursFromNow(1));
 
-    await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(2))).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA" });
+    await expect(ausenciaSemResposta(event.id, hoursFromNow(2))).rejects.toMatchObject({ code: "REPASSE_EM_CONFERENCIA" });
 
     expect(t.world.asaasCalls.refundPayment).toHaveLength(0);
     expect(t.world.penalties).toHaveLength(0);
@@ -2041,11 +2144,12 @@ describe("decisão da contestação e efetivação do estorno", () => {
 
     it("contestação aberta depois da conferência do serviço é barrada no pedido de estorno e a resposta não finge estorno em andamento", async () => {
       const { event, pagamento, contestacao } = await contestado();
+      await t.world.stores.events.reportAbsence(event.id, hoursFromNow(4));
       vi.spyOn(t.world.stores.events, "findOpenDispute").mockResolvedValueOnce(null);
       await avisosEnviados();
       const antes = fotografar(pagamento, contestacao);
 
-      await expect(t.service.reportNoShow(contratante, event.id, hoursFromNow(4))).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
+      await expect(t.service.applyExpiredAbsence(event.id, depoisDoPrazoDeResposta(hoursFromNow(4)))).rejects.toMatchObject({ status: 409, code: "CONTESTACAO_ABERTA" });
       await avisosEnviados();
 
       nadaMudou({ pagamento, contestacao, antes });

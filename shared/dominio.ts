@@ -69,11 +69,12 @@ export function horarioLocalDoEvento(data: string, horario: string, uf: string):
   if (!(mes >= 1 && mes <= 12 && dia >= 1 && dia <= diasDoMes && hora >= 0 && hora <= 23 && minuto >= 0 && minuto <= 59)) return new Date(Number.NaN);
   return new Date(`${data}T${horario}:00${FUSOS_FORA_DE_BRASILIA[uf]?.offset ?? "-03:00"}`);
 }
-export const TERMOS_VERSAO = "2026-10-29";
+export const TERMOS_VERSAO = "2026-11-20";
 export const CANCELAMENTO_ANTECEDENCIA_MINIMA_MS = 24 * 60 * 60 * 1000;
 export const COBRANCA_VALIDADE_MS = 15 * 60 * 1000;
 export const CHECKOUT_TEMPO_LIMITE_APP_MS = 60_000;
 export const CONCLUSAO_AUTOMATICA_MS = 7 * 24 * 60 * 60 * 1000;
+export const AUSENCIA_PRAZO_RESPOSTA_MS = 24 * 60 * 60 * 1000;
 
 export const onlyDigits = (value: string) => value.replace(/\D/g, "");
 

@@ -286,6 +286,7 @@ describe("trava distribuída da rotina financeira", () => {
         etapas.push("vencidos");
         return [] as string[];
       }),
+      findExpiredAbsences: vi.fn(async () => [] as string[]),
     };
     const criar = () =>
       createRotinaFinanceira({

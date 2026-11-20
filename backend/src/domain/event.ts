@@ -133,6 +133,7 @@ export interface EventRecord {
   confirmacaoMusico: boolean;
   confirmacaoContratante: boolean;
   inscricoesEncerradas: boolean;
+  ausenciaInformadaEm: Date | null;
   createdAt: Date;
 }
 

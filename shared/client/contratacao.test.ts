@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { acaoDeContestacao, avisoDoEstorno, confirmacaoDaParte, etapasDaContratacao, historicoDaContestacao, motivoDaConfirmacaoSuspensa, situacaoDoCache, tempoAteOShow } from "./contratacao.ts";
+import { acaoDeContestacao, avisoDaAusencia, avisoDoEstorno, confirmacaoDaParte, etapasDaContratacao, historicoDaContestacao, motivoDaConfirmacaoSuspensa, situacaoDoCache, tempoAteOShow } from "./contratacao.ts";
 import type { Hiring } from "./events.ts";
 
 const AGORA = new Date("2026-11-20T12:00:00Z");
 
-function contratacao(mudancas: { evento?: Partial<Hiring["evento"]>; pagamento?: Partial<NonNullable<Hiring["pagamento"]>> | null; contestacao?: Hiring["contestacao"]; contestacaoResolvida?: Hiring["contestacaoResolvida"]; papel?: Hiring["papel"]; podeContestar?: boolean } = {}): Hiring {
+function contratacao(mudancas: { evento?: Partial<Hiring["evento"]>; pagamento?: Partial<NonNullable<Hiring["pagamento"]>> | null; contestacao?: Hiring["contestacao"]; contestacaoResolvida?: Hiring["contestacaoResolvida"]; papel?: Hiring["papel"]; podeContestar?: boolean; ausencia?: Hiring["ausencia"] } = {}): Hiring {
   return {
     papel: mudancas.papel ?? "contratante",
     evento: {
@@ -32,6 +32,7 @@ function contratacao(mudancas: { evento?: Partial<Hiring["evento"]>; pagamento?:
     contestacaoResolvida: mudancas.contestacaoResolvida ?? null,
     podeContestar: mudancas.podeContestar ?? false,
     naoComparecimento: { permitido: false },
+    ausencia: mudancas.ausencia ?? null,
     cancelamento: { permitido: true, reembolso: true },
   };
 }
@@ -244,5 +245,30 @@ describe("ação de contestar na tela", () => {
     ["com histórico", paga],
   ] as const)("a elegibilidade continua vindo da API: sem permissão não há ação, %s", (_, contestacaoResolvida) => {
     expect(acaoDeContestacao(contratacao({ ...repasseFalhou, contestacaoResolvida, podeContestar: false }))).toBeNull();
+  });
+});
+
+describe("avisoDaAusencia", () => {
+  const ausencia = { informadaEm: "2026-11-20T02:00:00Z", prazo: "2026-11-21T02:00:00Z" };
+
+  it("sem ausência informada não mostra nada", () => {
+    expect(avisoDaAusencia(contratacao())).toBeNull();
+  });
+
+  it("avisa o músico do prazo, do que fazer e do que acontece sem resposta", () => {
+    const aviso = avisoDaAusencia(contratacao({ papel: "musico", ausencia }));
+    expect(aviso?.tom).toBe("error");
+    expect(aviso?.texto).toContain("confirme que fez o show ou abra uma contestação");
+    expect(aviso?.texto).toContain("multa por ausência");
+  });
+
+  it("lembra o contratante do prazo do músico e de como retirar o aviso", () => {
+    const aviso = avisoDaAusencia(contratacao({ ausencia }));
+    expect(aviso?.tom).toBe("info");
+    expect(aviso?.texto).toContain("estorno integral é pedido automaticamente");
+  });
+
+  it("com contestação aberta, quem fala é a contestação", () => {
+    expect(avisoDaAusencia(contratacao({ papel: "musico", ausencia, contestacao: { motivo: "Toquei o show inteiro.", abertaPorMim: true, status: "ABERTA" } }))).toBeNull();
   });
 });

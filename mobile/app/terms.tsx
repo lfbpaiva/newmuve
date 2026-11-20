@@ -1,7 +1,7 @@
 import { router, Stack } from "expo-router";
 import { Text, View } from "react-native";
 import { formatCurrency } from "../../shared/client/format.ts";
-import { CACHE_MINIMO, COBRANCA_VALIDADE_MS, COMISSAO_PERCENTUAL, EMAIL_SUPORTE, MULTA_AUSENCIA_PERCENTUAL, RAIO_MAXIMO_KM, TERMOS_VERSAO, VISIBILIDADE_REDUZIDA_DIAS } from "../../shared/dominio.ts";
+import { AUSENCIA_PRAZO_RESPOSTA_MS, CACHE_MINIMO, COBRANCA_VALIDADE_MS, COMISSAO_PERCENTUAL, EMAIL_SUPORTE, MULTA_AUSENCIA_PERCENTUAL, RAIO_MAXIMO_KM, TERMOS_VERSAO, VISIBILIDADE_REDUZIDA_DIAS } from "../../shared/dominio.ts";
 import { Button, Heading, Screen } from "../components/ui";
 import { colors, space, styles, type } from "../lib/theme";
 
@@ -49,7 +49,7 @@ const secoes: { titulo: string; paragrafos: string[] }[] = [
     paragrafos: [
       "Se o músico contratado desistir antes do início, o contratante recebe o valor integral de volta e o evento volta a receber candidaturas.",
       "Se o contratante cancelar com mais de 24 horas de antecedência, recebe o valor integral de volta. Com menos de 24 horas, não há devolução e o cachê é repassado ao músico.",
-      "Se o músico não comparecer, o contratante pode registrar a ausência em até 7 dias após o horário do evento, desde que nenhuma das partes tenha confirmado o show, e recebe o valor integral de volta.",
+      `Se o músico não comparecer, o contratante pode informar a ausência em até 7 dias após o horário do evento, desde que nenhuma das partes tenha confirmado o show. O músico tem ${AUSENCIA_PRAZO_RESPOSTA_MS / 3600000} horas para confirmar que fez o show ou contestar, e nesse caso o suporte decide. Sem resposta, o contratante recebe o valor integral de volta.`,
       "Depois do início do evento não há cancelamento. A devolução só conta como feita quando a Asaas a confirma.",
       `Penalidades do músico: a ausência registrada gera multa de ${MULTA_AUSENCIA_PERCENTUAL}% do cachê, descontada do próximo cachê recebido pela Muve; a ausência e a desistência com menos de 24 horas deixam o músico ${VISIBILIDADE_REDUZIDA_DIAS} dias sem ver novos eventos no início.`,
       "Contestação: depois do início do show e até o repasse, qualquer uma das partes pode contestar o que aconteceu. O repasse fica suspenso e o suporte decide, com base no que as duas partes informarem, se o cachê vai para o músico ou volta para o contratante.",

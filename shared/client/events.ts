@@ -129,6 +129,7 @@ export interface Hiring {
   contestacaoResolvida: { status: "RESOLVIDA"; decisao: "PAGAR_MUSICO" | "DEVOLVER_CONTRATANTE"; resolvidaEm: string | null } | null;
   podeContestar: boolean;
   naoComparecimento: { permitido: boolean };
+  ausencia: { informadaEm: string; prazo: string } | null;
   cancelamento: { permitido: boolean; reembolso: boolean };
 }
 
@@ -398,7 +399,7 @@ export const updateProposal = (id: string, valorProposto: number | null) =>
 export const cancelApplication = (id: string) => apiRequest(`/events/${id}/candidatura`, { method: "DELETE" });
 
 export const fetchHiring = (id: string) => apiRequest<Hiring>(`/events/${id}/contratacao`);
-export type CancellationResult = { situacao: "COBRANCA_CANCELADA" | "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" };
+export type CancellationResult = { situacao: "COBRANCA_CANCELADA" | "ESTORNADO" | "ESTORNO_PROCESSANDO" | "SEM_ESTORNO" | "AGUARDANDO_MUSICO"; prazo?: string };
 export const openDispute = (id: string, motivo: string) => apiRequest(`/events/${id}/contestacao`, { method: "POST", body: { motivo } });
 export const reportNoShow = (id: string) => apiRequest<CancellationResult>(`/events/${id}/nao-comparecimento`, { method: "POST" });
 export const cancelHiring = (id: string, esperado?: "COM_ESTORNO" | "SEM_ESTORNO") =>

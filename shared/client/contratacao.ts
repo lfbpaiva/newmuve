@@ -118,6 +118,22 @@ export function motivoDaConfirmacaoSuspensa(hiring: Hiring): string | null {
   return null;
 }
 
+export function avisoDaAusencia(hiring: Hiring): { tom: "info" | "error"; texto: string } | null {
+  const { ausencia, papel, contestacao } = hiring;
+  if (!ausencia || contestacao) return null;
+  const prazo = formatDateTime(ausencia.prazo);
+  if (papel === "musico") {
+    return {
+      tom: "error",
+      texto: `O contratante informou que você não compareceu. Até ${prazo}, confirme que fez o show ou abra uma contestação: o suporte vai analisar as duas versões. Sem resposta, o valor volta ao contratante e a multa por ausência é aplicada.`,
+    };
+  }
+  return {
+    tom: "info",
+    texto: `Você informou o não comparecimento. O músico tem até ${prazo} para responder. Sem resposta, o estorno integral é pedido automaticamente. Se o show aconteceu, confirme abaixo para retirar o aviso.`,
+  };
+}
+
 export function avisoDoEstorno(hiring: Hiring): { tom: "info" | "error"; texto: string } | null {
   const { pagamento, contestacao } = hiring;
   if (pagamento?.refundStatus === "PROCESSANDO") {
