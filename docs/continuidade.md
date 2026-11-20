@@ -12,6 +12,36 @@ O fluxo completo funciona no sandbox da Asaas e foi testado de ponta a ponta com
 - **Banco:** 21 migrations aplicadas no projeto Supabase do grupo, iguais às de `supabase/migrations/`. O redesign não mudou o banco nem a API.
 - **Verificação:** o GitHub Actions roda `pnpm typecheck`, `pnpm lint` e `pnpm test` a cada push e pull request. O `pnpm lint` ignora a pasta `mobile/` (ver a seção 19 da auditoria).
 
+## Transferência para continuidade (20/11/2026)
+
+Entrega na branch `handoff/luiz-newmuve-2026-11-20`, criada a partir de `continuidade/estado-atual-2026-11-18` (que contém o PR #6 e as Etapas 1 e 2 do roteiro). Este bloco resume o que foi recebido e onde retomar; o detalhe está nos documentos citados.
+
+**Estado e arquitetura**
+
+- O backend de `backend/` é a referência arquitetural. A cópia antiga em `newmuve/newmuve-main/` (fora do Git, pasta local excluída pelo `.git/info/exclude`) foi comparada estrutural e funcionalmente com o backend atual: nada dela precisa ser incorporado. Não fundir as duas árvores nem substituir implementações mais recentes pelas antigas.
+- A diferença operacional entre os dois backends está em [arquitetura.md](arquitetura.md), "Rotina financeira": o atual só liga o timer local com `ENABLE_FINANCIAL_ROUTINE=true` e ambiente permitido; o antigo iniciava a rotina junto com a API, a cada 5 minutos, sem esse controle.
+- A lógica financeira atual (repasse centralizado na rotina, trava no banco, tentativas persistidas, conciliação e contestação vinculada ao pagamento) deve ser preservada. As regras estão em [produto.md](produto.md), linhas "Rotina financeira", "Quem pede o repasse", "Estorno com repasse em andamento" e "Estorno confirmado com contestação aberta".
+
+**O que esta entrega publica**
+
+- Remoção do `render.yaml` da raiz (o da cópia antiga já não existe em disco). O README deixa de citar a Render como hospedagem; a API pode ir para qualquer serviço Node.
+- Atualização textual do workflow `.github/workflows/rotina-financeira.yml` (mensagem de erro 401/403), sem mudança de lógica.
+- Atualização deste documento, do README e de `docs/arquitetura.md`. Nenhum arquivo de `backend/`, `shared/`, `mobile/` ou `supabase/` foi alterado nesta entrega.
+- Ficaram fora, de propósito: `mobile/pnpm-lock.yaml` e `mobile/pnpm-workspace.yaml` (não rastreados; o mobile usa npm), `.env` e a cópia antiga.
+
+**Pendências para quem continua**
+
+- A remoção local do `render.yaml` não desliga nada: o serviço `muve-api` pode continuar existindo na conta da Render. Quem tem acesso à Render precisa conferir e decidir se suspende ou apaga.
+- Antes de qualquer execução contra o Supabase hospedado, revalidar quais migrations estão aplicadas ([PLANO_MIGRATIONS_HOSPEDADO.md](PLANO_MIGRATIONS_HOSPEDADO.md)); os testes automatizados cobrem só o banco local.
+- Os testes manuais no Expo Go continuam pendentes, nos itens listados em "O que falta"; teste automatizado não os substitui.
+- Decidir como recuperar repasses `FALHOU` continua em aberto (ver "O que falta" e [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md)).
+
+**Regras a manter ao mexer no financeiro**
+
+- Só a rotina financeira pede repasses. Não reintroduzir chamadas diretas de `payout` em `getHiring`, confirmação, cancelamento ou decisão de contestação, nem novas tentativas automáticas para repasse `FALHOU`.
+- Contestação e pagamento ficam associados por `disputes.payment_id`, preenchido só quando há um pagamento inequívoco. Com ambiguidade ou sem correspondência, a contestação fica sem vínculo e só o suporte a encerra; nunca escolher um pagamento arbitrariamente.
+- Só o estorno confirmado do pagamento vinculado à contratação encerra a contestação. O estorno de outro pagamento do mesmo evento (por exemplo, um Pix pago fora de hora) não encerra contestação nem libera repasse.
+
 ## Visual
 
 - **Tema** em `mobile/lib/theme.ts`: fundo escuro em camadas, roxo da logo (`#7C4DE1`, `#8B6BFF` nos destaques), bordas discretas, cantos de 6 a 20px e números com largura fixa.
@@ -41,7 +71,7 @@ As imagens de `mobile/assets` ficam no **Git LFS**. A branch do redesign do grup
 | Login com Google | Ativo no Supabase; o botão aparece sozinho | README, "Entrar com Google" |
 | Cloudflare Turnstile (anti-robô) | Opcional; só aparece com `EXPO_PUBLIC_TURNSTILE_SITE_KEY`. Ligar junto com o captcha do Supabase, e incluir `localhost` e o domínio de `EXPO_PUBLIC_TURNSTILE_BASE_URL` no widget | `mobile/.env.example` |
 | SMTP | Não configurado; sem ele os e-mails só aparecem no log da API | README, "E-mail" |
-| Hospedagem da API | Não publicada; `render.yaml` pronto | README, "Publicação da API" |
+| Hospedagem da API | Não publicada; a apresentação usa o backend local | README, "Publicação da API" |
 | Build pelo EAS (push com o app fechado) | Não gerado | README, "Notificações" |
 
 ## Asaas: o que costuma travar
@@ -93,8 +123,8 @@ O último caso interrompe a migration de propósito; resolva antes de aplicá-la
 
 ## Cuidados
 
-- **Rotina financeira:** ainda não ativada em produção. Quando ativada, o GitHub Actions dispara `POST /api/admin/rotina-financeira` a cada 5 minutos e a trava no banco (`rotina_financeira_execucao`) garante uma execução por vez, em qualquer número de instâncias. Ela age sobre o banco compartilhado: conclui shows com mais de 7 dias, pede repasses, acompanha estornos e concilia tentativas. `ENABLE_FINANCIAL_ROUTINE` fica `false` na Render (o timer local é opcional e passa pela mesma trava). Só uma transferência é criada por pagamento.
-- **Ativar a rotina em produção:** (1) aplicar as migrations pendentes no Supabase, inclusive `20261116130000_trava_da_rotina_financeira`; (2) gerar um token aleatório de pelo menos 32 caracteres (por exemplo `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) e definir `FINANCIAL_ROUTINE_TOKEN` na Render; (3) publicar a API e conferir que `POST /api/admin/rotina-financeira` sem token responde `401`; (4) no GitHub, criar os secrets `MUVE_API_URL` (URL da API terminando em `/api`) e `FINANCIAL_ROUTINE_TOKEN`; (5) criar a variável de repositório `ROTINA_FINANCEIRA_ATIVA=true`, que libera o agendamento e o disparo manual (sem ela, nenhum dos dois chama a API); (6) rodar o workflow "Rotina financeira" à mão uma vez e conferir `select * from public.rotina_financeira_execucao;` (`ultimo_resultado = SUCESSO`). Para pausar, apague a variável ou mude para `false`.
+- **Rotina financeira:** ainda não ativada em produção. Quando ativada, o GitHub Actions dispara `POST /api/admin/rotina-financeira` a cada 5 minutos e a trava no banco (`rotina_financeira_execucao`) garante uma execução por vez, em qualquer número de instâncias. Ela age sobre o banco compartilhado: conclui shows com mais de 7 dias, pede repasses, acompanha estornos e concilia tentativas. `ENABLE_FINANCIAL_ROUTINE` habilita o timer local opcional da API. Mantenha `false` quando o disparo for realizado exclusivamente pelo GitHub Actions. Se definido como `true`, o timer local poderá ser iniciado somente quando o ambiente permitir sua execução (em produção ou com Supabase local), utilizando a mesma trava no banco. Só uma transferência é criada por pagamento.
+- **Ativar a rotina em produção:** (1) aplicar as migrations pendentes no Supabase, inclusive `20261116130000_trava_da_rotina_financeira`; (2) gerar um token aleatório de pelo menos 32 caracteres (por exemplo `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) e definir `FINANCIAL_ROUTINE_TOKEN` no ambiente da API; (3) publicar a API e conferir que `POST /api/admin/rotina-financeira` sem token responde `401`; (4) no GitHub, criar os secrets `MUVE_API_URL` (URL da API terminando em `/api`) e `FINANCIAL_ROUTINE_TOKEN`; (5) criar a variável de repositório `ROTINA_FINANCEIRA_ATIVA=true`, que libera o agendamento e o disparo manual (sem ela, nenhum dos dois chama a API); (6) rodar o workflow "Rotina financeira" à mão uma vez e conferir `select * from public.rotina_financeira_execucao;` (`ultimo_resultado = SUCESSO`). Para pausar, apague a variável ou mude para `false`.
 - **Limite de requisições:** pagamento, assinatura, estorno, mensagens, propostas, convites, inscrições, eventos, perfil, contestação, consulta da contratação e exclusão de conta têm limite por usuário (lista em `backend/src/http/app.ts`). Os contadores ficam na memória de cada API e zeram ao reiniciá-la; não valem entre notebooks diferentes. Se a demonstração esbarrar num limite, reinicie a API.
 - **Tela de pagamento:** abrir a tela de Pix de um candidato gera uma cobrança real no sandbox. Para só olhar o visual, use um evento de teste.
 - **Repositório público:** nunca coloque chaves em arquivos versionados. As contas de demonstração têm a senha no README, então não guarde nada real nelas.

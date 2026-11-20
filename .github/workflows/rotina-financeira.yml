@@ -48,7 +48,7 @@ jobs:
                 exit 0
                 ;;
               401|403)
-                echo "::error::Disparo recusado pela API (HTTP ${status}). Confira FINANCIAL_ROUTINE_TOKEN na Render e no GitHub."
+                echo "::error::Disparo recusado pela API (HTTP ${status}). Confira FINANCIAL_ROUTINE_TOKEN na API e nos secrets do GitHub."
                 exit 1
                 ;;
               000|429|502|503|504)

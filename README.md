@@ -105,10 +105,10 @@ No repasse ao músico, o sandbox só aceita as [chaves Pix fictícias do Banco C
 
 **Publicação da API (opcional, mas libera o webhook da Asaas e o uso fora do Wi-Fi de casa):**
 
-1. No [Render](https://render.com), crie um *Blueprint* ligado a este repositório: o arquivo `render.yaml` já define o serviço, o build e as variáveis.
+1. Publique a API em um serviço de hospedagem compatível com Node.js.
 2. Preencha no painel as variáveis marcadas como secretas, com os valores de `backend/.env`, e defina `ALLOWED_ORIGINS` com o endereço onde o app web vai rodar. Em produção a API não inicia se faltar a Asaas ou se a URL dela não corresponder a `ASAAS_ENV`.
-3. No app, aponte `EXPO_PUBLIC_API_URL` para `https://SEU-SERVICO.onrender.com/api`.
-4. Na Asaas, em *Integrações → Webhooks*, cadastre `https://SEU-SERVICO.onrender.com/api/webhooks/asaas` com o mesmo `ASAAS_WEBHOOK_TOKEN`.
+3. No app, aponte `EXPO_PUBLIC_API_URL` para `https://SEU-DOMINIO/api`.
+4. Na Asaas, em *Integrações → Webhooks*, cadastre `https://SEU-DOMINIO/api/webhooks/asaas` com o mesmo `ASAAS_WEBHOOK_TOKEN`.
 
 Atrás de proxy, preencha `TRUSTED_PROXY_IPS`. Railway ou qualquer serviço Node funciona do mesmo jeito.
 
@@ -136,8 +136,8 @@ Dentro do app, as notificações já funcionam em tempo real sem nada disso.
 
 - **Em produção**, quem dispara é o workflow `.github/workflows/rotina-financeira.yml` do GitHub Actions, a cada 5 minutos, chamando `POST /api/admin/rotina-financeira` com o cabeçalho `x-rotina-token`. A API responde `202` quando inicia, `409` quando já há uma execução em andamento (resultado esperado) e `401`/`403` quando o token não confere ou não está configurado. A execução continua na API depois da resposta.
 - **Uma execução por vez, em qualquer número de instâncias:** cada execução adquire uma trava com validade no banco (`rotina_financeira_execucao`), renova a validade enquanto trabalha e só começa uma etapa nova com a trava válida. Uma execução que perde a trava para de iniciar etapas; uma que cai no meio libera a trava quando a validade (10 minutos) vence.
-- **Variáveis da API:** `FINANCIAL_ROUTINE_TOKEN` (texto aleatório de pelo menos 32 caracteres, letras, números, `-` ou `_`, diferente do `ADMIN_TOKEN`; sem ela a rota recusa tudo) e `ENABLE_FINANCIAL_ROUTINE`, que liga um timer local opcional e fica `false` na Render. Com `true`, o timer passa pela mesma trava.
-- **Secrets do GitHub** (Settings → Secrets and variables → Actions): `MUVE_API_URL` (a URL pública da API terminando em `/api`, com `https://`) e `FINANCIAL_ROUTINE_TOKEN` (o mesmo valor da Render). O agendamento e o disparo manual (`workflow_dispatch`) só chamam a API com a variável de repositório `ROTINA_FINANCEIRA_ATIVA=true`; sem ela, o job é ignorado.
+- **Variáveis da API:** `FINANCIAL_ROUTINE_TOKEN` (texto aleatório de pelo menos 32 caracteres, letras, números, `-` ou `_`, diferente do `ADMIN_TOKEN`; sem ela a rota recusa tudo) e `ENABLE_FINANCIAL_ROUTINE`. `ENABLE_FINANCIAL_ROUTINE` habilita o timer local opcional da API. Mantenha `false` quando o disparo for realizado exclusivamente pelo GitHub Actions. Se definido como `true`, o timer local poderá ser iniciado somente quando o ambiente permitir sua execução (em produção ou com Supabase local), utilizando a mesma trava no banco.
+- **Secrets do GitHub** (Settings → Secrets and variables → Actions): `MUVE_API_URL` (a URL pública da API terminando em `/api`, com `https://`) e `FINANCIAL_ROUTINE_TOKEN` (o mesmo valor configurado no ambiente da API). O agendamento e o disparo manual (`workflow_dispatch`) só chamam a API com a variável de repositório `ROTINA_FINANCEIRA_ATIVA=true`; sem ela, o job é ignorado.
 - **Última execução:** `select * from public.rotina_financeira_execucao;` no SQL Editor do Supabase mostra a execução atual, a última conclusão, o resultado (`SUCESSO`, `FALHA` ou `EXPIRADA`), o último sucesso e o erro.
 
 **Repasse sem resposta da Asaas:** cada pedido de transferência é uma tentativa registrada no banco, e a referência enviada à Asaas é o id da tentativa. Se a Asaas não responder, a tentativa fica inconclusiva e o repasse nunca é repetido às cegas: a rotina procura a transferência pela referência da tentativa e a registra quando a encontra. Sem encontrar, só o suporte libera, em duas etapas:
