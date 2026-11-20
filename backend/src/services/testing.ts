@@ -588,7 +588,8 @@ export function memoryWorld() {
       const reabrir = [...payments.values()].filter((p) => p.status === "PAGO" && p.repasseStatus === "FALHOU" && p.asaasTransferId === null
         && p.refundStatus !== "PROCESSANDO" && p.refundStatus !== "CONFIRMADO"
         && events.get(p.eventId ?? "")?.musicoContratadoId === musicianId
-        && tentativas.every((t) => t.paymentId !== p.id || fechadas.includes(t.estado)));
+        && tentativas.every((t) => t.paymentId !== p.id || fechadas.includes(t.estado))
+        && !alertas.some((a) => tentativas.some((t) => t.id === a.tentativaId && t.paymentId === p.id)));
       for (const p of reabrir) p.repasseStatus = "RETIDO";
       return reabrir.length;
     },
