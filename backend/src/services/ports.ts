@@ -31,6 +31,9 @@ export interface EventStore {
   setConfirmation(eventId: string, party: "musico" | "contratante"): Promise<EventRecord>;
   concludeEvent(eventId: string): Promise<EventRecord>;
   findDueHirings(startedBefore: Date): Promise<string[]>;
+  reportAbsence(eventId: string, informadaEm: Date): Promise<boolean>;
+  withdrawAbsence(eventId: string): Promise<void>;
+  findExpiredAbsences(reportedBefore: Date): Promise<string[]>;
   cancelEvent(eventId: string): Promise<void>;
   hasOngoingHiring(userId: string): Promise<boolean>;
   distanceKm(eventId: string, musicianId: string): Promise<number | null>;

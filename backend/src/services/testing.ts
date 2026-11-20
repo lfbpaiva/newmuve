@@ -199,6 +199,7 @@ export function memoryWorld() {
         confirmacaoMusico: false,
         confirmacaoContratante: false,
         inscricoesEncerradas: false,
+        ausenciaInformadaEm: null,
         createdAt: hoursFromNow(-48),
       };
       events.set(event.id, event);
@@ -272,6 +273,18 @@ export function memoryWorld() {
     },
     findDueHirings: async (startedBefore) =>
       [...events.values()].filter((event) => event.status === "CONTRATADO" && event.inicio <= startedBefore).map((event) => event.id),
+    reportAbsence: async (eventId, informadaEm) => {
+      const event = events.get(eventId);
+      if (!event || event.status !== "CONTRATADO" || event.confirmacaoMusico || event.confirmacaoContratante || event.ausenciaInformadaEm) return false;
+      event.ausenciaInformadaEm = informadaEm;
+      return true;
+    },
+    withdrawAbsence: async (eventId) => {
+      const event = events.get(eventId);
+      if (event?.status === "CONTRATADO") event.ausenciaInformadaEm = null;
+    },
+    findExpiredAbsences: async (reportedBefore) =>
+      [...events.values()].filter((event) => event.status === "CONTRATADO" && event.ausenciaInformadaEm !== null && event.ausenciaInformadaEm <= reportedBefore).map((event) => event.id),
     findOpenDispute: async (eventId) => disputes.find((d): d is PendingDisputeRecord => d.eventId === eventId && PENDENTES.includes(d.status)) ?? null,
     findLatestResolvedDispute: async (eventId, paymentId) => {
       const instante = (d: DisputeRecord) => resolucaoDaContestacao.get(d.id)?.getTime() ?? -Infinity;
@@ -742,6 +755,7 @@ export function memoryWorld() {
         confirmacaoMusico: false,
         confirmacaoContratante: false,
         inscricoesEncerradas: false,
+        ausenciaInformadaEm: null,
         createdAt: hoursFromNow(-48),
         ...overrides,
       };

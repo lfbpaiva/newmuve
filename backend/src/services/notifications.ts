@@ -113,6 +113,15 @@ export function createNotifier(deps: { accounts: AccountStore; events: EventStor
       );
     },
 
+    async absenceReported(event: EventRecord, prazo: Date): Promise<void> {
+      await notify(
+        event.musicoContratadoId,
+        `Não comparecimento informado: "${event.titulo}"`,
+        `O contratante informou que você não compareceu ao show de ${when(event)}. Até ${formatDateTime(prazo, event.uf)}, confirme que tocou ou abra uma contestação no comprovante. Sem resposta, o valor volta ao contratante e a multa por ausência é aplicada.`,
+        hiringLink(event),
+      );
+    },
+
     async noShowReported(event: EventRecord): Promise<void> {
       await notify(
         event.musicoContratadoId,

@@ -1,4 +1,4 @@
-import { CONCLUSAO_AUTOMATICA_MS, emAcessoAntecipado, eventMatchesMusician, hasCancellationNotice, imageProblem, isPro, liberadoParaTodosEm, PRO_RAIO_MAXIMO_KM, RAIO_MAXIMO_KM, valorDaInscricao } from "../../../shared/dominio.ts";
+import { AUSENCIA_PRAZO_RESPOSTA_MS, CONCLUSAO_AUTOMATICA_MS, emAcessoAntecipado, eventMatchesMusician, hasCancellationNotice, imageProblem, isPro, liberadoParaTodosEm, PRO_RAIO_MAXIMO_KM, RAIO_MAXIMO_KM, valorDaInscricao } from "../../../shared/dominio.ts";
 import { formatCurrency, formatDateTime } from "../../../shared/formato.ts";
 import type { Account, Role } from "../domain/account.ts";
 import type { CandidateRecord, DecisaoContestacao, EventInput, EventRecord, MessageRecord, ReviewInput } from "../domain/event.ts";
@@ -10,6 +10,11 @@ import type { EventStore } from "./ports.ts";
 import { seguirApesarDe } from "./falhas.ts";
 
 const prazoEncerrado = (event: EventRecord, now: Date) => now.getTime() - event.inicio.getTime() >= CONCLUSAO_AUTOMATICA_MS;
+const prazoDaResposta = (informadaEm: Date) => new Date(informadaEm.getTime() + AUSENCIA_PRAZO_RESPOSTA_MS);
+const ausenciaPendente = (event: EventRecord) => event.status === "CONTRATADO" && event.ausenciaInformadaEm !== null;
+const respostaEncerrada = (event: EventRecord, now: Date) => event.ausenciaInformadaEm !== null && now >= prazoDaResposta(event.ausenciaInformadaEm);
+const respostaForaDoPrazo = () => new AppError(409, "PRAZO_DE_RESPOSTA_ENCERRADO", "O prazo de 24 horas para responder ao não comparecimento terminou.");
+const MOTIVO_DA_RESPOSTA = "O contratante informou que o músico não compareceu, e o músico confirmou que fez o show.";
 
 const podeContestar = (event: EventRecord, payment: { status: string; repasseStatus: string | null; refundStatus: string | null } | null, now: Date) =>
   (event.status === "CONTRATADO" || event.status === "CONCLUIDO")
@@ -48,7 +53,7 @@ export function createEventService(deps: {
   accounts: AccountStore;
   images: ImageStore;
   payments: Pick<PaymentService, "ensureNoActiveCheckout" | "refundHiring" | "findPayment" | "refreshRefund" | "ensurePaidForNoRefund">;
-  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved" | "invited">;
+  notifier: Pick<Notifier, "hiringCancelled" | "noShowReported" | "absenceReported" | "newApplication" | "newMessage" | "candidateDeclined" | "eventUpdated" | "completionConfirmed" | "eventDeleted" | "candidateOutOfRange" | "applicantLeft" | "disputeOpened" | "disputeResolved" | "invited">;
 }) {
   const { events, accounts, images, payments, notifier } = deps;
 
@@ -106,6 +111,14 @@ export function createEventService(deps: {
     }
     await payments.ensureNoActiveCheckout(found.event.id, now);
     return found;
+  }
+
+  async function pedirEstornoDaAusenciaVencida(eventId: string, now: Date): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" } | null> {
+    const event = await events.findEvent(eventId);
+    if (!event || !ausenciaPendente(event) || event.confirmacaoMusico || !respostaEncerrada(event, now)) return null;
+    if (await events.findOpenDispute(eventId)) return null;
+    const status = await payments.refundHiring(eventId, "NAO_COMPARECIMENTO");
+    return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
   }
 
   async function findEventAsParty(user: AuthUser, eventId: string): Promise<{ event: EventRecord; party: Party }> {
@@ -218,6 +231,7 @@ export function createEventService(deps: {
       const { event, party } = await findEventAsParty(user, eventId);
       const payment = await payments.findPayment(eventId);
       if (!podeContestar(event, payment, now)) throw contestacaoIndisponivel();
+      if (ausenciaPendente(event) && respostaEncerrada(event, now)) throw respostaForaDoPrazo();
       if (!(await events.openDispute({ eventId, abertaPor: user.id, motivo }))) throw contestacaoIndisponivel();
       void notifier.disputeOpened(event, party, motivo);
     },
@@ -370,8 +384,16 @@ export function createEventService(deps: {
       await events.deleteCandidate(candidate.id);
     },
 
+    async applyExpiredAbsence(eventId: string, now = new Date()) {
+      return pedirEstornoDaAusenciaVencida(eventId, now);
+    },
+
     async settleDueHiring(eventId: string, now = new Date()): Promise<void> {
       const event = await events.findEvent(eventId);
+      if (event && ausenciaPendente(event)) {
+        await pedirEstornoDaAusenciaVencida(eventId, now);
+        return;
+      }
       if (event?.status !== "CONTRATADO" || !prazoEncerrado(event, now)) return;
       if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO" || (await events.findOpenDispute(eventId))) return;
       await events.concludeEvent(eventId);
@@ -379,6 +401,9 @@ export function createEventService(deps: {
 
     async getHiring(user: AuthUser, eventId: string, now = new Date()) {
       const first = await findEventAsParty(user, eventId);
+      if (ausenciaPendente(first.event)) {
+        await pedirEstornoDaAusenciaVencida(eventId, now).catch(seguirApesarDe("Estorno da ausência sem resposta não pedido", null));
+      }
       const refund = await payments.refreshRefund(eventId).catch((error: unknown) => {
         console.error("Falha ao consultar estorno da contratação", error instanceof AppError ? error.code : "falha inesperada");
         return undefined;
@@ -390,7 +415,7 @@ export function createEventService(deps: {
 
       const [atual, contestacao] = await Promise.all([refund === undefined ? payments.findPayment(eventId) : refund, events.findOpenDispute(eventId)]);
       const estornoPendente = atual?.refundStatus === "PROCESSANDO";
-      if (event.status === "CONTRATADO" && !estornoPendente && !contestacao && prazoEncerrado(event, now)) {
+      if (event.status === "CONTRATADO" && !estornoPendente && !contestacao && !event.ausenciaInformadaEm && prazoEncerrado(event, now)) {
         event = await events.concludeEvent(eventId);
       }
 
@@ -436,8 +461,9 @@ export function createEventService(deps: {
         avaliou,
         contestacao: contestacao && { motivo: contestacao.motivo, abertaPorMim: contestacao.abertaPor === user.id, status: contestacao.status },
         contestacaoResolvida: contestacaoResolvida && { status: "RESOLVIDA" as const, decisao: contestacaoResolvida.decisao, resolvidaEm: contestacaoResolvida.resolvidaEm?.toISOString() ?? null },
-        podeContestar: !contestacao && podeContestar(event, payment, now),
-        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && !prazoEncerrado(event, now) && !contestacao && payment?.refundStatus !== "PROCESSANDO" },
+        podeContestar: !contestacao && podeContestar(event, payment, now) && !(ausenciaPendente(event) && respostaEncerrada(event, now)),
+        ausencia: ausenciaPendente(event) ? { informadaEm: event.ausenciaInformadaEm!.toISOString(), prazo: prazoDaResposta(event.ausenciaInformadaEm!).toISOString() } : null,
+        naoComparecimento: { permitido: party === "contratante" && event.status === "CONTRATADO" && !antesDoInicio && !event.confirmacaoMusico && !event.confirmacaoContratante && !event.ausenciaInformadaEm && !prazoEncerrado(event, now) && !contestacao && payment?.refundStatus !== "PROCESSANDO" },
         cancelamento: {
           permitido: event.status === "CONTRATADO" && antesDoInicio && payment?.refundStatus !== "PROCESSANDO",
           reembolso: party === "musico" || hasCancellationNotice(event.inicio, now),
@@ -470,7 +496,7 @@ export function createEventService(deps: {
       return { situacao: "SEM_ESTORNO" };
     },
 
-    async reportNoShow(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "ESTORNADO" | "ESTORNO_PROCESSANDO" }> {
+    async reportNoShow(user: AuthUser, eventId: string, now = new Date()): Promise<{ situacao: "AGUARDANDO_MUSICO"; prazo: string }> {
       const { event, party } = await findEventAsParty(user, eventId);
       if (party !== "contratante") throw naoEncontrado();
       if (event.status !== "CONTRATADO") throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
@@ -484,9 +510,17 @@ export function createEventService(deps: {
       if (prazoEncerrado(event, now)) {
         throw new AppError(409, "PRAZO_ENCERRADO", "O prazo de 7 dias para registrar o não comparecimento terminou.");
       }
+      if (event.ausenciaInformadaEm) {
+        throw new AppError(409, "AUSENCIA_JA_INFORMADA", `Você já informou o não comparecimento. O músico tem até ${formatDateTime(prazoDaResposta(event.ausenciaInformadaEm), event.uf)} para responder.`);
+      }
       if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
-      const status = await payments.refundHiring(eventId, "NAO_COMPARECIMENTO");
-      return { situacao: status === "ESTORNADO" ? "ESTORNADO" : "ESTORNO_PROCESSANDO" };
+      if ((await payments.findPayment(eventId))?.refundStatus === "PROCESSANDO") {
+        throw new AppError(409, "ESTORNO_PENDENTE", "Já existe um estorno em andamento para esta contratação.");
+      }
+      if (!(await events.reportAbsence(eventId, now))) throw new AppError(409, "EVENTO_NAO_CONTRATADO", "Este evento não tem uma contratação ativa.");
+      const prazo = prazoDaResposta(now);
+      void notifier.absenceReported(event, prazo);
+      return { situacao: "AGUARDANDO_MUSICO", prazo: prazo.toISOString() };
     },
 
     async confirmCompletion(user: AuthUser, eventId: string, now = new Date()): Promise<EventRecord> {
@@ -498,6 +532,18 @@ export function createEventService(deps: {
         throw new AppError(409, "ESTORNO_PENDENTE", "A confirmação do show fica suspensa até a resolução do estorno.");
       }
       if (await events.findOpenDispute(eventId)) throw contestacaoPendente();
+
+      if (ausenciaPendente(event)) {
+        if (party === "contratante") {
+          await events.withdrawAbsence(eventId);
+        } else {
+          if (respostaEncerrada(event, now)) throw respostaForaDoPrazo();
+          const confirmado = await events.setConfirmation(eventId, party);
+          if (!(await events.openDispute({ eventId, abertaPor: user.id, motivo: MOTIVO_DA_RESPOSTA }))) throw contestacaoIndisponivel();
+          void notifier.disputeOpened(confirmado, party, MOTIVO_DA_RESPOSTA);
+          return confirmado;
+        }
+      }
 
       const updated = await events.setConfirmation(eventId, party);
       if (updated.status !== "CONCLUIDO") void notifier.completionConfirmed(updated, party);

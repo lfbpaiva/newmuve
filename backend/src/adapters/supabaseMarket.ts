@@ -27,6 +27,7 @@ interface EventRow {
   confirmacao_musico: boolean;
   confirmacao_contratante: boolean;
   inscricoes_encerradas: boolean;
+  ausencia_informada_em: string | null;
   created_at: string;
 }
 
@@ -90,6 +91,7 @@ const toEvent = (row: EventRow): EventRecord => ({
   confirmacaoMusico: row.confirmacao_musico,
   confirmacaoContratante: row.confirmacao_contratante,
   inscricoesEncerradas: row.inscricoes_encerradas,
+  ausenciaInformadaEm: row.ausencia_informada_em ? new Date(row.ausencia_informada_em) : null,
   createdAt: new Date(row.created_at),
 });
 
@@ -246,6 +248,31 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     },
 
     concludeEvent: (eventId) => updateReturning(eventId, { confirmacao_musico: true, confirmacao_contratante: true }),
+
+    async reportAbsence(eventId, informadaEm) {
+      const { data, error } = await admin
+        .from("events")
+        .update({ ausencia_informada_em: informadaEm.toISOString() })
+        .eq("id", eventId)
+        .eq("status", "CONTRATADO")
+        .eq("confirmacao_musico", false)
+        .eq("confirmacao_contratante", false)
+        .is("ausencia_informada_em", null)
+        .select("id");
+      if (error) throw error;
+      return data.length > 0;
+    },
+
+    async withdrawAbsence(eventId) {
+      const { error } = await admin.from("events").update({ ausencia_informada_em: null }).eq("id", eventId).eq("status", "CONTRATADO");
+      if (error) throw error;
+    },
+
+    async findExpiredAbsences(reportedBefore) {
+      const { data, error } = await admin.from("events").select("id").eq("status", "CONTRATADO").lte("ausencia_informada_em", reportedBefore.toISOString());
+      if (error) throw error;
+      return data.map((row) => row.id);
+    },
 
     async setApplicationsClosed(eventId, closed) {
       const { error } = await admin.from("events").update({ inscricoes_encerradas: closed }).eq("id", eventId).eq("status", "ABERTO");
