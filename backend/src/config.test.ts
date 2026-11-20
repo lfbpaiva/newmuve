@@ -88,6 +88,11 @@ describe("configuração da API", () => {
     }
   });
 
+  it("token do suporte curto desliga as rotas do suporte", () => {
+    expect(readServerConfig({ ...dev, ADMIN_TOKEN: "curto" }).adminToken).toBeUndefined();
+    expect(readServerConfig({ ...dev, ADMIN_TOKEN: ` ${"s".repeat(40)} ` }).adminToken).toBe("s".repeat(40));
+  });
+
   it("SMTP informado precisa estar completo", () => {
     expect(() => readServerConfig({ ...dev, SMTP_HOST: "smtp.exemplo.com" })).toThrow("SMTP_USER");
     expect(readServerConfig({ ...dev, SMTP_HOST: "smtp.exemplo.com", SMTP_USER: "u", SMTP_PASS: "p", SMTP_FROM: "Muve <a@b.com>" }).smtp?.port).toBe(587);

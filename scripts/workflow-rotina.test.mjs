@@ -1,9 +1,12 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+
+const BASH_DO_GIT = ["C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe"];
+const bash = process.platform === "win32" ? BASH_DO_GIT.find((caminho) => existsSync(caminho)) ?? null : "bash";
 
 const workflow = readFileSync(new URL("../.github/workflows/rotina-financeira.yml", import.meta.url), "utf8");
 const condicao = workflow.match(/^ {4}if: (.+)$/m)?.[1].trim();
@@ -51,7 +54,7 @@ async function executarWorkflow({ evento, variaveis }) {
     if (!avaliar(condicao, { evento, variaveis })) return { executado: false, chamadas };
     const { port } = servidor.address();
     const codigo = await new Promise((resolve) => {
-      const processo = spawn("bash", [arquivoDoScript], {
+      const processo = spawn(bash, [arquivoDoScript], {
         env: { ...process.env, MUVE_API_URL: `http://127.0.0.1:${port}/api`, FINANCIAL_ROUTINE_TOKEN: "t".repeat(40) },
         stdio: "ignore",
       });
@@ -79,7 +82,7 @@ describe("workflow da rotina financeira", () => {
       });
     }
 
-    it(`${evento} com ROTINA_FINANCEIRA_ATIVA=true chama a rota uma vez`, async () => {
+    it.skipIf(!bash)(`${evento} com ROTINA_FINANCEIRA_ATIVA=true chama a rota uma vez`, async () => {
       const resultado = await executarWorkflow({ evento, variaveis: { ROTINA_FINANCEIRA_ATIVA: "true" } });
 
       expect(resultado.executado).toBe(true);

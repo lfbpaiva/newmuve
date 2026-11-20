@@ -8,7 +8,7 @@ function fakes() {
   const accounts = new Map<string, Account>();
   const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
-  const state = { failCreateProfile: false, ongoingHiring: false, semSenha: false, customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
+  const state = { failCreateProfile: false, ongoingHiring: false, semSenha: false, avisos: [] as { titulo: string }[], customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
   let nextId = 1;
 
   const store: AccountStore = {
@@ -64,7 +64,7 @@ function fakes() {
     users,
     images,
     state,
-    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {} }, releaseAccount: async () => {}, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {}, add: async (aviso) => void state.avisos.push(aviso) }, releaseAccount: async () => {}, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
   };
 }
 
@@ -109,6 +109,20 @@ describe("perfil progressivo", () => {
   beforeEach(async () => {
     t = fakes();
     await t.service.signup(musico);
+  });
+
+  it("trocar a chave Pix exige a senha e avisa o músico", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", chavePixTipo: "CPF", chavePix: "52998224725" }, null);
+    expect(t.state.avisos).toHaveLength(0);
+
+    const troca = { nome: "Ana Souza", chavePixTipo: "EMAIL" as const, chavePix: "outra@exemplo.com" };
+    await expect(t.service.updateProfile(user, "MUSICIAN", troca, null)).rejects.toMatchObject({ code: "SENHA_NECESSARIA" });
+    await expect(t.service.updateProfile(user, "MUSICIAN", { ...troca, senhaAtual: "errada" }, null)).rejects.toMatchObject({ code: "SENHA_INCORRETA" });
+    expect(t.accounts.get(user.id)?.chavePix).toBe("52998224725");
+
+    await t.service.updateProfile(user, "MUSICIAN", { ...troca, senhaAtual: "segredo1" }, null);
+    expect(t.accounts.get(user.id)?.chavePix).toBe("outra@exemplo.com");
+    expect(t.state.avisos.map((aviso) => aviso.titulo)).toEqual(["Chave Pix alterada"]);
   });
 
   it("completa o perfil aos poucos, sem apagar o que já foi preenchido", async () => {

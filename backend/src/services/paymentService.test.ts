@@ -37,6 +37,15 @@ const semResposta = () =>
   vi.spyOn(t.world.stores.asaas, "transferPix").mockRejectedValueOnce(new AppError(502, "PAGAMENTO_INDISPONIVEL", "tempo esgotado sem saber se a Asaas criou a transferência"));
 
 describe("checkout (aprovar candidato)", () => {
+  it("recusa cobrar quando o valor da inscrição mudou depois que o contratante conferiu", async () => {
+    t.candidate.valorProposto = 900;
+
+    await expect(t.service.startCheckout(contratante, t.event.id, t.candidate.id, NOW, 300)).rejects.toMatchObject({ code: "VALOR_ALTERADO" });
+    expect(t.world.asaasCalls.createPixCharge).toEqual([]);
+
+    await expect(t.service.startCheckout(contratante, t.event.id, t.candidate.id, NOW, 900)).resolves.toMatchObject({ valorCache: 900 });
+  });
+
   it("cobra o valor proposto pelo músico, mais a taxa, quando ele pediu outro cachê", async () => {
     t.candidate.valorProposto = 900;
 

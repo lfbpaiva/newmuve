@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { estimarCobrancaDoContratante } from "../dominio.ts";
-import { detalharTotalDoContratante, formatTotalDaInscricao, formatTotalDoContratante, formatTotalSeAceita } from "./format.ts";
+import { detalharTotalDoContratante, formatTotalDaInscricao, formatTotalDoContratante, formatTotalSeAceita, parseValor } from "./format.ts";
 
 const agora = new Date("2026-11-16T20:00:00Z");
 const espaco = (texto: string) => texto.replace(/\s/g, " ");
@@ -25,5 +25,27 @@ describe("texto do total para o contratante", () => {
 
     expect(espaco(formatTotalDoContratante(estimativa))).toBe("Você paga R$ 689,00 se aprovar agora");
     expect(espaco(detalharTotalDoContratante(estimativa))).toBe("R$ 650,00 de cachê + R$ 39,00 de taxa de 6% do Muve Casa, válida até 12/12/2026. O valor final é calculado no pagamento.");
+  });
+});
+
+describe("leitura do valor digitado", () => {
+  it("aceita vírgula ou ponto como decimal", () => {
+    expect(parseValor("150,50")).toBe(150.5);
+    expect(parseValor("150.50")).toBe(150.5);
+    expect(parseValor("150.5")).toBe(150.5);
+    expect(parseValor("1500")).toBe(1500);
+  });
+
+  it("entende o ponto de milhar", () => {
+    expect(parseValor("1.500")).toBe(1500);
+    expect(parseValor("1.500,00")).toBe(1500);
+    expect(parseValor("1.500.000")).toBe(1500000);
+    expect(parseValor("150.505")).toBe(150505);
+  });
+
+  it("recusa o que não dá para ler sem adivinhar", () => {
+    for (const valor of ["", " ", "1,500.00", "1.50.0", "12,3,4", "abc", "1,234"]) {
+      expect(parseValor(valor), valor).toBeNaN();
+    }
   });
 });

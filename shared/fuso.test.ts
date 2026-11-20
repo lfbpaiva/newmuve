@@ -22,3 +22,12 @@ describe("horário do evento no fuso do estado", () => {
     expect(fusoDaUf("MT")).toBe("America/Cuiaba");
   });
 });
+
+describe("data e horário impossíveis", () => {
+  it("não viram outra data", () => {
+    for (const [data, horario] of [["2026-02-31", "21:00"], ["2026-02-29", "21:00"], ["2026-13-01", "21:00"], ["2026-04-31", "10:00"], ["2026-11-14", "25:00"], ["2026-11-14", "21:60"]]) {
+      expect(Number.isNaN(horarioLocalDoEvento(data, horario, "PR").getTime()), `${data} ${horario}`).toBe(true);
+    }
+    expect(horarioLocalDoEvento("2028-02-29", "21:00", "PR").toISOString()).toBe("2028-03-01T00:00:00.000Z");
+  });
+});

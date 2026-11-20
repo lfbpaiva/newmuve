@@ -27,6 +27,7 @@ export function ProposalForm({ cacheOferecido, valorAtual, submitLabel, icon, bu
 
   function submit() {
     if (!propor) return onSubmit(null);
+    if (Number.isNaN(numero)) return setError("Não entendemos o valor. Digite como 150 ou 150,50.");
     if (!isValidCache(numero)) return setError("O valor mínimo é de R$ 100,00.");
     onSubmit(numero);
   }

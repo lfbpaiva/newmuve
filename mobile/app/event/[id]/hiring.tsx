@@ -6,6 +6,7 @@ import { acaoDeContestacao, avisoDoEstorno, confirmacaoDaParte, etapasDaContrata
 import { cancelHiring, confirmCompletion, fetchHiring, openDispute, reportNoShow, reviewEvent, type CancellationResult } from "../../../../shared/client/events.ts";
 import { formatCurrency, formatDuration } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
+import { hasCancellationNotice, VISIBILIDADE_REDUZIDA_DIAS } from "../../../../shared/dominio.ts";
 import { maskPhone } from "../../../../shared/client/validators.ts";
 import { EventStatusPill } from "../../../components/events";
 import { HiringAgreement } from "../../../components/HiringAgreement";
@@ -113,7 +114,7 @@ export default function HiringScreen() {
       ? cancelamento.reembolso
         ? "O estorno integral será solicitado ao Asaas. A contratação termina quando a devolução for confirmada."
         : "Faltam menos de 24h: não há devolução e o cachê será repassado ao músico."
-      : "O estorno integral ao contratante será solicitado. Depois da confirmação da devolução, o evento volta a receber candidatos.";
+      : `O estorno integral ao contratante será solicitado. Depois da confirmação da devolução, o evento volta a receber candidatos.${hasCancellationNotice(new Date(evento.inicio), new Date()) ? "" : ` Como faltam menos de 24h para o show, você fica ${VISIBILIDADE_REDUZIDA_DIAS} dias sem ver eventos novos no feed.`}`;
     const esperado = isContractor ? (cancelamento.reembolso ? "COM_ESTORNO" : "SEM_ESTORNO") : undefined;
     confirmAction({ title: isContractor ? "Cancelar contratação" : "Desistir do show", message, onConfirm: () => void runCancellation(() => cancelHiring(evento.id, esperado)) });
   }
@@ -220,6 +221,7 @@ export default function HiringScreen() {
           ? <View style={[styles.card, { gap: space.sm }]}>
             <Field label="O que aconteceu?" value={formulario.motivo} onChangeText={(motivo) => setFormulario((atual) => ({ ...atual, motivo }))} multiline maxLength={1000} placeholder="Ex.: o músico não apareceu; o show durou metade do combinado..."/>
             <Text style={type.bodySmall}>O suporte analisa os dois lados e decide se o cachê vai para o músico ou volta para o contratante. Enquanto isso, nada é repassado.</Text>
+            {formulario.motivo.trim().length < 10 && <Text style={type.bodySmall}>Descreva o que aconteceu com pelo menos 10 caracteres.</Text>}
             <Button title="Enviar contestação" variant="danger" loading={busy} disabled={formulario.motivo.trim().length < 10} onPress={() => void enviarContestacao()}/>
             <Button title="Voltar" variant="text" onPress={() => setFormulario((atual) => ({ ...atual, aberto: false }))}/>
           </View>

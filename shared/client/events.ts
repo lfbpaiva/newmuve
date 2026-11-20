@@ -416,11 +416,11 @@ export const fetchCheckoutStatus = async (eventId: string): Promise<Checkout | n
 
 const checkoutsInFlight = new Map<string, Promise<Checkout>>();
 
-export function startCheckout(eventId: string, candidateId: string): Promise<Checkout> {
+export function startCheckout(eventId: string, candidateId: string, cacheEsperado?: number): Promise<Checkout> {
   const key = `${eventId}:${candidateId}`;
   let request = checkoutsInFlight.get(key);
   if (!request) {
-    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId }, timeoutMs: CHECKOUT_TEMPO_LIMITE_APP_MS }).finally(() =>
+    request = apiRequest<Checkout>(`/events/${eventId}/checkout`, { method: "POST", body: { candidateId, cacheEsperado }, timeoutMs: CHECKOUT_TEMPO_LIMITE_APP_MS }).finally(() =>
       checkoutsInFlight.delete(key),
     );
     checkoutsInFlight.set(key, request);

@@ -78,6 +78,7 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
     if (Number.isNaN(inicio.getTime())) return setError("Data ou horário inválido.");
     if (inicio <= new Date()) return setError("O horário de início não pode ser inferior ao horário atual.");
     if (timeInputToMinutes(form.duracao) < 1) return setError("Informe a duração do evento.");
+    if (Number.isNaN(cacheNumber)) return setError("Não entendemos o cachê. Digite como 150 ou 150,50.");
     if (!isValidCache(cacheNumber)) return setError("O cachê mínimo é de R$ 100,00.");
     if (!form.uf || !form.cidade) return setError("Selecione o estado e a cidade do evento.");
     if (form.endereco.trim().length < 5) return setError("Informe o endereço do evento.");

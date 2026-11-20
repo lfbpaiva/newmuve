@@ -272,6 +272,9 @@ export function createEventService(deps: {
 
     async releaseAccount(user: AuthUser, role: Role): Promise<void> {
       const mine = await events.listEventsOf(user.id, role);
+      if (role === "CONTRACTOR") {
+        for (const event of mine.filter((evento) => evento.status === "ABERTO")) await payments.ensureNoActiveCheckout(event.id);
+      }
       for (const event of mine) {
         if (role === "CONTRACTOR" && event.status === "ABERTO") {
           const pending = (await events.listCandidates(event.id)).filter((c) => c.status === "PENDENTE").map((c) => c.musicianId);

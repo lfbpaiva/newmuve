@@ -32,6 +32,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, EMPILHAR_DESLOCAMENTO, medidaDoReveal, posicaoNaRolagem, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques, somarDeslocamento, type AvisoDeFimDaRolagem } from "../lib/reveal";
+import { SENHA_TAMANHO_MINIMO } from "../../shared/dominio.ts";
 import { colors, fonts, gradients, motion, radius, space, styles, type } from "../lib/theme";
 
 const icones = {
@@ -471,7 +472,7 @@ export function PasswordField({ label = "Senha", value, onChangeText, nova = fal
     value={value}
     onChangeText={onChangeText}
     secureTextEntry={!visible}
-    placeholder="Mínimo de 6 caracteres"
+    placeholder={nova ? `Mínimo de ${SENHA_TAMANHO_MINIMO} caracteres` : "Sua senha"}
     autoCapitalize="none"
     autoCorrect={false}
     autoComplete={nova ? "new-password" : "current-password"}
