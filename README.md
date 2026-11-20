@@ -75,6 +75,9 @@ Contas de teste extras, criadas em 20/11/2026 com perfis completos, em Cascavel/
 - `musico2@teste.com`: Banda Teste Rock (Rock, Metal e Outros). Serve como segundo candidato nos eventos de rock.
 - `musico3@teste.com`: Dupla Teste MPB (MPB, Samba, Pop e Pagode).
 - `contratante2@teste.com`: Casa de Shows Teste, com CPF e sem Muve Casa.
+- `musico4@teste.com`: Solo Teste Pop (Pop e Indie). Testou o não comparecimento: tem multa pendente e não se inscreve até 05/12/2026.
+
+A Dupla Teste MPB tem o Muve Pro até 21/12/2026, sem renovação. Todos os músicos de teste usam a chave Pix de teste do Banco Central (`cliente-a00001@pix.bcb.gov.br`), porque a Asaas recusa repasse para chave que não existe, mesmo no sandbox.
 
 Os CPFs e telefones dessas contas são fictícios.
 

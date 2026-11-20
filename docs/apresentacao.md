@@ -17,6 +17,8 @@ Demonstração de 10 a 12 minutos, com dois aparelhos (ou duas abas do navegador
     - `contratante2@teste.com` (Casa de Shows Teste), sem Muve Casa.
 - [ ] **O Bar Teste tem o Muve Casa ativo pelo atalho do banco, sem pagamento** (até 12/12/2026). Por isso a taxa dele aparece como 6%. Se a banca perguntar, explicar que é a conta de teste; para mostrar a taxa de 10%, usar `contratante2@teste.com`.
 - [ ] Painel do sandbox da Asaas aberto em outra aba, na conta sandbox da Muve (a mesma da chave no `backend/.env`), para confirmar o Pix de teste.
+- [ ] Estornos e repasses esperam autorização na faixa do topo do painel (**Enviar código**). No sandbox, o próprio painel aceita o código `000000`, sem esperar o SMS.
+- [ ] Depois de puxar o `main`, rodar `npm install` na pasta `mobile`: as versões do Expo mudaram em 20/11.
 - [ ] Ter uma foto de evento no aparelho do contratante.
 - [ ] Não criar conta nova ao vivo se o SMTP não estiver configurado: o e-mail de confirmação pode não chegar.
 - [ ] Conferir se há um evento aberto com data futura para a demonstração. Em 20/11 havia "Evento recorrente" (27/11 e 04/12) e "Festa de ano novo" (01/01/2027), do Bar Teste.
