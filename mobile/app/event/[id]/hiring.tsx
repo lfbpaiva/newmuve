@@ -11,7 +11,7 @@ import { maskPhone } from "../../../../shared/client/validators.ts";
 import { EventStatusPill } from "../../../components/events";
 import { HiringAgreement } from "../../../components/HiringAgreement";
 import { HiringTimeline } from "../../../components/HiringTimeline";
-import { Alert, ativarComEspaco, Avatar, Button, ErrorState, Field, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
+import { Alert, ativarComEspaco, Avatar, Button, ErrorState, Field, focoDaOpcao, grupoDeOpcoes, Icon, Loading, Screen, Section, Snackbar } from "../../../components/ui";
 import { confirmAction } from "../../../lib/confirm";
 import { depoisDoEnvio, FORMULARIO_FECHADO } from "../../../lib/formularioContestacao";
 import { colors, space, styles, type } from "../../../lib/theme";
@@ -230,7 +230,7 @@ export default function HiringScreen() {
       </Section>}
 
       {avaliacaoVisivel && <Section title="Como foi a experiência?">
-        <View style={[styles.row, { gap: 4 }]} accessibilityRole="radiogroup">{[1, 2, 3, 4, 5].map((star) => <Pressable key={star} role="radio" aria-checked={star === rating} {...ativarComEspaco(() => setRating(star))} accessibilityLabel={`${star} ${star === 1 ? "estrela" : "estrelas"}`} onPress={() => setRating(star)} hitSlop={4} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name={star <= rating ? "star" : "star-outline"} size={30} color={star <= rating ? colors.star : colors.line}/></Pressable>)}</View>
+        <View style={[styles.row, { gap: 4 }]} {...grupoDeOpcoes([1, 2, 3, 4, 5], rating, setRating)}>{[1, 2, 3, 4, 5].map((star) => <Pressable key={star} role="radio" aria-checked={star === rating} {...focoDaOpcao(star === rating, rating > 0)} {...ativarComEspaco(() => setRating(star))} accessibilityLabel={`${star} ${star === 1 ? "estrela" : "estrelas"}`} onPress={() => setRating(star)} hitSlop={4} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Icon name={star <= rating ? "star" : "star-outline"} size={30} color={star <= rating ? colors.star : colors.line}/></Pressable>)}</View>
         <Field label="Comentário (opcional)" value={comment} onChangeText={setComment} multiline maxLength={1000}/>
         <Button title="Enviar avaliação" disabled={!rating} loading={busy} onPress={() => run("avaliacao", () => reviewEvent(evento.id, rating, comment), "Avaliação enviada. Obrigado!")}/>
         {retornoDa("avaliacao")}

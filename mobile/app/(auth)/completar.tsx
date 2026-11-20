@@ -5,7 +5,7 @@ import { completeProfile, type Role } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { AuthHeader } from "../../components/AuthHeader";
-import { Alert, Button, Checkbox, Field, OpcaoDePapel, Screen } from "../../components/ui";
+import { Alert, Button, Checkbox, Field, grupoDeOpcoes, OpcaoDePapel, Screen } from "../../components/ui";
 import { space } from "../../lib/theme";
 import { roles } from "./signup";
 
@@ -44,7 +44,7 @@ export default function CompleteSignupScreen() {
 
   return <Screen evitarTeclado>
     <AuthHeader titulo="Quase lá" subtitulo={`Você entrou com ${email || "o Google"}. Falta só dizer como vai usar a Muve.`}/>
-    <View style={{ flexDirection: "row", gap: space.md }}>
+    <View {...grupoDeOpcoes(roles.map((option) => option.value), role, setRole)} style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;
         return <OpcaoDePapel key={option.value} ativa={on} icone={option.icon} titulo={option.title} detalhe={option.sub} onPress={() => setRole(option.value)}/>;

@@ -9,7 +9,7 @@ import { GoogleButton } from "../../components/GoogleButton";
 import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { AuthHeader } from "../../components/AuthHeader";
-import { Alert, Button, Checkbox, Field, Icon, OpcaoDePapel, PasswordField, Screen, type IconName } from "../../components/ui";
+import { Alert, Button, Checkbox, Field, grupoDeOpcoes, Icon, OpcaoDePapel, PasswordField, Screen, type IconName } from "../../components/ui";
 import { colors, space, type } from "../../lib/theme";
 
 export const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
@@ -76,7 +76,7 @@ export default function SignupScreen() {
 
   return <Screen evitarTeclado>
     <AuthHeader titulo="Vamos fazer música" subtitulo="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
-    <View style={{ flexDirection: "row", gap: space.md }}>
+    <View {...grupoDeOpcoes(roles.map((option) => option.value), role, setRole)} style={{ flexDirection: "row", gap: space.md }}>
       {roles.map((option) => {
         const on = role === option.value;
         return <OpcaoDePapel key={option.value} ativa={on} icone={option.icon} titulo={option.title} detalhe={option.sub} onPress={() => setRole(option.value)}/>;

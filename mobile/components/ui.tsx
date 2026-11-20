@@ -388,7 +388,7 @@ export function Grupo({ titulo, icone, children }: { titulo: string; icone: Icon
 }
 
 export function OpcaoDePapel({ ativa, icone, titulo, detalhe, onPress }: { ativa: boolean; icone: IconName; titulo: string; detalhe: string; onPress: () => void }) {
-  return <Pressable role="radio" aria-checked={ativa} {...ativarComEspaco(onPress)} onPress={onPress} style={({ pressed }) => ({ flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
+  return <Pressable role="radio" aria-checked={ativa} {...focoDaOpcao(ativa)} {...ativarComEspaco(onPress)} onPress={onPress} style={({ pressed }) => ({ flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
     <View style={{ width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: ativa ? colors.accent : colors.surface2 }}>
       <Icon name={icone} size={20} color={ativa ? colors.onAccent : colors.ink2}/>
     </View>
@@ -490,6 +490,29 @@ interface TeclaPressionada { key: string; preventDefault(): void }
 export function ativarComEspaco(acao: () => void): object {
   if (Platform.OS !== "web") return {};
   return { onKeyDown: (evento: TeclaPressionada) => { if (evento.key !== " ") return; evento.preventDefault(); acao(); } };
+}
+
+const PASSO_DA_SETA: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+interface TeclaNoGrupo extends TeclaPressionada { currentTarget: { querySelectorAll(seletor: string): ArrayLike<{ focus(): void }> } }
+
+export function grupoDeOpcoes<T>(valores: readonly T[], atual: T, escolher: (valor: T) => void): object {
+  if (Platform.OS !== "web") return { accessibilityRole: "radiogroup" };
+  return {
+    role: "radiogroup",
+    onKeyDown: (evento: TeclaNoGrupo) => {
+      const passo = PASSO_DA_SETA[evento.key];
+      if (!passo) return;
+      evento.preventDefault();
+      const proximo = (valores.indexOf(atual) + passo + valores.length) % valores.length;
+      escolher(valores[proximo]);
+      evento.currentTarget.querySelectorAll('[role="radio"]')[proximo]?.focus();
+    },
+  };
+}
+
+export function focoDaOpcao(ativa: boolean, algumaAtiva = true): object {
+  return Platform.OS === "web" ? { tabIndex: ativa || !algumaAtiva ? 0 : -1 } : {};
 }
 
 export function Checkbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
