@@ -169,6 +169,29 @@ Ficou para decisão do grupo, com a proposta registrada:
 - **Redirecionamento `exp://**` no Supabase:** necessário para o Expo Go, mas permite levar o link de redefinição de senha a um app do atacante. Em produção, deixar só `muve://auth`.
 - **Manutenção:** dividir `paymentService.ts` (733 linhas) e `ui.tsx`, centralizar em `dominio.ts` as permissões da contratação e a situação da conversa e unificar português e inglês nos nomes. São refatorações grandes demais para fazer perto da entrega.
 
+## QA de ponta a ponta (20/11/2026)
+
+O relatório está em [qa-2026-11-20.md](qa-2026-11-20.md). Parecer: reprovada para produção e apta com ressalvas para a apresentação. Corrigido na branch `qualidade/qa-20-11`:
+
+- QA-01: o limite das rotas de suporte passou a valer para todas elas juntas, e não para cada ID.
+- QA-02: o erro do captcha não some ao digitar e ganhou o botão "Tentar de novo" (`VerificacaoDeSeguranca`).
+- QA-03: o grupo escolheu a opção A. Um Pix pago depois dos 15 minutos contrata enquanto a cobrança não foi removida, o evento está aberto e o músico está livre; regra registrada em `produto.md`.
+- QA-05: o aviso de vencimento consulta a Asaas, remove a cobrança e, se ela já foi paga, contrata.
+- QA-06: /reset e /completar sem sessão voltam para o login.
+- QA-07: os Termos abertos pela URL ganharam o botão "Início".
+- QA-08: caixas de seleção e opções de escolha informam `aria-checked`, e o Espaço alterna.
+- QA-09: página 404 em português.
+- QA-10 e QA-11: o botão voltar da web se chama "Voltar" e tem 44px; links do login com área de toque de 44px.
+- QA-12 e QA-13: corpo inválido responde "Dados inválidos."; corpo grande demais responde 413 com mensagem genérica.
+- QA-14: webhook com limite de tentativas.
+- QA-15: o Enter envia a recuperação de senha, e o e-mail inválido é explicado.
+
+Continuam pendentes:
+
+- **QA-04 e QA-16:** limpar os dados de teste no banco de produção. Grava no banco, então só com autorização.
+- **Setas no grupo de opções:** as setas ainda não trocam a opção escolhida.
+- **Teste com usuários reais:** os 12 fluxos com usuários reais exigem um ambiente de teste sem captcha.
+
 ## O que falta
 
 ### Para a entrega do TCC

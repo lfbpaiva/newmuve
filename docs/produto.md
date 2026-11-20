@@ -102,7 +102,7 @@ O estorno tem um estado próprio enquanto a Asaas processa: nesse intervalo, con
 | Cachê alterado pelo contratante | Quem tinha aceitado o valor antigo continua com ele; a proposta de quem pediu outro valor não muda |
 | Evento editado | Inscritos que deixam de combinar (cidade ou estilos) são recusados e avisados; os demais são avisados da mudança |
 | Show duplo | Um músico não se inscreve, não é cobrado nem é contratado para um show que se sobrepõe a outro em que já foi contratado |
-| Validade do Pix | 15 minutos; um Pix pago quando a cobrança já não vale (expirada, trocada, músico indisponível ou show já iniciado) não contrata e é devolvido, com nova tentativa se a Asaas recusar |
+| Validade do Pix | 15 minutos. Depois disso a API remove a cobrança na Asaas (ao consultar, na rotina financeira ou no aviso de vencimento). Um Pix pago depois dos 15 minutos, mas antes da remoção, contrata se o evento ainda estiver aberto, o músico livre e o show não tiver começado (decisão do grupo em 20/11/2026). Um Pix pago numa cobrança já encerrada, trocada, com o músico indisponível ou com o show iniciado não contrata e é devolvido, com nova tentativa se a Asaas recusar |
 | Alcance do evento | Mesmos estilos (ou "Qualquer estilo"); mesma cidade ou até 200 km |
 | Cancelar inscrição | Até 24h antes do evento |
 | Encerrar inscrições | O contratante pode encerrar e reabrir antes da contratação; encerrado, o evento sai do feed, mas os inscritos continuam podendo ser aprovados |

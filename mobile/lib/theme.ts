@@ -58,6 +58,8 @@ export const stackOptions = {
   headerTintColor: colors.ink,
   headerTitleStyle: { fontFamily: fonts.semibold, fontSize: 16 },
   headerBackButtonDisplayMode: "minimal",
+  headerBackTitle: "Voltar",
+  headerBackAccessibilityLabel: "Voltar",
   contentStyle: { backgroundColor: colors.bg },
   animation: "slide_from_right",
 } as const;

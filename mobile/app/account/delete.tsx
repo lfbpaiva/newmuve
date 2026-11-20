@@ -5,7 +5,7 @@ import { deleteAccount, hasPasswordLogin } from "../../../shared/client/account.
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { sanitizeEmail } from "../../../shared/client/validators.ts";
-import { Turnstile } from "../../components/Turnstile";
+import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { Alert, Button, Field, Heading, Icon, PasswordField, Screen } from "../../components/ui";
 import { colors, space, styles, type } from "../../lib/theme";
@@ -50,7 +50,7 @@ export default function DeleteAccountScreen() {
     <Text style={type.body}>{pedeSenha ? "Para confirmar, digite o e-mail e a senha da conta." : "Para confirmar, digite o e-mail da conta."}</Text>
     <Field label="E-mail da conta" value={email} onChangeText={(v) => { setEmail(sanitizeEmail(v)); setError(""); }} autoCapitalize="none" keyboardType="email-address"/>
     {pedeSenha && <PasswordField label="Senha" value={password} onChangeText={(v) => { setPassword(v); setError(""); }}/>}
-    {pedeSenha && <Turnstile key={captchaKey} onToken={setCaptchaToken} onError={setError}/>}
+    {pedeSenha && <VerificacaoDeSeguranca key={captchaKey} onToken={setCaptchaToken}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     <Button variant="danger" title="Excluir minha conta definitivamente" icon="trash-outline" onPress={confirm} loading={submitting} disabled={!email || (pedeSenha && !password) || faltaCaptcha}/>
     <Button variant="text" title="Manter minha conta" onPress={() => router.back()} disabled={submitting}/>

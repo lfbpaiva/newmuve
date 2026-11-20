@@ -7,7 +7,7 @@ import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { isValidEmail, sanitizeEmail } from "../../../shared/client/validators.ts";
 import { AuthHeader } from "../../components/AuthHeader";
 import { GoogleButton } from "../../components/GoogleButton";
-import { Turnstile } from "../../components/Turnstile";
+import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { Alert, Button, Checkbox, Field, PasswordField, Screen } from "../../components/ui";
 import { colors, space, type } from "../../lib/theme";
@@ -66,18 +66,18 @@ export default function LoginScreen() {
         <Text style={secondaryText}>Acesse seus eventos, inscrições e conversas.</Text>
       </View>
       <Field label="E-mail" error={emailError} value={email} onChangeText={(v) => { setEmail(sanitizeEmail(v)); setError(""); }} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="voce@exemplo.com"/>
-      <PasswordField value={password} onChangeText={(v) => { setPassword(v); setError(""); }}/>
+      <PasswordField value={password} onChangeText={(v) => { setPassword(v); setError(""); }} onSubmit={login}/>
       <View style={{ gap: space.xs }}>
         <Checkbox label="Lembrar de mim" checked={rememberMe} onChange={setRememberMe}/>
-        <Link href="/(auth)/recover" style={[type.bodySmall, { fontSize: 14, lineHeight: 21, color: colors.accentText, alignSelf: "flex-end", paddingVertical: space.sm }]}>Esqueci minha senha</Link>
+        <Link href="/(auth)/recover" style={[type.bodySmall, { fontSize: 14, lineHeight: 21, color: colors.accentText, alignSelf: "flex-end", paddingVertical: space.md, minHeight: 44 }]}>Esqueci minha senha</Link>
       </View>
-      <Turnstile key={captchaKey} onToken={setCaptchaToken} onError={setError}/>
+      <VerificacaoDeSeguranca key={captchaKey} onToken={setCaptchaToken} aviso="Conclua a verificação de segurança para entrar."/>
       {alertMessage ? <Alert tone="error">{alertMessage}</Alert> : null}
-      {faltaCaptcha && !error && !submitting ? <Text style={[secondaryText, { textAlign: "center" }]}>Conclua a verificação de segurança para entrar.</Text> : null}
       <Button title="Entrar na Muve" icon="arrow-forward" onPress={login} loading={submitting} disabled={faltaCaptcha}/>
       <GoogleButton onError={setError}/>
       <View style={{ borderTopWidth: 1, borderTopColor: colors.hairline, paddingTop: space.lg }}>
-        <Text style={[secondaryText, { textAlign: "center" }]}>Ainda não tem uma conta? <Link href="/(auth)/signup" style={[type.bodySmall, { fontSize: 14, lineHeight: 21, color: colors.accentText, fontFamily: "Geist_600SemiBold" }]}>Criar conta</Link></Text>
+        <Text style={[secondaryText, { textAlign: "center" }]}>Ainda não tem uma conta?</Text>
+        <Link href="/(auth)/signup" style={[type.bodySmall, { fontSize: 14, lineHeight: 21, color: colors.accentText, fontFamily: "Geist_600SemiBold", alignSelf: "center", paddingVertical: space.md, paddingHorizontal: space.lg, minHeight: 44 }]}>Criar conta</Link>
       </View>
     </View>
   </Screen>;

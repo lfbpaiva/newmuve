@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { Abertura } from "../components/Abertura";
+import { voltarNaWeb } from "../components/BotaoVoltar";
 import { telasLiberadas } from "../lib/abertura";
 import { consumeAuthLink } from "../lib/authLinks";
 import { usePushNotifications } from "../lib/push";
@@ -81,7 +82,7 @@ function AuthGate() {
     </Pressable>
   </View>;
 
-  return <Stack screenOptions={{ ...stackOptions, animation: "slide_from_right" }}>
+  return <Stack screenOptions={{ ...stackOptions, ...voltarNaWeb, animation: "slide_from_right" }}>
     <Stack.Protected guard={!signedIn}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }}/>
     </Stack.Protected>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { rememberedEmail, requestPasswordReset } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { isValidEmail, sanitizeEmail } from "../../../shared/client/validators.ts";
-import { Turnstile } from "../../components/Turnstile";
+import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { AuthHeader } from "../../components/AuthHeader";
 import { Alert, Button, Field, Screen } from "../../components/ui";
@@ -21,6 +21,8 @@ export default function RecoverScreen() {
   }, []);
 
   async function submit() {
+    if (submitting) return;
+    if (!isValidEmail(email)) return setError("Informe um e-mail válido.");
     if (faltaCaptcha) return setError("Confirme que você não é um robô.");
     setSubmitting(true);
     setError("");
@@ -41,10 +43,10 @@ export default function RecoverScreen() {
     {sent
       ? <Alert tone="success">Se este e-mail estiver cadastrado, você receberá as instruções em instantes.</Alert>
       : <>
-        <Field label="E-mail da conta" value={email} onChangeText={(v) => { setEmail(sanitizeEmail(v)); setError(""); }} autoCapitalize="none" autoComplete="email" keyboardType="email-address"/>
-        <Turnstile key={captchaKey} onToken={setCaptchaToken} onError={setError}/>
+        <Field label="E-mail da conta" value={email} onChangeText={(v) => { setEmail(sanitizeEmail(v)); setError(""); }} autoCapitalize="none" autoComplete="email" keyboardType="email-address" returnKeyType="send" onSubmitEditing={submit}/>
+        <VerificacaoDeSeguranca key={captchaKey} onToken={setCaptchaToken} aviso="Conclua a verificação de segurança para enviar o link."/>
         {error ? <Alert tone="error">{error}</Alert> : null}
-        <Button title="Enviar link de recuperação" icon="mail-outline" onPress={submit} loading={submitting} disabled={!isValidEmail(email) || faltaCaptcha}/>
+        <Button title="Enviar link de recuperação" icon="mail-outline" onPress={submit} loading={submitting} disabled={faltaCaptcha}/>
       </>}
   </Screen>;
 }

@@ -388,7 +388,7 @@ export function Grupo({ titulo, icone, children }: { titulo: string; icone: Icon
 }
 
 export function OpcaoDePapel({ ativa, icone, titulo, detalhe, onPress }: { ativa: boolean; icone: IconName; titulo: string; detalhe: string; onPress: () => void }) {
-  return <Pressable accessibilityRole="radio" accessibilityState={{ checked: ativa }} onPress={onPress} style={({ pressed }) => ({ flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
+  return <Pressable role="radio" aria-checked={ativa} {...ativarComEspaco(onPress)} onPress={onPress} style={({ pressed }) => ({ flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
     <View style={{ width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: ativa ? colors.accent : colors.surface2 }}>
       <Icon name={icone} size={20} color={ativa ? colors.onAccent : colors.ink2}/>
     </View>
@@ -465,7 +465,7 @@ export function Field({ label, error, hint, trailing, style, ...input }: TextInp
   </View>;
 }
 
-export function PasswordField({ label = "Senha", value, onChangeText, nova = false }: { label?: string; value: string; onChangeText: (value: string) => void; nova?: boolean }) {
+export function PasswordField({ label = "Senha", value, onChangeText, nova = false, onSubmit }: { label?: string; value: string; onChangeText: (value: string) => void; nova?: boolean; onSubmit?: () => void }) {
   const [visible, setVisible] = useState(false);
   return <Field
     label={label}
@@ -477,14 +477,23 @@ export function PasswordField({ label = "Senha", value, onChangeText, nova = fal
     autoCorrect={false}
     autoComplete={nova ? "new-password" : "current-password"}
     textContentType={nova ? "newPassword" : "password"}
+    returnKeyType={onSubmit ? "go" : undefined}
+    onSubmitEditing={onSubmit}
     trailing={<Pressable onPress={() => setVisible(!visible)} accessibilityRole="button" accessibilityLabel={visible ? "Ocultar senha" : "Mostrar senha"} hitSlop={8} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
       <Icon name={visible ? "eye-off-outline" : "eye-outline"} color={colors.ink2}/>
     </Pressable>}
   />;
 }
 
+interface TeclaPressionada { key: string; preventDefault(): void }
+
+export function ativarComEspaco(acao: () => void): object {
+  if (Platform.OS !== "web") return {};
+  return { onKeyDown: (evento: TeclaPressionada) => { if (evento.key !== " ") return; evento.preventDefault(); acao(); } };
+}
+
 export function Checkbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} onPress={() => onChange(!checked)} style={[styles.row, { minHeight: 48, gap: 12 }]}>
+  return <Pressable role="checkbox" aria-checked={checked} {...ativarComEspaco(() => onChange(!checked))} onPress={() => onChange(!checked)} style={[styles.row, { minHeight: 48, gap: 12 }]}>
     <View style={{ width: 22, height: 22, borderRadius: radius.xs, borderWidth: 1.5, borderColor: checked ? colors.accent : colors.line, backgroundColor: checked ? colors.accent : colors.surface, alignItems: "center", justifyContent: "center" }}>
       {checked && <Icon name="checkmark" size={15} color={colors.onAccent}/>}
     </View>
