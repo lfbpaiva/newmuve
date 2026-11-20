@@ -491,7 +491,7 @@ export function memoryWorld() {
       const payment = payments.get(id)!;
       const aberta = tentativas.some((t) => t.paymentId === id && ABERTAS.includes(t.estado));
       const contestada = disputes.some((d) => d.eventId === payment.eventId && PENDENTES.includes(d.status));
-      if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || (payment.repasseStatus !== "RETIDO" && payment.repasseStatus !== "FALHOU") || payment.asaasTransferId || aberta || contestada) {
+      if (payment.status !== "PAGO" || payment.refundStatus === "PROCESSANDO" || payment.repasseStatus !== "RETIDO" || payment.asaasTransferId || aberta || contestada) {
         return { tentativaId: null, desconto: payment.multaDescontada };
       }
       const musicianId = payment.eventId ? events.get(payment.eventId)?.musicoContratadoId : null;

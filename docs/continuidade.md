@@ -158,15 +158,16 @@ Quatro revisões independentes (segurança, uso errado, manutenção e testes) r
 - Teste que compara as regras do banco com as do TypeScript (multa, penalidade, prazos, raio e acesso antecipado do Pro, prazos da liberação de repasse).
 - Testes novos: exclusão com Pix pendente, terceiros na negociação e na contestação, contestação depois do repasse, contestação inexistente, assinatura repetida e desconhecida.
 - `pnpm test` no Windows usa o Git Bash; sem um bash compatível, os dois casos do workflow são pulados.
+- `claim_payout` passa a recusar repasse `FALHOU` também no banco (migration `20261120120000_repasse_falhou_no_banco`, com teste pgTAP).
+- Os `catch` que engoliam erros de estorno, repasse, imagens e avisos passam a registrar o motivo (`backend/src/services/falhas.ts`).
 
 Ficou para decisão do grupo, com a proposta registrada:
 
 - **Não comparecimento unilateral:** o contratante pede estorno total e multa logo depois do horário, se o músico ainda não confirmou, e o músico não consegue contestar depois do estorno. Proposta: segurar o estorno por 24h e avisar o músico, que pode confirmar ou contestar nesse prazo. Exige migration e mudança de regra.
 - **Leitura direta da tabela de eventos:** a policy permite ler todo evento aberto, contornando o acesso antecipado do Pro e a visibilidade reduzida (é o ponto D3 da auditoria). Proposta: limitar a leitura de evento aberto ao que o feed mostraria, a quem já se inscreveu e a quem foi convidado. Exige migration.
-- **`claim_payout` aceita repasse `FALHOU` no banco:** a regra "não repetir repasse que falhou" está só no serviço. Proposta: recusar `FALHOU` também na função, com teste pgTAP. Exige migration.
 - **Publicar evento e enviar mensagem não são idempotentes:** um tempo esgotado pode levar a duplicar. Proposta: chave de idempotência enviada pelo app e restrição única. Exige migration.
 - **Redirecionamento `exp://**` no Supabase:** necessário para o Expo Go, mas permite levar o link de redefinição de senha a um app do atacante. Em produção, deixar só `muve://auth`.
-- **Manutenção:** dividir `paymentService.ts` (733 linhas) e `ui.tsx`, centralizar em `dominio.ts` as permissões da contratação e a situação da conversa, registrar o motivo nos `catch` vazios e unificar português e inglês nos nomes. São refatorações grandes demais para fazer perto da entrega.
+- **Manutenção:** dividir `paymentService.ts` (733 linhas) e `ui.tsx`, centralizar em `dominio.ts` as permissões da contratação e a situação da conversa e unificar português e inglês nos nomes. São refatorações grandes demais para fazer perto da entrega.
 
 ## O que falta
 
