@@ -5,7 +5,8 @@ Demonstração de 10 a 12 minutos, com dois aparelhos (ou duas abas do navegador
 ## Antes de começar (no dia)
 
 - [ ] `backend/.env` e `mobile/.env` preenchidos (veja o README).
-- [ ] API rodando: `pnpm dev:api`. App rodando: `pnpm dev:app`. Celular e computador no mesmo Wi-Fi.
+- [ ] **Captcha:** o Supabase está com o captcha ligado, então o login só funciona com `EXPO_PUBLIC_TURNSTILE_SITE_KEY` e `EXPO_PUBLIC_TURNSTILE_BASE_URL` preenchidas no `mobile/.env`. Sem elas, entrar no app falha. Testar o login na véspera.
+- [ ] API rodando: `pnpm dev:api`, sem `ENABLE_FINANCIAL_ROUTINE` no `backend/.env`. App rodando: `pnpm dev:app`. Celular e computador no mesmo Wi-Fi.
 - [ ] Para ter as duas contas no mesmo navegador, usar `http://localhost:8081` e `http://127.0.0.1:8081`, uma em cada aba.
 - [ ] Entrar com as duas contas de demonstração (senha `teste123`):
   - **Contratante:** `contratante@teste.com` (Bar Teste)
@@ -13,8 +14,8 @@ Demonstração de 10 a 12 minutos, com dois aparelhos (ou duas abas do navegador
 - [ ] Painel do sandbox da Asaas aberto em outra aba, na conta sandbox da Muve (a mesma da chave no `backend/.env`), para confirmar o Pix de teste.
 - [ ] Ter uma foto de evento no aparelho do contratante.
 - [ ] Não criar conta nova ao vivo se o SMTP não estiver configurado: o e-mail de confirmação pode não chegar.
-- [ ] Ter por perto o celular cadastrado na conta Asaas: cada repasse pede um código por SMS.
-- [ ] Conferir se há um evento aberto com data futura para a demonstração.
+- [ ] Conferir se há um evento aberto com data futura para a demonstração. Em 20/11 havia "Evento recorrente" (27/11 e 04/12) e "Festa de ano novo" (01/01/2027), do Bar Teste.
+- [ ] Conferir que "Noite de MPB no Bar Teste" continua concluído e repassado: é ele que mostra o repasse (passo 6).
 
 ## Roteiro
 
@@ -34,7 +35,8 @@ Contratar músico independente é informal: o músico arrisca calote, o contrata
 ### 4. Negociação pelo chat (1 min)
 1. Músico → **Conversar com o contratante**.
 2. Trocar duas mensagens; elas chegam na hora no outro aparelho.
-3. Destacar: telefone e WhatsApp só são liberados depois da contratação, para o pagamento não sair da plataforma.
+3. No aparelho do contratante, o topo da conversa mostra quanto ele paga: "Para aprovar a inscrição de R$ Y, você paga R$ X", com cachê e taxa separados. Uma contraproposta aceita atualiza o valor.
+4. Destacar: telefone e WhatsApp só são liberados depois da contratação, para o pagamento não sair da plataforma.
 
 ### 5. Contratação e pagamento (2 min)
 1. Contratante vê o candidato com o valor pedido, abre o perfil e as avaliações.
@@ -44,10 +46,11 @@ Contratar músico independente é informal: o músico arrisca calote, o contrata
 5. Abrir o **comprovante**: endereço, telefone, valores e a frase "Pago · Retido na plataforma até a conclusão do show".
 
 ### 6. Depois do show (1 min)
-Usar o evento já concluído "Noite acústica no terraço" para mostrar:
-1. A confirmação das duas partes e o repasse do cachê por Pix. Para mostrar um repasse ao vivo, use **Meu Dinheiro → Transferências → Enviar código** no painel da Asaas: no sandbox, a saída do dinheiro exige autorização por SMS.
-2. A avaliação mútua.
-3. Explicar a regra: sem confirmação e sem reclamação, o show é dado como realizado em 7 dias.
+O repasse não acontece ao vivo: com a API no notebook e o banco hospedado, a rotina financeira, que é a única que pede repasses, fica bloqueada por segurança. Usar o evento já concluído **"Noite de MPB no Bar Teste"**, que teve o repasse real no sandbox, para mostrar:
+1. O comprovante com "Pago · Repassado ao músico" e a notificação "Cachê repassado" na conta do músico.
+2. No painel da Asaas, em **Meu Dinheiro → Transferências**, a transferência de R$ 200,00 concluída, com a referência do pagamento.
+3. A avaliação mútua.
+4. Explicar a regra: depois das duas confirmações, ou em 7 dias sem reclamação, o show é concluído, e a rotina financeira pede o repasse. Em produção, ela roda a cada 5 minutos pelo GitHub Actions, uma execução por vez, e nunca repete uma transferência sem certeza.
 
 ### 7. Regras e segurança (1 min)
 - Cancelamento: mais de 24h → devolução integral; menos de 24h → cachê vai ao músico; músico desiste → devolução integral e o evento reabre.
@@ -64,7 +67,8 @@ Usar o evento já concluído "Noite acústica no terraço" para mostrar:
 | E se alguém tentar mudar o valor pelo aplicativo? | O app só manda IDs; a API lê o valor do banco e a RLS impede escrita direta. |
 | Como a plataforma ganha dinheiro além da taxa? | Dois planos por Pix recorrente na Asaas: Muve Pro para o músico (R$ 19,90) e Muve Casa para o contratante (R$ 49,90, taxa cai para 6%). Nenhum plano muda garantia, cancelamento ou multa. |
 | Por que não tem notificação com o app fechado? | Exige gerar o app pelo EAS; as notificações dentro do app funcionam em tempo real. |
-| Como testaram? | 266 testes de regras e da API (Vitest) e 124 testes do banco (pgTAP), além de testes de ponta a ponta no navegador. O GitHub Actions roda os testes da API a cada alteração. |
-| E se ninguém abrir o app depois do show? | Uma rotina na API conclui o show em 7 dias e faz o repasse, a menos que haja contestação ou estorno em andamento. |
+| Como testaram? | 793 testes de regras, da API e do app (Vitest) e 25 arquivos de testes do banco (pgTAP), além de testes de ponta a ponta e de rodadas manuais no celular pelo Expo Go. O GitHub Actions roda typecheck, lint e testes a cada alteração. |
+| E se ninguém abrir o app depois do show? | A rotina financeira conclui o show em 7 dias e pede o repasse, a menos que haja contestação ou estorno em andamento. |
+| Por que o repasse não foi feito ao vivo? | Só a rotina financeira pede repasses, e ela só roda em produção ou com banco de teste local. Na demonstração, a API roda no notebook ligada ao banco hospedado, então a rotina fica bloqueada de propósito. O repasse mostrado aconteceu de verdade no sandbox. |
 | E se a Asaas não responder ao pedido de repasse? | O repasse não é repetido às cegas, para não pagar em dobro. A API procura a transferência pela referência do pagamento e, sem encontrar, o suporte confere e libera. |
-| O repasse aparece como em andamento. Por quê? | No sandbox, a transferência pela API aguarda autorização manual no painel da Asaas. |
+| O repasse aparece como em andamento. Por quê? | No sandbox, a transferência pela API aguarda autorização por SMS no painel da Asaas (**Meu Dinheiro → Transferências → Enviar código**). |

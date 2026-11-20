@@ -134,6 +134,14 @@ O último caso interrompe a migration de propósito; resolva antes de aplicá-la
 - **Teste E2E:** `pnpm test:e2e` roda só no Supabase local. O orquestrador (`scripts/e2e-local.mjs`) confere que a URL, o banco e as chaves são da instância local deste projeto (host da própria máquina, portas dos contêineres `supabase_*_muve`, chaves de demonstração assinadas pelo segredo local) antes de qualquer reset ou requisição; reseta o banco local antes e depois; sobe a API com `MUVE_IGNORAR_ARQUIVO_ENV=true`, sem Asaas, sem SMTP e sem rotina financeira, e nunca lê `backend/.env`. Se o Supabase local já estiver rodando, ele recusa, porque o reset apagaria os dados locais; para autorizar, use `pnpm test:e2e -- --reutilizar-instancia`. Os caminhos reais da Asaas (cobrança Pix, estorno e repasse no sandbox) não são cobertos pelo E2E e continuam sendo testados à mão.
 - **Dados de demonstração:** o evento "Noite acústica no terraço" foi marcado como repassado manualmente, porque a transferência original ficou na conta antiga da Asaas. O evento "Noite de MPB no Bar Teste" teve o repasse real concluído. "Sexta de MPB no Bar Teste" é em 14/11/2026; depois disso, crie outro evento para a demonstração.
 
+## Situação em 20/11/2026
+
+- **Main:** o PR #7 levou ao `main` a branch de entrega e o PR #6; os PRs #1, #2, #3 e #5 foram fechados.
+- **Banco hospedado:** as 12 migrations de 13 a 16/11 foram aplicadas, com cópia de segurança feita antes (fora do repositório). Agora são 33.
+- **Render:** a API hospedada não é necessária. O app usa a API local, a rotina do GitHub Actions está desligada (sem `ROTINA_FINANCEIRA_ATIVA` e sem secrets) e nada aponta para a Render. O `muve-api` existe, não responde e ninguém do grupo tem acesso à conta. Para deixá-lo inofensivo: trocar a chave `service_role` do backend por uma chave secreta nova (`sb_secret_`), desativar as chaves legadas do Supabase e desativar as chaves antigas da Asaas.
+- **Webhook da Asaas:** aponta para uma Edge Function da versão antiga, que não existe mais, e está desativado. Não é necessário: pagamentos, planos e estornos são confirmados por consulta direta à Asaas.
+- **Repasse na apresentação:** com a API no notebook e o banco hospedado, a rotina financeira fica bloqueada, então o repasse não acontece ao vivo. O roteiro mostra o repasse real já concluído em "Noite de MPB no Bar Teste".
+
 ## O que falta
 
 ### Para a entrega do TCC
@@ -152,6 +160,8 @@ O último caso interrompe a migration de propósito; resolva antes de aplicá-la
 - [ ] Revisar e fazer o merge do PR #6; depois fechar os PRs #1, #2, #3 e #5.
 - [ ] Testar no celular pelo Expo Go (Expo SDK 58): abertura, transições, barra inferior e puxar para atualizar.
 - [ ] Ensaiar a apresentação no computador e no celular reais, com o fluxo completo.
+- [ ] Preencher `EXPO_PUBLIC_TURNSTILE_SITE_KEY` e `EXPO_PUBLIC_TURNSTILE_BASE_URL` no `mobile/.env` de quem apresenta: o captcha está ligado no Supabase e, sem elas, o login falha (conferido em 20/11).
+- [ ] Item B implementado em 20/11 ("Para aprovar a inscrição de R$ Y, você paga R$ X" no topo da conversa): falta testar no Expo Go.
 - [ ] Completar a conta de músico da demonstração (foto, CPF, telefone e chave Pix fictícia do Banco Central) para ela poder se inscrever.
 - [ ] Combinar quem estará com o telefone da conta Asaas na apresentação.
 - [ ] Passar [monografia.md](monografia.md) para o texto oficial, incluindo o redesign.
