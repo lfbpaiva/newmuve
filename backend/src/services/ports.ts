@@ -103,6 +103,7 @@ export interface PaymentStore {
   markStaleAttempts(): Promise<number>;
   completeAttempt(attemptId: string, asaasTransferId: string): Promise<ConclusaoTentativa>;
   failAttempt(attemptId: string, asaasTransferId: string | null): Promise<boolean>;
+  reopenFailedPayouts(musicianId: string): Promise<number>;
   recordAttemptAlert(attemptId: string, tipo: AlertaRepasse, asaasTransferId: string, status: string | null): Promise<void>;
   absenceDeclaration(): Promise<string>;
   startAbsenceCheck(attemptId: string, evidencia: EvidenciaDeAusencia): Promise<string>;

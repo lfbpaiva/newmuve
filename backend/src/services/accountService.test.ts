@@ -8,7 +8,7 @@ function fakes() {
   const accounts = new Map<string, Account>();
   const users = new Map<string, { email: string; password: string; termosVersao: string }>();
   const images = new Set<string>();
-  const state = { failCreateProfile: false, ongoingHiring: false, semSenha: false, avisos: [] as { titulo: string }[], customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
+  const state = { failCreateProfile: false, ongoingHiring: false, semSenha: false, avisos: [] as { titulo: string; texto: string }[], reabertos: 0, reaberturas: [] as string[], customerResets: [] as string[], cnpjs: {} as Record<string, "ATIVA" | "INATIVA" | "INEXISTENTE" | null> };
   let nextId = 1;
 
   const store: AccountStore = {
@@ -64,7 +64,7 @@ function fakes() {
     users,
     images,
     state,
-    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {}, add: async (aviso) => void state.avisos.push(aviso) }, releaseAccount: async () => {}, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
+    service: createAccountService({ store, auth, images: imageStore, hasOngoingHiring: async () => state.ongoingHiring, inbox: { markAllRead: async () => {}, add: async (aviso) => void state.avisos.push(aviso) }, releaseAccount: async () => {}, reopenFailedPayouts: async (id) => { state.reaberturas.push(id); return state.reabertos; }, cnpj: { situacao: async (cnpj) => state.cnpjs[cnpj] ?? "ATIVA" } }),
   };
 }
 
@@ -123,6 +123,19 @@ describe("perfil progressivo", () => {
     await t.service.updateProfile(user, "MUSICIAN", { ...troca, senhaAtual: "segredo1" }, null);
     expect(t.accounts.get(user.id)?.chavePix).toBe("outra@exemplo.com");
     expect(t.state.avisos.map((aviso) => aviso.titulo)).toEqual(["Chave Pix alterada"]);
+    expect(t.state.reaberturas).toEqual([user.id]);
+    expect(t.state.avisos[0].texto).not.toContain("falhado");
+  });
+
+  it("trocar a chave Pix devolve para a fila os repasses que falharam e avisa o músico", async () => {
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", chavePixTipo: "CPF", chavePix: "52998224725" }, null);
+    expect(t.state.reaberturas).toEqual([]);
+    t.state.reabertos = 2;
+
+    await t.service.updateProfile(user, "MUSICIAN", { nome: "Ana Souza", chavePixTipo: "EMAIL", chavePix: "outra@exemplo.com", senhaAtual: "segredo1" }, null);
+
+    expect(t.state.reaberturas).toEqual([user.id]);
+    expect(t.state.avisos[0].texto).toContain("Os repasses que tinham falhado serão enviados de novo para ela.");
   });
 
   it("completa o perfil aos poucos, sem apagar o que já foi preenchido", async () => {

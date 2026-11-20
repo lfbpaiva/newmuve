@@ -54,6 +54,7 @@ export function createAccountService(deps: {
   hasOngoingHiring(userId: string): Promise<boolean>;
   inbox: Pick<Inbox, "markAllRead" | "add">;
   releaseAccount(user: AuthUser, role: Role): Promise<void>;
+  reopenFailedPayouts(musicianId: string): Promise<number>;
   cnpj: CnpjLookup;
   devices?: Pick<PushGateway, "register" | "unregister">;
 }) {
@@ -123,9 +124,12 @@ export function createAccountService(deps: {
       if (role === "CONTRACTOR" && (changes.nome !== current.nome || (changes.documento && changes.documento !== current.documento))) {
         await store.resetPaymentCustomer(user.id);
       }
-      const avisarTrocaDaChave = () => trocaChavePix
-        ? deps.inbox.add({ userId: user.id, titulo: "Chave Pix alterada", texto: `Os próximos repasses vão para a chave nova. Se não foi você, escreva para ${EMAIL_SUPORTE}.`, link: "/account/edit" }).catch(() => {})
-        : Promise.resolve();
+      const avisarTrocaDaChave = async () => {
+        if (!trocaChavePix) return;
+        const reabertos = await deps.reopenFailedPayouts(user.id).catch(seguirApesarDe("Repasses que falharam não foram reabertos", 0));
+        const repetir = reabertos > 0 ? " Os repasses que tinham falhado serão enviados de novo para ela." : "";
+        await deps.inbox.add({ userId: user.id, titulo: "Chave Pix alterada", texto: `Os próximos repasses vão para a chave nova.${repetir} Se não foi você, escreva para ${EMAIL_SUPORTE}.`, link: "/account/edit" }).catch(seguirApesarDe("Aviso de troca da chave Pix não enviado", undefined));
+      };
       if (!avatar) {
         await store.updateProfile(user.id, role, changes);
         await avisarTrocaDaChave();

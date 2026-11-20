@@ -583,6 +583,15 @@ export function memoryWorld() {
       encerrarSemRepasse(tentativa, "FALHOU");
       return true;
     },
+    reopenFailedPayouts: async (musicianId) => {
+      const fechadas = ["FALHOU", "AUSENCIA_CONFIRMADA"];
+      const reabrir = [...payments.values()].filter((p) => p.status === "PAGO" && p.repasseStatus === "FALHOU" && p.asaasTransferId === null
+        && p.refundStatus !== "PROCESSANDO" && p.refundStatus !== "CONFIRMADO"
+        && events.get(p.eventId ?? "")?.musicoContratadoId === musicianId
+        && tentativas.every((t) => t.paymentId !== p.id || fechadas.includes(t.estado)));
+      for (const p of reabrir) p.repasseStatus = "RETIDO";
+      return reabrir.length;
+    },
     recordAttemptAlert: async (attemptId, tipo, transferId, status) => registrarAlerta(attemptId, tipo, transferId, status),
     absenceDeclaration: async () => DECLARACAO_AUSENCIA,
     startAbsenceCheck: async (attemptId, evidencia) => {
