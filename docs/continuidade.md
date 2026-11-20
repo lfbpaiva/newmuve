@@ -78,6 +78,12 @@ As imagens de `mobile/assets` ficam no **Git LFS**. A branch do redesign do grup
 
 - A chave de API precisa da opção **"Permitir que esta chave execute operações de saque via API"**. Sem ela, o repasse falha com `insufficient_permission`.
 - Cada repasse fica pendente até a autorização por SMS: **Meu Dinheiro → Transferências → Enviar código**, na faixa do topo. O código vai para o telefone cadastrado na conta. Depois de autorizada, a transferência conclui sozinha.
+- **Estornos também esperam a autorização por SMS:** ficam como `AWAITING_CRITICAL_ACTION_AUTHORIZATION`, e no app o estorno aparece como "em processamento" até alguém autorizar no painel da Asaas. Conferido em 20/11. Testar o cancelamento com estorno ao vivo só com o telefone da conta em mãos.
+- **Pix validado em 20/11, pelos serviços da API no sandbox:**
+  - Com `contratante2@teste.com` e `musico2@teste.com`: evento, inscrição e cobrança de R$ 165 gerada em 4,9 s com QR Code (cliente 0,9 s, cobrança 0,7 s, QR 0,5 s).
+  - Pagamento simulado no sandbox; a consulta do app confirmou em 1,7 s, e o evento passou a contratado.
+  - Depois, cancelamento com estorno integral, que ficou esperando o SMS.
+  - Se o app mostrar "O servidor demorou para responder", o atraso está entre o celular e a API (endereço em `EXPO_PUBLIC_API_URL`, mesma rede Wi-Fi, firewall do Windows na porta 3333), não na Asaas.
 - Para confirmar um Pix de teste, abra a cobrança no painel e use **Confirmar pagamento**.
 - A conta é de pessoa física, então não permite subcontas (Conta Escrow).
 - Ao trocar de conta, os clientes da conta antiga são recriados automaticamente na próxima cobrança ou assinatura.
@@ -188,7 +194,7 @@ O relatório está em [qa-2026-11-20.md](qa-2026-11-20.md). Parecer: reprovada p
 
 Continuam pendentes:
 
-- **QA-04 e QA-16:** limpar os dados de teste no banco de produção. Grava no banco, então só com autorização.
+- **QA-04 e QA-16:** decidido manter os dados. O Muve Casa sem pagamento do Bar Teste está explicado no roteiro. O horário recuado de "Noite de MPB no Bar Teste" fica como está, porque o evento já foi concluído e repassado.
 - **Setas no grupo de opções:** as setas ainda não trocam a opção escolhida.
 - **Teste com usuários reais:** os 12 fluxos com usuários reais exigem um ambiente de teste sem captcha.
 
@@ -207,12 +213,13 @@ Continuam pendentes:
 - [ ] Decidir se o evento com convite deve aparecer no feed do músico convidado durante o acesso antecipado (seção 21 da auditoria: hoje a inscrição é liberada, mas o evento só aparece por notificação ou link).
 - [ ] Decidir os pontos de produto da seção 20 da auditoria: total com taxa nas propostas, raio do feed por conta, visibilidade de eventos pela tela do evento e aviso de acesso antecipado. A API não registra requisições; o roteiro de teste foi corrigido nessa seção.
 - [ ] Decidir como recuperar repasses que falharam: desde o Lote 2, Etapa 1, só a rotina financeira pede repasses e nenhum caminho tenta de novo um repasse `FALHOU` (ver [EXECUCAO_PR6_CONTINUIDADE.md](EXECUCAO_PR6_CONTINUIDADE.md)).
-- [ ] Revisar e fazer o merge do PR #6; depois fechar os PRs #1, #2, #3 e #5.
+- [x] Merge do PR #6 (pelo #7, em 20/11); PRs #1, #2, #3 e #5 fechados.
 - [ ] Testar no celular pelo Expo Go (Expo SDK 58): abertura, transições, barra inferior e puxar para atualizar.
 - [ ] Ensaiar a apresentação no computador e no celular reais, com o fluxo completo.
 - [ ] Preencher `EXPO_PUBLIC_TURNSTILE_SITE_KEY` e `EXPO_PUBLIC_TURNSTILE_BASE_URL` no `mobile/.env` de quem apresenta: o captcha está ligado no Supabase e, sem elas, o login falha (conferido em 20/11).
+- [ ] Liberar `localhost` e `127.0.0.1` nos domínios do widget do Turnstile, no painel da Cloudflare. Sem isso, o captcha falha na web local (erro 110200); no Expo Go ele funciona. A alternativa é desligar o captcha no Supabase durante a demonstração.
 - [ ] Item B implementado em 20/11 ("Para aprovar a inscrição de R$ Y, você paga R$ X" no topo da conversa): falta testar no Expo Go.
-- [ ] Completar a conta de músico da demonstração (foto, CPF, telefone e chave Pix fictícia do Banco Central) para ela poder se inscrever.
+- [x] Contas de demonstração completas. Em 20/11 foram criadas também `musico2@teste.com`, `musico3@teste.com` e `contratante2@teste.com` (lista no README).
 - [ ] Combinar quem estará com o telefone da conta Asaas na apresentação.
 - [ ] Passar [monografia.md](monografia.md) para o texto oficial, incluindo o redesign.
 

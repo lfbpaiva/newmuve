@@ -11,6 +11,11 @@ Demonstração de 10 a 12 minutos, com dois aparelhos (ou duas abas do navegador
 - [ ] Entrar com as duas contas de demonstração (senha `teste123`):
   - **Contratante:** `contratante@teste.com` (Bar Teste)
   - **Músico:** `teste@teste.com` (Músico Teste)
+  - **Extras, se precisar:**
+    - `musico2@teste.com` (Banda Teste Rock): segundo candidato, para mostrar a escolha entre músicos;
+    - `musico3@teste.com` (Dupla Teste MPB);
+    - `contratante2@teste.com` (Casa de Shows Teste), sem Muve Casa.
+- [ ] **O Bar Teste tem o Muve Casa ativo pelo atalho do banco, sem pagamento** (até 12/12/2026). Por isso a taxa dele aparece como 6%. Se a banca perguntar, explicar que é a conta de teste; para mostrar a taxa de 10%, usar `contratante2@teste.com`.
 - [ ] Painel do sandbox da Asaas aberto em outra aba, na conta sandbox da Muve (a mesma da chave no `backend/.env`), para confirmar o Pix de teste.
 - [ ] Ter uma foto de evento no aparelho do contratante.
 - [ ] Não criar conta nova ao vivo se o SMTP não estiver configurado: o e-mail de confirmação pode não chegar.
@@ -72,3 +77,4 @@ O repasse não acontece ao vivo: com a API no notebook e o banco hospedado, a ro
 | Por que o repasse não foi feito ao vivo? | Só a rotina financeira pede repasses, e ela só roda em produção ou com banco de teste local. Na demonstração, a API roda no notebook ligada ao banco hospedado, então a rotina fica bloqueada de propósito. O repasse mostrado aconteceu de verdade no sandbox. |
 | E se a Asaas não responder ao pedido de repasse? | O repasse não é repetido às cegas, para não pagar em dobro. A API procura a transferência pela referência do pagamento e, sem encontrar, o suporte confere e libera. |
 | O repasse aparece como em andamento. Por quê? | No sandbox, a transferência pela API aguarda autorização por SMS no painel da Asaas (**Meu Dinheiro → Transferências → Enviar código**). |
+| O estorno aparece como em processamento. Por quê? | Pelo mesmo motivo: a Asaas pede autorização por SMS para devolver o dinheiro. Depois de autorizado, o app atualiza sozinho. |
