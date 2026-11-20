@@ -13,7 +13,10 @@ const dataCurta = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-d
 
 export const formatTotalDoContratante = (estimativa: EstimativaDoContratante) => `Você paga ${formatCurrency(estimativa.total)} se aprovar agora`;
 
-export const formatTotalSeAceita = (estimativa: EstimativaDoContratante) => `Se esta proposta for aceita, você pagará ${formatCurrency(estimativa.total)} ao aprovar`;
+export const formatTotalDaInscricao = (estimativa: EstimativaDoContratante) =>
+  `Para aprovar a inscrição de ${formatCurrency(estimativa.cache)}, você paga ${formatCurrency(estimativa.total)}`;
+
+export const formatTotalSeAceita =(estimativa: EstimativaDoContratante) => `Se esta proposta for aceita, você pagará ${formatCurrency(estimativa.total)} ao aprovar`;
 
 export function detalharTotalDoContratante(estimativa: EstimativaDoContratante): string {
   const taxa = estimativa.casaAte ? `taxa de ${estimativa.percentual}% do Muve Casa, válida até ${dataCurta.format(estimativa.casaAte)}` : `taxa de ${estimativa.percentual}%`;

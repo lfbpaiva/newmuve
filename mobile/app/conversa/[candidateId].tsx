@@ -4,7 +4,7 @@ import { AppState, Pressable, ScrollView, Text, TextInput, View, type ScrollView
 import { SafeAreaView } from "react-native-safe-area-context";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { aplicarNovaProposta, answerProposal, fetchConversation, fetchMessages, mesclarMensagens, mostraEstimativaParaContratante, proposeValue, sendMessage, situacaoDaConversa, subscribeToMessages, type Conversation, type Message } from "../../../shared/client/conversation.ts";
-import { detalharTotalDoContratante, formatCurrency, formatTotalDoContratante, formatTotalSeAceita, parseValor } from "../../../shared/client/format.ts";
+import { detalharTotalDoContratante, formatCurrency, formatTotalDaInscricao, formatTotalSeAceita, parseValor } from "../../../shared/client/format.ts";
 import { estimarCobrancaDoContratante, isValidCache, valorDaInscricao, type EstimativaDoContratante } from "../../../shared/dominio.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { Alert, Avatar, Button, ErrorState, EvitaTeclado, Icon, Loading, Pill, Reveal, Screen, Tag } from "../../components/ui";
@@ -180,7 +180,7 @@ export default function ConversationScreen() {
           <Tag text={`Cachê oferecido ${formatCurrency(event.cache)}`}/>
           <View style={{ borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.accentSoft }}><Text style={[type.label, { fontSize: 12, lineHeight: 16, color: colors.accentText }]}>Inscrição {formatCurrency(valorProposto ?? event.cache)}</Text></View>
         </View>
-        {estimativaDaInscricao && <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{formatTotalDoContratante(estimativaDaInscricao)}. {detalharTotalDoContratante(estimativaDaInscricao)}</Text>}
+        {estimativaDaInscricao && <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 16 }]}>{formatTotalDaInscricao(estimativaDaInscricao)}. {detalharTotalDoContratante(estimativaDaInscricao)}</Text>}
       </View>
 
       <ScrollView ref={scroll} contentContainerStyle={{ padding: space.lg, gap: space.sm, flexGrow: 1 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>

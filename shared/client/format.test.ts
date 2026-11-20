@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { estimarCobrancaDoContratante } from "../dominio.ts";
-import { detalharTotalDoContratante, formatTotalDoContratante, formatTotalSeAceita } from "./format.ts";
+import { detalharTotalDoContratante, formatTotalDaInscricao, formatTotalDoContratante, formatTotalSeAceita } from "./format.ts";
 
 const agora = new Date("2026-11-16T20:00:00Z");
 const espaco = (texto: string) => texto.replace(/\s/g, " ");
@@ -12,6 +12,12 @@ describe("texto do total para o contratante", () => {
     expect(espaco(formatTotalDoContratante(estimativa))).toBe("Você paga R$ 715,00 se aprovar agora");
     expect(espaco(formatTotalSeAceita(estimativa))).toBe("Se esta proposta for aceita, você pagará R$ 715,00 ao aprovar");
     expect(espaco(detalharTotalDoContratante(estimativa))).toBe("R$ 650,00 de cachê + R$ 65,00 de taxa de 10%. O valor final é calculado no pagamento.");
+  });
+
+  it("no topo da conversa, o total fica ligado ao valor da inscrição atual, não a uma proposta", () => {
+    const estimativa = estimarCobrancaDoContratante(650, null, agora)!;
+
+    expect(espaco(formatTotalDaInscricao(estimativa))).toBe("Para aprovar a inscrição de R$ 650,00, você paga R$ 715,00");
   });
 
   it("com Muve Casa informa a taxa reduzida e a validade, sem prometer o valor depois dela", () => {
