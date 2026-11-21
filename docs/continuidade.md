@@ -262,7 +262,7 @@ Observações da rodada:
 - [ ] Bloquear usuário. Hoje só existe denúncia, por e-mail ao suporte.
 - [ ] Política de privacidade com link próprio, separada dos Termos.
 - [ ] Conferir se Pro e Casa precisam usar o pagamento da Apple e do Google.
-- [ ] Contador do acesso antecipado do Pro para o músico gratuito (ideia registrada em [produto.md](produto.md)).
+- [ ] Contador regressivo e aviso quando a inscrição do Pro abrir para todos (ideia registrada em [produto.md](produto.md)).
 - [ ] Login com Apple, exigido quando o app oferece login com Google.
 - [ ] SMTP, hospedagem da API e build pelo EAS.
 - [ ] Nova tentativa automática de estorno negado. Hoje isso acontece quando alguém abre a tela.

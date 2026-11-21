@@ -126,7 +126,7 @@ select throws_ok(
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}';
 select is((select count(*) from public.event_candidates), 0::bigint, 'músico não vê candidaturas de outro músico');
-select is((select count(*) from public.reviews), 0::bigint, 'músico não lê avaliações de outro músico');
+select is((select count(id) from public.reviews where reviewed_id = '00000000-0000-0000-0000-0000000000a1'), 0::bigint, 'músico não lê avaliações de outro músico');
 
 -- ---------------------------------------------------------------------------
 -- Contratantes

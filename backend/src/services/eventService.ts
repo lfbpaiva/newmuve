@@ -215,8 +215,8 @@ export function createEventService(deps: {
       }
       const pro = isPro(musician.proAte, now);
       if (!pro && !convidado && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt }, now)) {
-        const libera = formatDateTime(liberadoParaTodosEm(event.createdAt), event.uf);
-        throw new AppError(409, "ACESSO_ANTECIPADO", `Este evento está em acesso antecipado para músicos Pro. Ele abre para todos em ${libera}.`);
+        const libera = formatDateTime(liberadoParaTodosEm({ inicio: event.inicio, criadoEm: event.createdAt }), event.uf);
+        throw new AppError(409, "ACESSO_ANTECIPADO", `A inscrição neste evento está em acesso antecipado para músicos Pro. Ela abre para todos em ${libera}.`);
       }
       const distanciaKm = await events.distanceKm(eventId, user.id);
       if (!convidado && !eventMatchesMusician(event, { uf: musician.uf!, cidade: musician.cidade!, estilosMusicais: musician.estilosMusicais ?? [] }, distanciaKm, pro ? PRO_RAIO_MAXIMO_KM : RAIO_MAXIMO_KM)) {

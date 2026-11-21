@@ -124,14 +124,14 @@ function Feed() {
       {!setupPending && feed.data?.length === 0 && <EmptyState title={radius === 0 ? "Nada na sua cidade por enquanto" : `Nada até ${radius} km por enquanto`} action={radius < 200 ? <Button title="Aumentar a distância" variant="tonal" block={false} onPress={() => changeRadius(String(RAIOS_FEED_KM[RAIOS_FEED_KM.indexOf(radius as 0) + 1] ?? 200))}/> : undefined}>
         <Text style={[type.bodySmall, { textAlign: "center" }]}>Os eventos são filtrados pelos seus estilos ({(me.estilosMusicais ?? []).join(", ")}). Novos shows compatíveis aparecem aqui assim que forem publicados.</Text>
       </EmptyState>}
-      {visiveis.map((event, index) => <Reveal key={event.id} index={index} empilhar><OpportunityCard event={event} antecipado={pro && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt })}/></Reveal>)}
+      {visiveis.map((event, index) => <Reveal key={event.id} index={index} empilhar><OpportunityCard event={event} antecipado={emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt })} pro={pro}/></Reveal>)}
       {!setupPending && !pro && <Pressable accessibilityRole="button" onPress={() => router.push("/pro")} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
         <Surface destaque>
           <View style={[styles.row, { gap: space.md }]}>
             <View style={{ width: 40, height: 40, borderRadius: cantos.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="flash" size={20} color={colors.accentText}/></View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={type.titleSmall}>Muve Pro</Text>
-              <Text style={type.bodySmall}>Veja eventos 24h antes e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
+              <Text style={type.bodySmall}>Inscreva-se 24h antes nos eventos novos e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
             </View>
             <Icon name="chevron-forward" size={18} color={colors.ink3}/>
           </View>

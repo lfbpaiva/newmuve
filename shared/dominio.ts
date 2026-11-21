@@ -166,13 +166,17 @@ const normalizeCidade = (value: string) =>
 
 export const isPro = (proAte: Date | string | null | undefined, now = new Date()) => Boolean(proAte && new Date(proAte).getTime() > now.getTime());
 
+const PRO_ANTECIPACAO_MS = PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000;
+const PRO_ANTECEDENCIA_MINIMA_MS = PRO_ANTECEDENCIA_MINIMA_DIAS * 24 * 60 * 60 * 1000;
+
 export function emAcessoAntecipado(evento: { inicio: Date | string; criadoEm: Date | string }, now = new Date()): boolean {
-  const criado = new Date(evento.criadoEm).getTime();
+  const publicado = new Date(evento.criadoEm).getTime();
   const inicio = new Date(evento.inicio).getTime();
-  return now.getTime() - criado < PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000 && inicio - criado > PRO_ANTECEDENCIA_MINIMA_DIAS * 24 * 60 * 60 * 1000;
+  return now.getTime() - publicado < PRO_ANTECIPACAO_MS && inicio - now.getTime() >= PRO_ANTECEDENCIA_MINIMA_MS;
 }
 
-export const liberadoParaTodosEm = (criadoEm: Date | string) => new Date(new Date(criadoEm).getTime() + PRO_ANTECIPACAO_HORAS * 60 * 60 * 1000);
+export const liberadoParaTodosEm = (evento: { inicio: Date | string; criadoEm: Date | string }) =>
+  new Date(Math.min(new Date(evento.criadoEm).getTime() + PRO_ANTECIPACAO_MS, new Date(evento.inicio).getTime() - PRO_ANTECEDENCIA_MINIMA_MS + 1));
 
 export function eventMatchesMusician(
   event: { uf: string; cidade: string; estilosMusicais: readonly string[] },

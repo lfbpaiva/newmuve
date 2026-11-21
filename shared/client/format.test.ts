@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { estimarCobrancaDoContratante } from "../dominio.ts";
-import { detalharTotalDoContratante, formatTotalDaInscricao, formatTotalDoContratante, formatTotalSeAceita, parseValor } from "./format.ts";
+import { completarHorario, detalharTotalDoContratante, formatTotalDaInscricao, formatTotalDoContratante, formatTotalSeAceita, parseValor } from "./format.ts";
 
 const agora = new Date("2026-11-16T20:00:00Z");
 const espaco = (texto: string) => texto.replace(/\s/g, " ");
@@ -47,5 +47,18 @@ describe("leitura do valor digitado", () => {
     for (const valor of ["", " ", "1,500.00", "1.50.0", "12,3,4", "abc", "1,234"]) {
       expect(parseValor(valor), valor).toBeNaN();
     }
+  });
+});
+
+describe("horário completado ao sair do campo", () => {
+  it.each([
+    ["2", "02:00"],
+    ["19", "19:00"],
+    ["19:3", "19:30"],
+    ["1930", "19:30"],
+    ["19:30", "19:30"],
+    ["", ""],
+  ])("%s vira %s", (digitado, esperado) => {
+    expect(completarHorario(digitado)).toBe(esperado);
   });
 });

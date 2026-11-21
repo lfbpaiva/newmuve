@@ -4,7 +4,7 @@ import { errorMessage } from "../../shared/client/api.ts";
 import { cepDigits, CepError, formatCep, lookupCep } from "../../shared/client/cep.ts";
 import type { UploadFile } from "../../shared/client/config.ts";
 import { createEvent, updateEvent, type EventItem } from "../../shared/client/events.ts";
-import { eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
+import { completarHorario, eventDateParts, formatCurrency, minutesToTimeInput, parseValor, timeInputToMinutes, toValorInput } from "../../shared/client/format.ts";
 import { calcularCobranca, CASA_SEMANAS_MAXIMAS, comissaoPercentual, ESTILOS_EVENTO, FORMACOES, horarioLocalDoEvento, isPro, isValidCache, QUALQUER_ESTILO, TIPOS_EVENTO } from "../../shared/dominio.ts";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
@@ -124,8 +124,8 @@ export default function EventForm({ event, local, onSaved }: { event: EditableEv
       <Select label="Tipo de evento" value={form.tipoEvento} options={options(TIPOS_EVENTO)} onChange={(tipoEvento) => set({ tipoEvento })}/>
       <View style={{ flexDirection: "row", gap: space.md }}>
         <View style={{ flex: 1.3 }}><Field label="Data" value={form.data} onChangeText={(v) => set({ data: maskDate(v) })} keyboardType="numeric" placeholder="DD/MM/AAAA"/></View>
-        <View style={{ flex: 1 }}><Field label="Início" value={form.horario} onChangeText={(v) => set({ horario: maskTime(v) })} keyboardType="numeric" placeholder="HH:MM"/></View>
-        <View style={{ flex: 1 }}><Field label="Duração" value={form.duracao} onChangeText={(v) => set({ duracao: maskTime(v) })} keyboardType="numeric" placeholder="HH:MM"/></View>
+        <View style={{ flex: 1 }}><Field label="Início" value={form.horario} onChangeText={(v) => set({ horario: maskTime(v) })} onBlur={() => set({ horario: completarHorario(form.horario) })} keyboardType="numeric" placeholder="HH:MM"/></View>
+        <View style={{ flex: 1 }}><Field label="Duração" value={form.duracao} onChangeText={(v) => set({ duracao: maskTime(v) })} onBlur={() => set({ duracao: completarHorario(form.duracao) })} keyboardType="numeric" placeholder="HH:MM"/></View>
       </View>
       <Field label="Descrição" value={form.descricao} onChangeText={(descricao) => set({ descricao })} multiline maxLength={2000} placeholder="Repertório esperado, público, estrutura disponível..."/>
     </Grupo>
