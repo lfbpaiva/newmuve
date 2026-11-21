@@ -5,6 +5,7 @@ import { Animated, Image, Pressable, Text, View } from "react-native";
 import { fetchReviewsOf, type EventItem, type EventStatus } from "../../shared/client/events.ts";
 import { eventDateParts, formatCurrency, formatDuration } from "../../shared/client/format.ts";
 import { useAsync } from "../../shared/client/useAsync.ts";
+import { liberadoParaTodosEm } from "../../shared/dominio.ts";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { CabecalhoFixo, ErrorState, Icon, Parallax, Pill, Section, Stars, Surface, Tag, usePressao, type IconName } from "./ui";
 
@@ -55,7 +56,12 @@ export function CachePoster({ rotulo, valor, children }: { rotulo: string; valor
   </Surface>;
 }
 
-export function OpportunityCard({ event, antecipado }: { event: EventItem; antecipado: boolean }) {
+export function textoDaAbertura(event: { inicio: string; createdAt: string; uf: string }) {
+  const { day, month, time } = eventDateParts(liberadoParaTodosEm({ inicio: event.inicio, criadoEm: event.createdAt }).toISOString(), event.uf);
+  return `Inscrição abre ${day} ${month} · ${time}`;
+}
+
+export function OpportunityCard({ event, antecipado, pro }: { event: EventItem; antecipado: boolean; pro: boolean }) {
   const router = useRouter();
   const { day, month, time, weekday } = eventDateParts(event.inicio, event.uf);
   const { escala, aoPressionar, aoSoltar } = usePressao();
@@ -69,7 +75,7 @@ export function OpportunityCard({ event, antecipado }: { event: EventItem; antec
           <Tag text={`${weekday} ${day} ${month} · ${time}`} onImage/>
           <Tag text={distancia} onImage/>
         </View>
-        {antecipado ? <View style={{ position: "absolute", left: space.md, bottom: space.md }}><Pill text="Pro · antes de todos" tone="accent"/></View> : null}
+        {antecipado ? <View style={{ position: "absolute", left: space.md, bottom: space.md }}><Pill text={pro ? "Pro · antes de todos" : textoDaAbertura(event)} tone="accent"/></View> : null}
       </View>
       <View style={{ padding: space.lg, gap: space.md }}>
         <View style={{ gap: space.xs }}>
@@ -170,9 +176,9 @@ export function ActiveEventCard({ event, onPress }: { event: EventItem & { encer
 }
 
 
-export function ReviewsSection({ userId, empty }: { userId: string; empty: string }) {
+export function ReviewsSection({ userId, empty, titulo = "Avaliações recebidas" }: { userId: string; empty: string; titulo?: string }) {
   const reviews = useAsync(`reviews:${userId}`, () => fetchReviewsOf(userId));
-  return <Section title="Avaliações recebidas">
+  return <Section title={titulo}>
     {reviews.error && <ErrorState message={reviews.error} onRetry={reviews.reload}/>}
     {!reviews.error && !reviews.data && <Text style={type.bodySmall}>Carregando avaliações...</Text>}
     {reviews.data?.length === 0 && <Text style={type.bodySmall}>{empty}</Text>}

@@ -20,8 +20,8 @@ import {
 import { mostraEstimativaParaContratante } from "../../../../shared/client/conversation.ts";
 import { detalharTotalDoContratante, formatCurrency, formatTotalDoContratante } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
-import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, estimarCobrancaDoContratante, hasCancellationNotice, isPro, valorDaInscricao, type EstimativaDoContratante } from "../../../../shared/dominio.ts";
-import { CachePoster, EventFacts, EventHero, EventStatusPill, EventStickyHeader, withEncerrado } from "../../../components/events";
+import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, emAcessoAntecipado, estimarCobrancaDoContratante, hasCancellationNotice, isPro, valorDaInscricao, type EstimativaDoContratante } from "../../../../shared/dominio.ts";
+import { CachePoster, EventFacts, EventHero, EventStatusPill, EventStickyHeader, ReviewsSection, textoDaAbertura, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Reveal, Screen, Section } from "../../../components/ui";
 import { aparenciaDoCoracao } from "../../../lib/favoritos";
@@ -77,6 +77,7 @@ function Opportunity({ eventId }: { eventId: string }) {
   const faltando = camposFaltantes(me, "candidatar");
   const conversar = application ? () => router.push(`/conversa/${application.id}`) : null;
   const aguardandoResposta = application?.status === "PENDENTE" && event.status === "ABERTO" && new Date(event.inicio) > new Date();
+  const aguardandoAbertura = !convidado && !isPro(me.proAte) && emAcessoAntecipado({ inicio: event.inicio, criadoEm: event.createdAt });
 
   return <Screen onRefresh={details.reload} carregando={details.loading} evitarTeclado cabecalho={<EventStickyHeader titulo={event.titulo} valor={event.cache}/>}>
     <EventHero event={event}/>
@@ -99,7 +100,12 @@ function Opportunity({ eventId }: { eventId: string }) {
             <Alert tone="info">Para se inscrever, complete seu perfil: {descreverFaltantes(faltando)}.</Alert>
             <Button title="Completar perfil" icon="arrow-forward" onPress={() => router.push({ pathname: "/account/edit", params: { acao: "candidatar" } })}/>
           </>
-          : <ProposalForm cacheOferecido={event.cache} valorAtual={null} submitLabel="Inscrever-se" icon="paper-plane-outline" busy={busy} onSubmit={(valor) => run(() => applyToEvent(event.id, valor))}/>
+          : aguardandoAbertura
+            ? <>
+              <Alert tone="info">{`${textoDaAbertura(event)}. Nas primeiras 24 horas, só músicos Muve Pro se inscrevem em eventos marcados com 7 dias ou mais de antecedência.`}</Alert>
+              <Button title="Conhecer o Muve Pro" variant="outlined" icon="flash-outline" onPress={() => router.push("/pro")}/>
+            </>
+            : <ProposalForm cacheOferecido={event.cache} valorAtual={null} submitLabel="Inscrever-se" icon="paper-plane-outline" busy={busy} onSubmit={(valor) => run(() => applyToEvent(event.id, valor))}/>
         : <Alert tone="info">As inscrições para este evento estão encerradas.</Alert>)}
       {!hired && application && <>
         <Alert tone={aguardandoResposta ? "success" : "info"}>{application.status === "RECUSADO" ? "Sua inscrição não foi selecionada para este evento." : aguardandoResposta ? "Inscrição enviada. Você recebe uma notificação quando o contratante responder." : "Este evento não recebe mais respostas: ele já começou ou foi encerrado sem a sua contratação."}</Alert>
@@ -127,6 +133,7 @@ function Opportunity({ eventId }: { eventId: string }) {
         : <Text style={type.bodySmall}>O contratante excluiu a conta.</Text>}
       <Text style={[type.bodySmall, { fontSize: 14, lineHeight: 21 }]}>Endereço completo e telefone são liberados após a contratação.</Text>
     </Section>
+    {contractor && event.contractorId ? <ReviewsSection userId={event.contractorId} titulo="Avaliações do contratante" empty="Este contratante ainda não recebeu avaliações."/> : null}
   </Screen>;
 }
 

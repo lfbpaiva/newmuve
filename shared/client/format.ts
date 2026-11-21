@@ -68,6 +68,13 @@ const pad = (value: number) => String(value).padStart(2, "0");
 
 export const minutesToTimeInput = (minutes: number) => `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
 
+export function completarHorario(value: string): string {
+  const digitos = value.replace(/\D/g, "").slice(0, 4);
+  if (digitos.length === 0) return "";
+  if (digitos.length <= 2) return `${digitos.padStart(2, "0")}:00`;
+  return `${digitos.slice(0, 2)}:${digitos.slice(2).padEnd(2, "0")}`;
+}
+
 export function timeInputToMinutes(value: string): number {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;

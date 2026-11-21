@@ -21,16 +21,14 @@ export default function SettingsScreen() {
     confirmAction({ title: "Sair da conta", message: "Você precisará entrar de novo para usar o app.", confirmLabel: "Sair", cancelLabel: "Ficar", destructive: false, onConfirm: () => void forgetPushToken().finally(() => signOut()) });
   }
 
-  const estilos = (me.estilosMusicais ?? []).join(", ");
-  const recebimento = [estilos || "Escolha seus estilos", me.chavePix ? "chave Pix cadastrada" : "cadastre sua chave Pix"].join(" · ");
+  const perfilDoMusico = me.chavePix ? "Nome, foto, cidade, estilos e chave Pix" : "Nome, foto, cidade e estilos · cadastre sua chave Pix";
 
   return <Screen topo={<TopBar titulo="Ajustes"/>}>
     <TituloGrande titulo="Ajustes" subtitulo={me.email}/>
     <Group title="Perfil">
-      <ListItem icon="person-outline" title="Editar perfil" subtitle="Nome, foto, CPF/CNPJ, telefone e cidade" onPress={() => router.push("/account/edit")}/>
+      <ListItem icon="person-outline" title="Editar perfil" subtitle={me.role === "MUSICIAN" ? perfilDoMusico : "Nome, foto, CPF/CNPJ, telefone e cidade"} onPress={() => router.push("/account/edit")}/>
       {me.role === "CONTRACTOR" && <ListItem icon="business-outline" title="Muve Casa" subtitle={isPro(me.casaAte) ? `Ativo até ${new Date(me.casaAte!).toLocaleDateString("pt-BR")}` : "Taxa de 6%, eventos recorrentes e favoritos"} onPress={() => router.push("/casa")}/>}
-      {me.role === "MUSICIAN" && <ListItem icon="flash-outline" title="Muve Pro" subtitle={isPro(me.proAte) ? `Ativo até ${new Date(me.proAte!).toLocaleDateString("pt-BR")}` : "Eventos 24h antes e destaque nas inscrições"} onPress={() => router.push("/pro")}/>}
-      {me.role === "MUSICIAN" && <ListItem icon="musical-notes-outline" title="Estilos e recebimento" subtitle={recebimento} onPress={() => router.push("/account/edit")}/>}
+      {me.role === "MUSICIAN" && <ListItem icon="flash-outline" title="Muve Pro" subtitle={isPro(me.proAte) ? `Ativo até ${new Date(me.proAte!).toLocaleDateString("pt-BR")}` : "Inscrição 24h antes e destaque para o contratante"} onPress={() => router.push("/pro")}/>}
     </Group>
     {linkError ? <Alert tone="error">{linkError}</Alert> : null}
     <Group title="Conta">

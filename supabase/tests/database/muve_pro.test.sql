@@ -33,14 +33,14 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000003a1","role":"authenticated"}';
 select results_eq(
   $$ select event_id from public.musician_feed(400) where event_id::text like '00000000-0000-0000-0000-0000000003%' order by event_id $$,
-  $$ values ('00000000-0000-0000-0000-0000000003e2'::uuid) $$,
-  'musico gratuito nao ve o evento em acesso antecipado nem passa de 200 km');
+  $$ values ('00000000-0000-0000-0000-0000000003e1'::uuid), ('00000000-0000-0000-0000-0000000003e2'::uuid) $$,
+  'musico gratuito ve o evento em acesso antecipado, mas nao passa de 200 km');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000003a2","role":"authenticated"}';
 select results_eq(
   $$ select event_id from public.musician_feed(400) where event_id::text like '00000000-0000-0000-0000-0000000003%' order by event_id $$,
   $$ values ('00000000-0000-0000-0000-0000000003e1'::uuid), ('00000000-0000-0000-0000-0000000003e2'::uuid), ('00000000-0000-0000-0000-0000000003e3'::uuid) $$,
-  'musico Pro ve o evento antes e ate 400 km');
+  'musico Pro ve os eventos ate 400 km');
 select throws_ok($$ select public.activate_plan('00000000-0000-0000-0000-0000000003a2', 'pay_x', 31) $$, '42501', null, 'cliente nao ativa o Pro sozinho');
 select throws_ok($$ select 1 from public.subscriptions $$, '42501', null, 'cliente nao le assinaturas');
 reset role;

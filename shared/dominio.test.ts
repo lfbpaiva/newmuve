@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   conteudoDeImagemConfere,
+  emAcessoAntecipado,
+  liberadoParaTodosEm,
   calcularCobranca,
   comissaoPercentual,
   estimarCobrancaDoContratante,
@@ -175,5 +177,45 @@ describe("conteúdo real da imagem enviada", () => {
     expect(await conteudoDeImagemConfere(arquivo([0x25, 0x50, 0x44, 0x46], "image/png"))).toBe(false);
     expect(await conteudoDeImagemConfere(arquivo([0x3c, 0x68, 0x74, 0x6d, 0x6c], "image/jpeg"))).toBe(false);
     expect(await conteudoDeImagemConfere(arquivo([0x89, 0x50, 0x4e, 0x47], "image/gif"))).toBe(false);
+  });
+});
+
+describe("acesso antecipado do Muve Pro na inscrição", () => {
+  const AGORA = new Date("2030-06-10T12:00:00Z");
+  const MINUTO = 60 * 1000;
+  const DIA = 24 * 60 * MINUTO;
+  const evento = (publicadoHaMs: number, faltamMs: number) => ({ criadoEm: new Date(AGORA.getTime() - publicadoHaMs), inicio: new Date(AGORA.getTime() + faltamMs) });
+
+  it("com 7 dias ou mais pela frente, a inscrição fica só para o Pro nas primeiras 24 horas", () => {
+    expect(emAcessoAntecipado(evento(MINUTO, 15 * DIA), AGORA)).toBe(true);
+    expect(emAcessoAntecipado(evento(MINUTO, 7 * DIA), AGORA)).toBe(true);
+    expect(emAcessoAntecipado(evento(MINUTO, 7 * DIA + MINUTO), AGORA)).toBe(true);
+  });
+
+  it("com menos de 7 dias pela frente, a inscrição é livre para todos", () => {
+    expect(emAcessoAntecipado(evento(MINUTO, 7 * DIA - MINUTO), AGORA)).toBe(false);
+    expect(emAcessoAntecipado(evento(MINUTO, 5 * DIA), AGORA)).toBe(false);
+  });
+
+  it("depois de 24 horas da publicação, a inscrição é livre para todos", () => {
+    expect(emAcessoAntecipado(evento(24 * 60 * MINUTO, 15 * DIA), AGORA)).toBe(false);
+    expect(emAcessoAntecipado(evento(24 * 60 * MINUTO - MINUTO, 15 * DIA), AGORA)).toBe(true);
+  });
+
+  it("a urgência é calculada na tentativa: o evento que cruza os 7 dias dentro das 24 horas é liberado", () => {
+    const publicado = { criadoEm: AGORA, inicio: new Date(AGORA.getTime() + 7 * DIA + 2 * 60 * MINUTO) };
+    expect(emAcessoAntecipado(publicado, new Date(AGORA.getTime() + 60 * MINUTO))).toBe(true);
+    expect(emAcessoAntecipado(publicado, new Date(AGORA.getTime() + 2 * 60 * MINUTO))).toBe(true);
+    expect(emAcessoAntecipado(publicado, new Date(AGORA.getTime() + 2 * 60 * MINUTO + 1))).toBe(false);
+  });
+
+  it("a liberação é o que vier primeiro: fim das 24 horas ou a entrada nos últimos 7 dias", () => {
+    const longe = evento(0, 30 * DIA);
+    expect(liberadoParaTodosEm(longe).getTime()).toBe(AGORA.getTime() + DIA);
+    const perto = evento(0, 7 * DIA + 2 * 60 * MINUTO);
+    const liberacao = liberadoParaTodosEm(perto);
+    expect(liberacao.getTime()).toBe(AGORA.getTime() + 2 * 60 * MINUTO + 1);
+    expect(emAcessoAntecipado(perto, liberacao)).toBe(false);
+    expect(emAcessoAntecipado(perto, new Date(liberacao.getTime() - 1))).toBe(true);
   });
 });

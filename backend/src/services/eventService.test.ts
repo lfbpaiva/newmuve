@@ -1302,6 +1302,23 @@ describe("acesso antecipado do Muve Pro", () => {
     await expect(t.service.apply(musico, novo.id, null, NOW)).resolves.toBeUndefined();
   });
 
+  it("a urgência é conferida na hora da inscrição: com 7 dias exatos ainda espera, com menos de 7 dias libera", async () => {
+    const seteDias = t.world.seedEvent({ createdAt: hoursFromNow(-2), inicio: hoursFromNow(24 * 7) });
+    const quaseSete = t.world.seedEvent({ createdAt: hoursFromNow(-2), inicio: new Date(hoursFromNow(24 * 7).getTime() - 60_000) });
+
+    await expect(t.service.apply(musico, seteDias.id, null, NOW)).rejects.toMatchObject({ code: "ACESSO_ANTECIPADO" });
+    await expect(t.service.apply(musico, quaseSete.id, null, NOW)).resolves.toBeUndefined();
+    await expect(t.service.apply(musico, seteDias.id, null, new Date(NOW.getTime() + 60_000))).resolves.toBeUndefined();
+  });
+
+  it("a recusa diz quando a inscrição abre para todos", async () => {
+    const novo = t.world.seedEvent({ createdAt: hoursFromNow(-2), inicio: hoursFromNow(24 * 10) });
+
+    const erro = await t.service.apply(musico, novo.id, null, NOW).catch((e: unknown) => e);
+
+    expect((erro as AppError).message).toContain("Ela abre para todos em");
+  });
+
   it("músico Pro se inscreve em eventos a até 400 km", async () => {
     const longe = t.world.seedEvent({ cidade: "Londrina" });
 

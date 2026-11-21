@@ -6,7 +6,7 @@ export default function ProScreen() {
     nome="Muve Pro"
     preco={PRO_PRECO}
     beneficios={[
-      { icon: "flash-outline", titulo: `Eventos ${PRO_ANTECIPACAO_HORAS}h antes`, texto: "Eventos novos marcados com mais de 7 dias de antecedência aparecem primeiro para você." },
+      { icon: "flash-outline", titulo: `Inscrição ${PRO_ANTECIPACAO_HORAS}h antes`, texto: "Nos eventos novos marcados com 7 dias ou mais de antecedência, você se inscreve antes dos outros músicos." },
       { icon: "trending-up-outline", titulo: "Destaque nas inscrições", texto: "Você aparece no topo da lista de candidatos, com o selo Pro." },
       { icon: "navigate-outline", titulo: `Raio de até ${PRO_RAIO_MAXIMO_KM} km`, texto: "Para quem toca em várias cidades da região." },
     ]}
