@@ -9,13 +9,8 @@ import { GoogleButton } from "../../components/GoogleButton";
 import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { CAPTCHA_ATIVO } from "../../lib/turnstile";
 import { AuthHeader } from "../../components/AuthHeader";
-import { Alert, Button, Checkbox, Field, grupoDeOpcoes, Icon, OpcaoDePapel, PasswordField, Screen, type IconName } from "../../components/ui";
+import { Alert, Button, Checkbox, Field, Icon, EscolhaDePapel, PasswordField, Screen } from "../../components/ui";
 import { colors, space, type } from "../../lib/theme";
-
-export const roles: { value: Role; icon: IconName; title: string; sub: string }[] = [
-  { value: "MUSICIAN", icon: "musical-notes-outline", title: "Sou músico", sub: "Quero encontrar shows" },
-  { value: "CONTRACTOR", icon: "storefront-outline", title: "Sou contratante", sub: "Quero contratar talentos" },
-];
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -76,12 +71,7 @@ export default function SignupScreen() {
 
   return <Screen evitarTeclado>
     <AuthHeader titulo="Vamos fazer música" subtitulo="Leva um minuto. Foto, cidade e os demais dados podem ser preenchidos depois."/>
-    <View {...grupoDeOpcoes(roles.map((option) => option.value), role, setRole)} style={{ flexDirection: "row", gap: space.md }}>
-      {roles.map((option) => {
-        const on = role === option.value;
-        return <OpcaoDePapel key={option.value} ativa={on} icone={option.icon} titulo={option.title} detalhe={option.sub} onPress={() => setRole(option.value)}/>;
-      })}
-    </View>
+    <EscolhaDePapel papel={role} escolher={setRole}/>
     <Field label={role === "MUSICIAN" ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={form.nome} onChangeText={(nome) => set({ nome })} autoComplete="name"/>
     <Field label="E-mail" value={form.email} onChangeText={(v) => set({ email: sanitizeEmail(v) })} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="voce@exemplo.com"/>
     <PasswordField nova value={form.password} onChangeText={(password) => set({ password })}/>

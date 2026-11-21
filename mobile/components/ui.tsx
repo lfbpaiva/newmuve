@@ -30,6 +30,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import type { Role } from "../../shared/client/account.ts";
 import { LinearGradient } from "expo-linear-gradient";
 import { criarAvisoDeFimDaRolagem, deveMostrarAtualizacao, EMPILHAR_DESLOCAMENTO, medidaDoReveal, posicaoNaRolagem, precisaAcompanharRolagem, REVEAL_FAIXA_DE_ENTRADA, revealRecebeToques, somarDeslocamento, type AvisoDeFimDaRolagem } from "../lib/reveal";
 import { SENHA_TAMANHO_MINIMO } from "../../shared/dominio.ts";
@@ -137,7 +138,7 @@ export function BlocoMedido({ style, children }: { style?: StyleProp<ViewStyle>;
   </View>;
 }
 
-export const useScrollY = () => useContext(ScrollYContext);
+const useScrollY = () => useContext(ScrollYContext);
 
 export function useReduceMotion(): boolean {
   const [reduce, setReduce] = useState(false);
@@ -387,7 +388,7 @@ export function Grupo({ titulo, icone, children }: { titulo: string; icone: Icon
   </View>;
 }
 
-export function OpcaoDePapel({ ativa, icone, titulo, detalhe, onPress }: { ativa: boolean; icone: IconName; titulo: string; detalhe: string; onPress: () => void }) {
+function OpcaoDePapel({ ativa, icone, titulo, detalhe, onPress }: { ativa: boolean; icone: IconName; titulo: string; detalhe: string; onPress: () => void }) {
   return <Pressable role="radio" aria-checked={ativa} {...focoDaOpcao(ativa)} {...ativarComEspaco(onPress)} onPress={onPress} style={({ pressed }) => ({ flex: 1, borderRadius: radius.lg, padding: space.lg, gap: space.sm, borderWidth: 1, borderColor: ativa ? "rgba(139,107,255,0.55)" : colors.hairline, backgroundColor: ativa ? colors.accentSoft : pressed ? colors.surface2 : colors.surface })}>
     <View style={{ width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: ativa ? colors.accent : colors.surface2 }}>
       <Icon name={icone} size={20} color={ativa ? colors.onAccent : colors.ink2}/>
@@ -395,6 +396,17 @@ export function OpcaoDePapel({ ativa, icone, titulo, detalhe, onPress }: { ativa
     <Text style={type.titleSmall}>{titulo}</Text>
     <Text style={[type.bodySmall, { fontSize: 12, lineHeight: 17 }]}>{detalhe}</Text>
   </Pressable>;
+}
+
+const PAPEIS: { valor: Role; icone: IconName; titulo: string; detalhe: string }[] = [
+  { valor: "MUSICIAN", icone: "musical-notes-outline", titulo: "Sou músico", detalhe: "Quero encontrar shows" },
+  { valor: "CONTRACTOR", icone: "storefront-outline", titulo: "Sou contratante", detalhe: "Quero contratar talentos" },
+];
+
+export function EscolhaDePapel({ papel, escolher }: { papel: Role; escolher: (papel: Role) => void }) {
+  return <View {...grupoDeOpcoes(PAPEIS.map((opcao) => opcao.valor), papel, escolher)} style={{ flexDirection: "row", gap: space.md }}>
+    {PAPEIS.map((opcao) => <OpcaoDePapel key={opcao.valor} ativa={papel === opcao.valor} icone={opcao.icone} titulo={opcao.titulo} detalhe={opcao.detalhe} onPress={() => escolher(opcao.valor)}/>)}
+  </View>;
 }
 
 export function PontoAoVivo({ cor = colors.accentBright }: { cor?: string }) {
@@ -524,7 +536,7 @@ export function Checkbox({ label, checked, onChange }: { label: string; checked:
   </Pressable>;
 }
 
-export interface Option { value: string; label: string }
+interface Option { value: string; label: string }
 
 export function Select({ label, value, options, placeholder = "Selecionar", disabled, searchable, onChange }: { label: string; value: string; options: Option[]; placeholder?: string; disabled?: boolean; searchable?: boolean; onChange: (value: string) => void }) {
   const [open, setOpen] = useState(false);

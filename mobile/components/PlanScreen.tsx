@@ -11,7 +11,7 @@ import { colors, radius, space, styles, type } from "../lib/theme";
 import { useMe } from "../lib/useMe";
 import { Alert, Button, ErrorState, Icon, Loading, Pill, Reveal, Screen, Snackbar, Surface, type IconName } from "./ui";
 
-export interface Beneficio {
+interface Beneficio {
   icon: IconName;
   titulo: string;
   texto: string;

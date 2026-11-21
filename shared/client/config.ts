@@ -1,12 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export interface KeyValueStorage {
+interface KeyValueStorage {
   get(key: string): Promise<string | null>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
 }
 
-export interface ClientConfig {
+interface ClientConfig {
   supabase: SupabaseClient;
   apiUrl: string;
   redirectUrl: string;

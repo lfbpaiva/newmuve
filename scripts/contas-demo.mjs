@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { lerEnvDoBackend } from "./env-do-backend.mjs";
 
-const env = Object.fromEntries(readFileSync("backend/.env", "utf8").split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]));
+const env = lerEnvDoBackend();
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const PASSWORD = "teste123";
 const unsplash = (id) => `https://images.unsplash.com/photo-${id}?w=400&h=400&fit=crop`;

@@ -2,7 +2,7 @@ export const REVEAL_FAIXA_DE_ENTRADA = 140;
 export const EMPILHAR_DESLOCAMENTO = 0.55;
 const PROGRESSO_MINIMO_PARA_TOQUE = 0.5;
 
-export interface CaixaDoReveal {
+interface CaixaDoReveal {
   y: number;
   altura: number;
 }

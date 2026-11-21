@@ -171,6 +171,6 @@ export interface AsaasGateway {
   cancelSubscription(subscriptionId: string): Promise<void>;
 }
 
-export const COBRANCA_QUITADA = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
+const COBRANCA_QUITADA = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
 
 export const cobrancaQuitada = (status: string) => COBRANCA_QUITADA.includes(status);

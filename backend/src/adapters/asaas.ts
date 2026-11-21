@@ -86,7 +86,7 @@ class FalhaDaAsaas extends AppError {
 
 const falhaTransitoria = (erro: unknown) => erro instanceof FalhaDaAsaas && (erro.tipo !== "http" || (erro.httpStatus ?? 0) >= 500);
 const qrAindaIndisponivel = (erro: unknown) => erro instanceof AppError && erro.code === "PAGAMENTO_QR_INDISPONIVEL";
-export const VERIFICACAO_DO_QR_TEMPO_LIMITE_MS = 5_000;
+const VERIFICACAO_DO_QR_TEMPO_LIMITE_MS = 5_000;
 
 type RemoteTransfer = { id: string; status: string; externalReference?: string | null; value: number };
 type RemotePayment = AsaasPayment & { deleted?: boolean };

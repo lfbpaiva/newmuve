@@ -14,7 +14,7 @@ import type { PlanService } from "../services/planService.ts";
 import type { InicioDaRotina } from "../services/rotinaFinanceira.ts";
 import { rateLimit } from "./rateLimit.ts";
 
-export interface AppDeps {
+interface AppDeps {
   accounts: AccountService;
   events: EventService;
   payments: PaymentService;

@@ -19,7 +19,9 @@
   "dependencies": {
     "@hono/node-server": "^2.1.7",
     "@supabase/supabase-js": "^2.117.2",
-    "nodemailer": "^10.5.0"
+    "hono": "^4.13.18",
+    "nodemailer": "^10.5.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -29,13 +31,11 @@
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
-    "hono": "^4.13.18",
     "oxfmt": "^0.2.0",
     "react": "^19.0.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.71.1",
-    "vitest": "^5.1.0",
-    "zod": "^4.6.7"
+    "vitest": "^5.1.0"
   },
   "engines": {
     "node": ">=22.18"
