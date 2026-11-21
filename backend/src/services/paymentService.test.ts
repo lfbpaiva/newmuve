@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "../domain/errors.ts";
 import { createNotifier } from "./notifications.ts";
 import { COBRANCA_REMOVIDA_NA_ASAAS } from "./ports.ts";
-import { CHECKOUT_MARGEM_DO_APP_MS, CHECKOUT_ORCAMENTO_MS, CHECKOUT_RESERVA_ENCERRAMENTO_MS, CHECKOUT_TEMPO_MINIMO_QR_MS, createPaymentService, REMOCAO_TEMPO_LIMITE_MS, situacaoDoEstornoNaAsaas } from "./paymentService.ts";
+import { CHECKOUT_MARGEM_DO_APP_MS, CHECKOUT_ORCAMENTO_MS, CHECKOUT_RESERVA_ENCERRAMENTO_MS, CHECKOUT_TEMPO_MINIMO_QR_MS, createPaymentService, MENSAGEM_QR_NAO_GERADO, REMOCAO_TEMPO_LIMITE_MS, situacaoDoEstornoNaAsaas } from "./paymentService.ts";
 import { CHECKOUT_TEMPO_LIMITE_APP_MS } from "../../../shared/dominio.ts";
 import { createRotinaFinanceira } from "./rotinaFinanceira.ts";
 import { contratante, DECLARACAO_AUSENCIA, hoursFromNow, memoryWorld, NOW, outroContratante, payAtAsaas } from "./testing.ts";
@@ -182,7 +182,7 @@ describe("checkout quando o QR Code Pix não vem", () => {
   it("remoção confirmada: devolve o erro, não cria outra cobrança e não grava pagamento", async () => {
     semQr();
 
-    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL" });
+    await expect(checkout()).rejects.toMatchObject({ code: "PAGAMENTO_INDISPONIVEL", message: MENSAGEM_QR_NAO_GERADO });
 
     expect(t.world.asaasCalls.createPixCharge).toHaveLength(1);
     expect(t.world.asaasCalls.cancelCharge).toHaveLength(1);

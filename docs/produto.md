@@ -276,3 +276,4 @@ Leituras (feed, eventos, inscrições, perfis públicos, mensagens, avaliações
 7. **Login com Apple**: a App Store exige quando o app oferece login com Google; depende de conta de desenvolvedor Apple.
 8. **Bloquear usuário**: hoje só existe denúncia, por e-mail ao suporte.
 9. **Política de privacidade com link próprio**, separada dos Termos, para publicar nas lojas.
+10. **Contador do acesso antecipado do Pro**: mostrar ao músico gratuito o evento ainda bloqueado, com um contador até a liberação e o convite para assinar o Pro. Hoje o gratuito não vê o evento durante as 24 horas. Ideia de 21/11/2026, fora da entrega; exige mudar o feed no banco e na API.

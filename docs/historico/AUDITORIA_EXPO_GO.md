@@ -9,7 +9,7 @@ Estados: **CONCLUÍDO COM EVIDÊNCIA**, **IMPLEMENTADO, MAS NÃO TESTADO**, **PA
 - HEAD `1050af2` antes desta etapa, igual ao `origin`; PR #6 com 17 commits, `mergeable`, CI `verificar` aprovado.
 - Fora do Git de propósito: exclusão local de `backend/.env.example` e `mobile/.env.example`; `mobile/pnpm-lock.yaml` e `mobile/pnpm-workspace.yaml` não rastreados.
 - O documento mestre descreve um estado anterior (95 arquivos no stage, último commit `0ba3389`). Esse conjunto virou o commit `6abbf31`; as correções seguintes estão em `9ae3256`, `b3ccd5d` e nos commits de documentação. Não há trabalho fora de commits além das exceções acima.
-- Atualização (17/11/2026): a frase acima descreve o estado de 16/11. As correções das seções 18 a 30 ficaram fora de commits até o Lote 1 de 17/11, quando foram registradas no Git (ver `docs/EXECUCAO_PR6_CONTINUIDADE.md`, seção "Lote 1"). Na mesma ocasião, `backend/.env.example` e `mobile/.env.example` foram restaurados do HEAD; os arquivos do pnpm no `mobile/` continuam fora do Git.
+- Atualização (17/11/2026): a frase acima descreve o estado de 16/11. As correções das seções 18 a 30 ficaram fora de commits até o Lote 1 de 17/11, quando foram registradas no Git (ver `docs/historico/EXECUCAO_PR6_CONTINUIDADE.md`, seção "Lote 1"). Na mesma ocasião, `backend/.env.example` e `mobile/.env.example` foram restaurados do HEAD; os arquivos do pnpm no `mobile/` continuam fora do Git.
 
 ## 2. Mocks, dados artificiais e autenticação simulada
 
@@ -62,7 +62,7 @@ Colunas: **Testes** registra só o que foi executado de fato (automatizados ou c
 
 | # | Tópico | Estado | Evidências e arquivos | Commits | Testes e resultados | Pendências | Expo Go agora | Migration |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Papel no projeto | CONCLUÍDO COM EVIDÊNCIA | trabalho conduzido pelas regras do documento; registros em `docs/EXECUCAO_PR6_CONTINUIDADE.md` | — | não se aplica | — | não se aplica | não |
+| 1 | Papel no projeto | CONCLUÍDO COM EVIDÊNCIA | trabalho conduzido pelas regras do documento; registros em `docs/historico/EXECUCAO_PR6_CONTINUIDADE.md` | — | não se aplica | — | não se aplica | não |
 | 2 | Regras inegociáveis | CONCLUÍDO COM EVIDÊNCIA | seção 2 desta auditoria (sem mocks, sem login automático, sem sucesso falso) | `c0c0fec` (remoção de fallback silencioso) | busca em código e nos bundles exportados | repetir a busca antes de cada entrega | não se aplica | não |
 | 3 | Estado do Git | CONCLUÍDO COM EVIDÊNCIA | seção 1; local igual ao `origin`; exceções fora do Git listadas | `6abbf31`…`50397d2` | `git status`, `git rev-list` | — | não se aplica | não |
 | 4 | Estrutura do projeto | CONCLUÍDO COM EVIDÊNCIA | `mobile/`, `backend/src/` (http, services, adapters), `shared/`, `supabase/`, `scripts/`, `docs/` conferidos | — | não se aplica | — | não se aplica | não |
@@ -70,7 +70,7 @@ Colunas: **Testes** registra só o que foi executado de fato (automatizados ou c
 | 6 | Tecnologias e versões | CONCLUÍDO COM EVIDÊNCIA | Expo SDK 58, RN 0.88.1, Supabase JS 2.117.2, Node 26.13.0 local (`engines` ≥ 22.18). pnpm efetivo **12.18.0**: `packageManager`, CI (`pnpm/action-setup@v6` sem versão fixa) e Render (`corepack`). O `.mise.toml` fixa 10.34.3 e só afeta quem usa `mise` | `0ba3389` | `npm ls`, `pnpm --version` | opcional: alinhar o `.mise.toml` (não feito, sem efeito no CI) | não se aplica | não |
 | 7 | Instalação de dependências | CONCLUÍDO COM EVIDÊNCIA | `npm ls`: `supabase-js` e `postgrest-js` em 2.117.2; leituras do app com 200 depois do `npm ci` (logs anteriores) | — | typecheck do app sem erros | não rodar `pnpm install` em `mobile/` | sim | não |
 | 8 | Inicialização no PowerShell | CONCLUÍDO COM EVIDÊNCIA | API em 3333 e Expo em 8081 em terminais visíveis; `health` 200 em `localhost` e `192.168.0.5` | — | `curl /api/health` 200; `/api/me` sem token 401 | — | sim | não |
-| 9 | Supabase | BLOQUEADO POR MIGRATION | hospedado com 21 migrations; backup completo, restauração e ensaio das 12 aprovados (`docs/PLANO_MIGRATIONS_HOSPEDADO.md`) | `b437c86`, `1050af2` | ensaio: 12 aplicadas, pgTAP 25 sem falha, estado igual ao das 33 | autorização da janela de aplicação | parcial | as 12 |
+| 9 | Supabase | BLOQUEADO POR MIGRATION | hospedado com 21 migrations; backup completo, restauração e ensaio das 12 aprovados (`docs/historico/PLANO_MIGRATIONS_HOSPEDADO.md`) | `b437c86`, `1050af2` | ensaio: 12 aplicadas, pgTAP 25 sem falha, estado igual ao das 33 | autorização da janela de aplicação | parcial | as 12 |
 | 10 | Chaves Supabase | PARCIAL | API local com `sb_secret`; app com `sb_publishable`; chaves legadas ativas; chave da Render não verificada | — | leitura do formato das variáveis (sem valores) | confirmar a chave da Render; decidir desativar as legadas | não se aplica | não |
 | 11 | Asaas | IMPLEMENTADO, MAS NÃO TESTADO | `ASAAS_API_URL` do Sandbox; `config.ts` recusa URL que não combina com o ambiente; webhook `muve-webhook` não conferido nesta etapa | `6abbf31` | testes do adaptador (`asaas.test.ts`) e de pagamento (`paymentService.test.ts`) aprovados | gerar e cancelar Pix no aparelho; apontar o webhook para a API | parcial (gerar e cancelar Pix) | estorno e repasse dependem |
 | 12 | Rotina financeira | CONCLUÍDO COM EVIDÊNCIA | log da API: "Rotina financeira desabilitada nesta instância"; sem `ENABLE_FINANCIAL_ROUTINE` e `FINANCIAL_ROUTINE_TOKEN`; trava ensaiada (livre, geração 0) | `6abbf31` | 17 testes de rotina (`rotinaFinanceira.test.ts`, `config.test.ts`, `workflow-rotina.test.mjs`) e `trava_da_rotina_financeira.test.sql` aprovados | manter desligada | não se aplica | trava na 10 |
@@ -109,7 +109,7 @@ Colunas: **Testes** registra só o que foi executado de fato (automatizados ou c
 | 45 | Decisões autônomas | CONCLUÍDO COM EVIDÊNCIA | correções da seção 6 | `c0c0fec` | — | — | não se aplica | não |
 | 46 | Decisões que exigem aprovação | CONCLUÍDO COM EVIDÊNCIA | migrations, Render, chaves e redirects deixados para decisão do grupo | — | — | — | não se aplica | não |
 | 47 | Escolha entre alternativas | CONCLUÍDO COM EVIDÊNCIA | `XMLHttpRequest` só para `FormData`, sem trocar o `fetch` das leituras | `9ae3256` | `api.test.ts` | — | não se aplica | não |
-| 48 | Registro de etapas | CONCLUÍDO COM EVIDÊNCIA | `docs/EXECUCAO_PR6_CONTINUIDADE.md` | todos os `docs:` | — | — | não se aplica | não |
+| 48 | Registro de etapas | CONCLUÍDO COM EVIDÊNCIA | `docs/historico/EXECUCAO_PR6_CONTINUIDADE.md` | todos os `docs:` | — | — | não se aplica | não |
 | 49 | Documento de continuidade | PARCIAL | continuidade, plano e esta auditoria atualizados; `docs/continuidade.md` (guia geral) não revisto | `50397d2` | — | revisar depois do teste no aparelho | não se aplica | não |
 | 50 | Relatório final | CONCLUÍDO COM EVIDÊNCIA | esta auditoria (seções A a J do documento mestre distribuídas nas seções 1 a 9) | `50397d2` | — | — | não se aplica | não |
 | 51 | Começar | CONCLUÍDO COM EVIDÊNCIA | reconhecimento feito antes de qualquer alteração | — | — | — | não se aplica | não |
@@ -208,7 +208,7 @@ Todos falham no banco, antes de qualquer chamada à Asaas: não há movimentaç�
 1. Fazer o roteiro da seção 7 na ordem e anotar, para cada item, o resultado e o que apareceu no terminal da API.
 2. Para cada falha: abrir a tela de novo, conferir o terminal da API e registrar a rota, o código HTTP e a mensagem; corrigir no código só o que não depender das migrations, com typecheck, lint, `pnpm test` e export antes do commit.
 3. Para recuperação de senha e Google: decidir as Redirect URLs no painel do Supabase e o `ALLOWED_REDIRECTS` do `backend/.env`; depois testar.
-4. Depois da autorização da janela, seguir `docs/PLANO_MIGRATIONS_HOSPEDADO.md`, seção 6, e então testar a seção 10 desta auditoria.
+4. Depois da autorização da janela, seguir `docs/historico/PLANO_MIGRATIONS_HOSPEDADO.md`, seção 6, e então testar a seção 10 desta auditoria.
 5. Manter: sem migrations no hospedado sem autorização, sem deploy, sem merge do PR #6, rotina financeira desligada, Asaas só no Sandbox.
 
 ## 12. Rodada de testes manuais no Expo Go (16/11/2026)
@@ -739,11 +739,11 @@ Revisão só de leitura, feita por uma análise separada sobre as mudanças dest
 
 ## 23. Roteiro oficial de continuidade (17/11/2026)
 
-O roteiro oficial das três etapas, com as regras de acompanhamento e a situação de cada item, está registrado integralmente em `docs/EXECUCAO_PR6_CONTINUIDADE.md`, seção "Roteiro oficial de continuidade". As seções desta auditoria são a evidência de cada item. Os números D1 a D21 seguem os originais. A próxima atividade é analisar os resultados dos testes manuais no Expo Go (checklist da seção 22).
+O roteiro oficial das três etapas, com as regras de acompanhamento e a situação de cada item, está registrado integralmente em `docs/historico/EXECUCAO_PR6_CONTINUIDADE.md`, seção "Roteiro oficial de continuidade". As seções desta auditoria são a evidência de cada item. Os números D1 a D21 seguem os originais. A próxima atividade é analisar os resultados dos testes manuais no Expo Go (checklist da seção 22).
 
 ## 24. Testes manuais do usuário (17/11/2026) e investigação dos novos achados
 
-Complemento ao roteiro oficial (`docs/EXECUCAO_PR6_CONTINUIDADE.md`). Investigação só de leitura: nenhuma linha de código mudou, nada no hospedado.
+Complemento ao roteiro oficial (`docs/historico/EXECUCAO_PR6_CONTINUIDADE.md`). Investigação só de leitura: nenhuma linha de código mudou, nada no hospedado.
 
 **Resultado informado pelo usuário:**
 - boa parte das correções funciona;
@@ -1030,7 +1030,7 @@ Por isso, preservar o histórico de um evento excluído **não exige migration**
 
 ## 31. Documento mestre de continuidade (17/11/2026)
 
-O documento mestre entregue pelo usuário está registrado integralmente em `docs/EXECUCAO_PR6_CONTINUIDADE.md`, logo depois do roteiro oficial. A tabela de situação do roteiro foi atualizada com as aprovações manuais que ele informa: D13, D20, H, F, D4, D5 (cancelamento atual), D6 e D11 validados no Expo Go; D12 e D15 testados; D16, D18 e D21 ignorados; D17 corrigido. A Etapa 3 (D8, Avaliações e D19) segue não iniciada; D5 (migration) e D7 (com D8) entram no plano de migrations.
+O documento mestre entregue pelo usuário está registrado integralmente em `docs/historico/EXECUCAO_PR6_CONTINUIDADE.md`, logo depois do roteiro oficial. A tabela de situação do roteiro foi atualizada com as aprovações manuais que ele informa: D13, D20, H, F, D4, D5 (cancelamento atual), D6 e D11 validados no Expo Go; D12 e D15 testados; D16, D18 e D21 ignorados; D17 corrigido. A Etapa 3 (D8, Avaliações e D19) segue não iniciada; D5 (migration) e D7 (com D8) entram no plano de migrations.
 
 ## Melhorias futuras — não implementar nesta entrega
 

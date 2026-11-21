@@ -65,7 +65,7 @@ Investigações e correções adicionais vinculadas à etapa:
 
 ### Situação de cada item (complemento, 17/11/2026)
 
-Status com evidência, usando só os termos das regras acima. Os detalhes estão em `docs/AUDITORIA_EXPO_GO.md`. Esta tabela será atualizada a cada rodada, sem mexer no roteiro.
+Status com evidência, usando só os termos das regras acima. Os detalhes estão em `docs/historico/AUDITORIA_EXPO_GO.md`. Esta tabela será atualizada a cada rodada, sem mexer no roteiro.
 
 | Etapa | Item | Status | Evidência |
 |---|---|---|---|
@@ -94,7 +94,7 @@ Status com evidência, usando só os termos das regras acima. Os detalhes estão
 
 ### Complementos da rodada de testes de 17/11/2026
 
-Novas descobertas, registradas sem alterar os itens originais. Detalhes, evidências e correções propostas na seção 24 de `docs/AUDITORIA_EXPO_GO.md`. Todas aguardam autorização.
+Novas descobertas, registradas sem alterar os itens originais. Detalhes, evidências e correções propostas na seção 24 de `docs/historico/AUDITORIA_EXPO_GO.md`. Todas aguardam autorização.
 
 | Complemento | Ligado a | Status |
 |---|---|---|
@@ -414,7 +414,7 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
 
 ## Preparação das migrations no hospedado (16/11/2026)
 
-- Plano completo em `docs/PLANO_MIGRATIONS_HOSPEDADO.md`. Nada foi aplicado no hospedado.
+- Plano completo em `docs/historico/PLANO_MIGRATIONS_HOSPEDADO.md`. Nada foi aplicado no hospedado.
 - Scripts de exportação, restauração, ensaio e pré-verificação em `C:\Users\Administrador\Downloads\Claude\newmuve-backups\scripts` (fora do repositório, porque a exportação tem dados pessoais).
 - Procedimento testado com o Supabase local como origem: restauração 607/607 objetos e 51/51 tabelas; 12 migrations aplicadas na cópia; pgTAP sem falhas; resultado idêntico ao banco das 33 migrations (781/781).
 - **Bloqueio:** o CLI não está autenticado e o navegador não tem sessão no painel. Alguém da equipe precisa rodar `npx supabase login`; depois, `1-exportar.sh lylxorfrwuioednhukhz <pasta>`, `0-verificar-desvio.sh`, `2-restaurar-e-verificar.sh` e `3-ensaiar-migrations.sh`.
@@ -439,13 +439,13 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
 - Storage: 12 arquivos baixados para `2026-11-16-hospedado\storage`, com tamanho, MD5 (`eTag`) e SHA-256 conferidos.
 - Permissões: tabelas novas com `service_role` só leitura e sem acesso de cliente; as 27 funções chamadas pelo backend do PR com `execute` só para `service_role`; 7 funções internas sem `service_role` de propósito.
 - Rotina: trava livre (geração 0); sem `pg_cron`/`pg_net`; workflow só na branch do PR (0 execuções agendadas); backend do PR exige `ENABLE_FINANCIAL_ROUTINE=true`.
-- **Achado crítico:** o backend do `main` roda a rotina sempre, ao iniciar e a cada 5 minutos, gravando repasses direto em `payments`. Nenhuma instância do `main` pode ficar ligada ao hospedado depois das migrations, e a URL da Render não deve ser acessada (acordaria o serviço). Sequência de implantação sem intervalo em `docs/PLANO_MIGRATIONS_HOSPEDADO.md`, seção 6.
+- **Achado crítico:** o backend do `main` roda a rotina sempre, ao iniciar e a cada 5 minutos, gravando repasses direto em `payments`. Nenhuma instância do `main` pode ficar ligada ao hospedado depois das migrations, e a URL da Render não deve ser acessada (acordaria o serviço). Sequência de implantação sem intervalo em `docs/historico/PLANO_MIGRATIONS_HOSPEDADO.md`, seção 6.
 - A sessão da CLI expirou no fim do dia ("Invalid access token"); para a janela, login de novo com a conta do Muve (`--no-browser`).
 - **Checkpoint:** aguardando autorização para a janela de aplicação.
 
 ## Auditoria para o Expo Go (16/11/2026)
 
-- Auditoria dos 51 tópicos do documento mestre, de mocks e das integrações em `docs/AUDITORIA_EXPO_GO.md`.
+- Auditoria dos 51 tópicos do documento mestre, de mocks e das integrações em `docs/historico/AUDITORIA_EXPO_GO.md`.
 - Nenhum mock, credencial embutida ou login automático no código de execução; abrir já logado vem da sessão persistida e é validado pela API.
 - Correções: erro da consulta de pagamento não é mais engolido na tela do contratante; salvar perfil usa a resposta do `PATCH`; sessão restaurada em paralelo com as fontes.
 - Testes: typecheck e lint limpos; 897 testes; exports Android e web sem erro.
@@ -458,12 +458,12 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
 ## Estado em que esta etapa terminou
 
 - Nenhuma migration aplicada no hospedado (21 migrations); nenhum deploy; Render intocado; PR #6 aberto e sem merge; rotina financeira desligada; nenhuma operação financeira executada.
-- **Próximo passo:** o usuário executa o roteiro da seção 7 de `docs/AUDITORIA_EXPO_GO.md` no celular.
+- **Próximo passo:** o usuário executa o roteiro da seção 7 de `docs/historico/AUDITORIA_EXPO_GO.md` no celular.
 
 ## Rodada de testes no Expo Go e investigação (16/11/2026)
 
 - Git conferido antes do registro: HEAD `9127a6f`, igual a `origin/integracao/redesign-lote1`; 20 commits sobre o `main`; 147 arquivos, +15.950/−3.193.
-- O usuário testou no celular (resultados na seção 12 de `docs/AUDITORIA_EXPO_GO.md`). A investigação foi só de leitura: código, Git e o backup de 16/11. Nada foi executado no hospedado e nenhum código foi alterado.
+- O usuário testou no celular (resultados na seção 12 de `docs/historico/AUDITORIA_EXPO_GO.md`). A investigação foi só de leitura: código, Git e o backup de 16/11. Nada foi executado no hospedado e nenhum código foi alterado.
 - Defeitos confirmados no código:
   - convite com falso erro (a API responde 201 sem corpo);
   - exclusão física de evento e de inscrição, que apaga as conversas;
@@ -485,7 +485,7 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   - D14: aviso de sem conexão junto aos indicadores;
   - D20: posição do Reveal dentro de listas;
   - D13: favorito atualizado assim que o servidor confirma, com indicação de salvamento.
-- Detalhes, arquivos, testes e riscos: seção 18 de `docs/AUDITORIA_EXPO_GO.md`.
+- Detalhes, arquivos, testes e riscos: seção 18 de `docs/historico/AUDITORIA_EXPO_GO.md`.
 - Verificação: typecheck e lint da raiz limpos (o lint da raiz ignora `mobile/` e não cobre o app); `pnpm test` com 50 arquivos e 925 testes aprovados; exports Android e web sem erro; `git diff --check` limpo.
 - Sem migration, sem mudança no hospedado, sem deploy, sem commit. Regras de contratação, pagamento e checkout não mudaram. Letreiro não restaurado.
 - API (3333, rotina desabilitada) e Expo (8081) seguem abertos para o teste no celular. **Nenhuma correção foi validada no Expo Go ainda.**
@@ -509,7 +509,7 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   - `pnpm test` com 51 arquivos e 934 testes aprovados;
   - exports sem erro;
   - `git diff --check` limpo.
-- Detalhes na seção 19 de `docs/AUDITORIA_EXPO_GO.md`. **Nenhuma correção validada no Expo Go ainda.**
+- Detalhes na seção 19 de `docs/historico/AUDITORIA_EXPO_GO.md`. **Nenhuma correção validada no Expo Go ainda.**
 
 ## Investigação da terceira rodada (16/11/2026, sem alteração de código)
 
@@ -527,7 +527,7 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   - não chama a API e não mostra erro próprio;
   - a travada e a mensagem técnica ainda são hipóteses (WebView do captcha; faixas de aviso do modo de desenvolvimento); falta o print da mensagem.
 - **Correção do roteiro:** a API **não** registra requisições no terminal, ao contrário do que diz a seção 7 da auditoria.
-- Detalhes na seção 20 de `docs/AUDITORIA_EXPO_GO.md`.
+- Detalhes na seção 20 de `docs/historico/AUDITORIA_EXPO_GO.md`.
 
 ## D3: consulta só de leitura (16/11/2026, 20:34)
 
@@ -539,7 +539,7 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
 - **Evento do dia 23:** fica fora do feed dos dois até 17/11 às 16:03, pelo acesso antecipado (criado com 7,2 dias de antecedência).
 - **A diferença entre os perfis é o convite:** o Músico B foi convidado para o evento do dia 23 e se inscreveu. O convite libera a inscrição de propósito, mas o feed não mostra o evento convidado.
 - **Divergência para o produto:** convite × feed.
-- Nada foi alterado. Detalhes na seção 21 de `docs/AUDITORIA_EXPO_GO.md`.
+- Nada foi alterado. Detalhes na seção 21 de `docs/historico/AUDITORIA_EXPO_GO.md`.
 
 ## Etapa 1: D12, D13, saída da conta e D1 (16/11/2026, sem commit)
 
@@ -558,12 +558,12 @@ Esse procedimento é obrigatório porque o usuário observou que o Claude trabal
   - lint do `mobile/` igual à base (57);
   - exports sem erro;
   - `git diff --check` limpo.
-- Detalhes, revisão independente e checklist na seção 22 de `docs/AUDITORIA_EXPO_GO.md`. **Nada validado no Expo Go ainda.**
+- Detalhes, revisão independente e checklist na seção 22 de `docs/historico/AUDITORIA_EXPO_GO.md`. **Nada validado no Expo Go ainda.**
 
 ## Decisão do usuário e conferência (17/11/2026)
 
 - **D1 no hospedado:** o usuário **não autorizou** a gravação de um convite real. D1 continua **validado localmente (E2E) e pendente no hospedado**.
-- **Próximo passo:** testes manuais no Expo Go, pela checklist da seção 22 de `docs/AUDITORIA_EXPO_GO.md`. Depois dos resultados, decidir separadamente a validação real de D1. A Etapa 2 não começou.
+- **Próximo passo:** testes manuais no Expo Go, pela checklist da seção 22 de `docs/historico/AUDITORIA_EXPO_GO.md`. Depois dos resultados, decidir separadamente a validação real de D1. A Etapa 2 não começou.
 - **Conferência feita, sem alterar nada:**
   - HEAD `9127a6f`, igual ao remoto;
   - todo o trabalho segue sem commit;
