@@ -4,10 +4,10 @@ Guia para quem pegar o Muve a partir daqui. Regras do produto em [produto.md](pr
 
 ## Estado atual (21/11/2026)
 
-- **Código:** tudo está no `main` de `lfbpaiva/newmuve` (PRs #7 a #18). O repositório `Cleiton-Martins/MUVE` é antigo; não use. Os PRs 1 e 2 partiam de uma versão antiga e foram fechados.
-- **Banco:** 37 migrations, todas aplicadas no Supabase hospedado (a última é `20261120180000_ausencia_com_prazo_de_resposta`). A suíte pgTAP passa no hospedado.
+- **Código:** tudo está no `main` de `lfbpaiva/newmuve` (PRs #7 a #21). O repositório `Cleiton-Martins/MUVE` é antigo; não use. Os PRs 1 e 2 partiam de uma versão antiga e foram fechados.
+- **Banco:** 39 migrations, todas aplicadas no Supabase hospedado (a última é `20261121130000_avaliacoes_do_contratante_publicas`). A suíte pgTAP passa no hospedado (21/11).
 - **Fluxo:** testado de ponta a ponta no sandbox da Asaas em 20/11 (ver "Fluxos de ponta a ponta"). Falta o teste no celular pelo Expo Go.
-- **Pix no sandbox (20/11, à noite):** desde cerca de 20h40, a Asaas responde `invalid_action` ("Um erro desconhecido") ao gerar o QR Code, e o app mostra que a Asaas não conseguiu gerar o QR. A chave Pix nova da conta ficou em "Aguardando ativação" e a antiga, em "Aguardando exclusão". É um problema da conta no sandbox, não do app nem do Expo Go. Se continuar, falar com o suporte da Asaas e usar o plano B do roteiro (vídeo ou prints do pagamento).
+- **Pix no sandbox (20/11, à noite; ainda igual em 21/11 à tarde):** desde cerca de 20h40, a Asaas responde `invalid_action` ("Um erro desconhecido") ao gerar o QR Code, e o app mostra que a Asaas não conseguiu gerar o QR. A chave Pix nova da conta ficou em "Aguardando ativação" e a antiga, em "Aguardando exclusão". É um problema da conta no sandbox, não do app nem do Expo Go. Se continuar, falar com o suporte da Asaas e usar o plano B do roteiro (vídeo ou prints do pagamento).
 - **Verificação:** o GitHub Actions roda `pnpm typecheck`, `pnpm lint` e `pnpm test` a cada push e pull request. O `pnpm lint` ignora a pasta `mobile/`.
 - **Histórico:** a auditoria do Expo Go, o registro de execução do PR #6 e o plano de migrations ficaram em [historico/](historico/). Servem de consulta; o estado atual é o deste documento. As capturas do redesign estão em `docs/imagens/redesign/`.
 
@@ -237,10 +237,35 @@ Observações da rodada:
 - Sem resposta em 24 horas, valem o estorno integral, a multa e a visibilidade reduzida, aplicados pela rotina financeira ou quando alguém abre a contratação. Depois do prazo, o músico não confirma nem contesta (`PRAZO_DE_RESPOSTA_ENCERRADO`).
 - A regra está em [produto.md](produto.md) e nos Termos (versão `2026-11-20`); teste pgTAP em `ausencia_com_prazo.test.sql`. Falta alinhar a mudança com o grupo e testar a tela no Expo Go.
 
+## Mudanças e testes de 21/11/2026
+
+- **PR #21:** todos os músicos compatíveis veem o evento assim que ele é publicado; nas primeiras 24h, só o Pro se inscreve quando faltam 7 dias ou mais (regra em [produto.md](produto.md)). As avaliações recebidas pelo contratante aparecem na tela do evento. Ajustes perdeu "Estilos e recebimento", que repetia "Editar perfil". Início e duração do evento são completados ao sair do campo.
+- **Testes pela API** (serviços do backend com o Supabase hospedado e as contas de teste; não substituem a tela):
+  - **Conversa encerrada (3A), 8/8:** a conversa aceita mensagens antes do show; depois do início sem contratação e depois da recusa, a API responde "Esta conversa está encerrada" e recusa propostas; as mensagens continuam gravadas.
+  - **Favoritos sem internet (3E), 6/6:** o coração muda na hora; sem internet aparece o erro com "Tentar de novo" e nada é gravado; com a internet de volta, "Tentar de novo" grava e o erro some.
+  - **Repasse com falha:** considerado validado pelos fluxos de 20/11 (chave fictícia, falha, troca da chave e repasse concluído). Repetir criaria registros permanentes no banco da apresentação, porque as tentativas de repasse não podem ser apagadas.
+- **Já validados no Expo Go, sem repetir:** sem internet (D14), efeito ao rolar (D20), notificações lidas (D9: o destaque sumir depois de abrir é o comportamento correto) e o logout básico (16/11).
+- **D5 adiado:** cancelar a inscrição ainda apaga a conversa. Preservar exige um estado novo e decidir se o músico pode se inscrever de novo no mesmo evento.
+
+### Roteiro curto para o Expo Go
+
+Antes: `git pull` e `npm install` na pasta `mobile`.
+
+1. Evento novo marcado para daqui a 8 dias ou mais: `musico2@teste.com` (sem Pro) vê o evento com "Inscrição abre…" e não consegue se inscrever; `musico3@teste.com` (Pro) se inscreve na hora.
+2. Tela do evento, como músico: aparece "Avaliações do contratante".
+3. Ajustes, como músico: não aparece mais "Estilos e recebimento".
+4. Conversa com proposta, como contratante: o cartão mostra o total que o contratante paga, e o topo mostra "Para aprovar a inscrição de R$ Y, você paga R$ X" (D12).
+5. Favoritar uma vez no detalhe e uma no perfil: o coração muda na hora.
+6. Sair da conta: vai direto para o login, sem tela preta.
+7. Inscrição recusada: aparece "Esta conversa está encerrada", e as mensagens continuam.
+8. Com o Wi-Fi desligado, favoritar e depois tocar em "Tentar de novo" com o Wi-Fi ligado.
+9. Se der tempo: o aviso de 24 horas do não comparecimento (precisa de um evento contratado que já começou).
+10. Pix: uma tentativa só, quando a chave da Asaas sair de "Aguardando ativação".
+
 ## O que falta
 
 ### Para a entrega do TCC
-- [ ] Testar no celular pelo Expo Go (Expo SDK 58) o fluxo completo: abertura, transições, barra inferior, puxar para atualizar, prévia "Para aprovar a inscrição de R$ Y, você paga R$ X" na conversa e o novo aviso de não comparecimento. Antes, rodar `npm install` na pasta `mobile`.
+- [ ] Testar no celular pelo Expo Go, pelo "Roteiro curto para o Expo Go" acima.
 - [ ] Gerar o QR Code do Pix de novo quando o sandbox da Asaas voltar (ver "Estado atual"). Se não voltar, falar com o suporte da Asaas.
 - [ ] Gravar um vídeo ou tirar prints do pagamento funcionando, como plano B para a apresentação.
 - [ ] Alinhar com o grupo a regra do não comparecimento com prazo de 24 horas (PR #17).
@@ -251,6 +276,8 @@ Observações da rodada:
 - [x] Contas de teste completas (lista no README).
 - [x] Repasse que falhou volta para a fila com a chave Pix nova (PRs #13 e #16).
 - [x] Setas nos grupos de opções e versões do Expo alinhadas (PR #14).
+- [x] Nova regra do Pro, avaliações do contratante e ajustes (PR #21, migrations aplicadas em 21/11).
+- [ ] D5: preservar a conversa quando o músico cancela a inscrição (adiado para depois da entrega).
 - [x] Defeitos da auditoria do Expo Go e da QA de 20/11 corrigidos (PRs #6 a #11); o registro está em [historico/](historico/).
 - [ ] Depois da entrega: trocar as chaves do Supabase e da Asaas que circularam durante o desenvolvimento e desativar as chaves legadas.
 
