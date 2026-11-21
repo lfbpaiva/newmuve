@@ -20,6 +20,12 @@ const cobrancaEmConciliacao = () =>
   new AppError(409, "COBRANCA_EM_CONCILIACAO", "A cobrança anterior ainda não foi encerrada na Asaas. Tente novamente em instantes.");
 const tempoInsuficiente = () =>
   new AppError(503, "PAGAMENTO_TEMPO_INSUFICIENTE", "O serviço de pagamentos demorou para responder. Tente novamente em instantes.");
+const FALHAS_NA_GERACAO_DO_QR = ["PAGAMENTO_INDISPONIVEL", "PAGAMENTO_QR_INDISPONIVEL", "PAGAMENTO_QR_INCONCLUSIVO"];
+export const MENSAGEM_QR_NAO_GERADO = "A Asaas não conseguiu gerar o QR Code do Pix agora. Tente novamente em alguns minutos.";
+const qrNaoGerado = (error: unknown) =>
+  error instanceof AppError && FALHAS_NA_GERACAO_DO_QR.includes(error.code)
+    ? new AppError(error.status, error.code, MENSAGEM_QR_NAO_GERADO, error.retryAfter)
+    : error;
 const REFUND_REQUEST_GRACE_MS = 60_000;
 const TRANSFER_DEAD = ["FAILED", "CANCELLED"];
 const BUSCA_PAGINAS_ROTINA = 5;
@@ -477,7 +483,7 @@ export function createPaymentService(deps: {
         if (remocao !== "REMOVIDA" && !registradaParaConciliacao) {
           console.error(`Checkout ${JSON.stringify({ origem: "checkout", ...base, alerta: "COBRANCA_SEM_REGISTRO_LOCAL", remocao })}`);
         }
-        throw error;
+        throw qrNaoGerado(error);
       }
     },
 
