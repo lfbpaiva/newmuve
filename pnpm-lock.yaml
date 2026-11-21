@@ -175,9 +175,15 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.117.2
         version: 2.117.2
+      hono:
+        specifier: ^4.13.18
+        version: 4.13.18
       nodemailer:
         specifier: ^10.5.0
         version: 10.5.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -200,9 +206,6 @@ importers:
       globals:
         specifier: ^17.13.0
         version: 17.13.0
-      hono:
-        specifier: ^4.13.18
-        version: 4.13.18
       oxfmt:
         specifier: ^0.2.0
         version: 0.2.0
@@ -218,9 +221,6 @@ importers:
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@22.19.17)(vite@8.3.8(@types/node@22.19.17)(esbuild@0.28.2)(jiti@2.6.1))
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
 
 packages:
 

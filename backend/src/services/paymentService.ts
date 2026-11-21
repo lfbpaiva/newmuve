@@ -11,9 +11,9 @@ export const CHECKOUT_MARGEM_DO_APP_MS = 10_000;
 export const CHECKOUT_ORCAMENTO_MS = CHECKOUT_TEMPO_LIMITE_APP_MS - CHECKOUT_MARGEM_DO_APP_MS;
 export const CHECKOUT_RESERVA_ENCERRAMENTO_MS = 12_000;
 export const REMOCAO_TEMPO_LIMITE_MS = 6_000;
-export const VERIFICACAO_REMOCAO_TEMPO_LIMITE_MS = 5_000;
+const VERIFICACAO_REMOCAO_TEMPO_LIMITE_MS = 5_000;
 export const CHECKOUT_TEMPO_MINIMO_QR_MS = 5_000;
-export const CHECKOUT_TEMPO_MINIMO_CRIACAO_MS = 2_000;
+const CHECKOUT_TEMPO_MINIMO_CRIACAO_MS = 2_000;
 const REQUISICAO_PADRAO_MS = 15_000;
 const tempoAte = (prazo: number, maximoMs: number) => Math.max(1, Math.min(maximoMs, prazo - Date.now()));
 const cobrancaEmConciliacao = () =>
@@ -32,7 +32,7 @@ const BUSCA_PAGINAS_ROTINA = 5;
 const BUSCA_PAGINAS_SUPORTE = 50;
 const ESTORNO_EM_ANDAMENTO_NA_ASAAS = ["PENDING", "AWAITING_CRITICAL_ACTION_AUTHORIZATION", "AWAITING_CUSTOMER_EXTERNAL_AUTHORIZATION"];
 
-export type SituacaoDoEstornoNaAsaas = "EM_ANDAMENTO" | "CONCLUIDO" | "ENCERRADO_SEM_DEVOLUCAO" | "DESCONHECIDA";
+type SituacaoDoEstornoNaAsaas = "EM_ANDAMENTO" | "CONCLUIDO" | "ENCERRADO_SEM_DEVOLUCAO" | "DESCONHECIDA";
 
 export function situacaoDoEstornoNaAsaas(status: string): SituacaoDoEstornoNaAsaas {
   if (ESTORNO_EM_ANDAMENTO_NA_ASAAS.includes(status)) return "EM_ANDAMENTO";

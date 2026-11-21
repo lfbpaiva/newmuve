@@ -4,7 +4,7 @@ import { eventDateParts } from "../../shared/client/format.ts";
 import { colors, radius, space, styles, type } from "../lib/theme";
 import { Avatar, Icon, Surface } from "./ui";
 
-export interface Parte {
+interface Parte {
   papel: string;
   nome: string;
   foto?: string | null;

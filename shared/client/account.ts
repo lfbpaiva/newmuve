@@ -26,7 +26,7 @@ export interface Me {
   casaAte?: string | null;
 }
 
-export interface ProfileData {
+interface ProfileData {
   nome: string;
   documento?: string;
   telefone?: string;
@@ -41,7 +41,7 @@ export interface ProfileData {
   captchaToken?: string;
 }
 
-export interface SignupData {
+interface SignupData {
   role: Role;
   nome: string;
   email: string;

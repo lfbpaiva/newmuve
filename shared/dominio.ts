@@ -3,13 +3,11 @@ export const ESTILOS_MUSICAIS = [
   "Pop", "Rock", "Indie", "Metal", "Reggae", "Eletrônico / DJ", "Jazz", "Blues", "Soul / R&B", "Clássico / Erudito",
   "Instrumental", "Country", "Infantil", "Cover / Baile", "Outros",
 ] as const;
-export type EstiloMusical = (typeof ESTILOS_MUSICAIS)[number];
 
 export const QUALQUER_ESTILO = "Qualquer estilo";
 export const ESTILOS_EVENTO = [QUALQUER_ESTILO, ...ESTILOS_MUSICAIS] as const;
 
 export const TIPOS_EVENTO = ["Bar e restaurante", "Festa particular", "Corporativo"] as const;
-export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 
 export const UFS = [
   "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA",
@@ -17,7 +15,6 @@ export const UFS = [
 ] as const;
 
 export const FORMACOES = ["Indiferente", "Solo", "Dupla", "Trio", "Banda"] as const;
-export type Formacao = (typeof FORMACOES)[number];
 
 export const RAIOS_FEED_KM = [0, 50, 100, 200] as const;
 export const RAIOS_FEED_PRO_KM = [0, 50, 100, 200, 400] as const;
@@ -43,8 +40,8 @@ export const ROTULOS_CHAVE_PIX: Record<TipoChavePix, string> = {
 
 export const CACHE_MINIMO = 100;
 export const SENHA_TAMANHO_MINIMO = 8;
-export const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
-export const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
+const IMAGEM_TAMANHO_MAXIMO = 5 * 1024 * 1024;
+const IMAGEM_TIPOS_ACEITOS = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export const COMISSAO_PERCENTUAL = 10;
 export const EMAIL_SUPORTE = "muveapp.contato@gmail.com";
@@ -160,7 +157,7 @@ export function imageProblem(file: { type: string; size: number }): string | nul
   return null;
 }
 
-export const normalizeCidade = (value: string) =>
+const normalizeCidade = (value: string) =>
   value
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -221,7 +218,7 @@ export function estimarCobrancaDoContratante(valor: number | null | undefined, c
 export type AcaoPerfil = "feed" | "candidatar" | "criarEvento" | "pagar";
 export type CampoPerfil = "foto" | "documento" | "telefone" | "cidade" | "estilos" | "chavePix";
 
-export const ROTULOS_CAMPOS: Record<CampoPerfil, string> = {
+const ROTULOS_CAMPOS: Record<CampoPerfil, string> = {
   foto: "foto de perfil",
   documento: "CPF ou CNPJ",
   telefone: "telefone",
@@ -230,7 +227,7 @@ export const ROTULOS_CAMPOS: Record<CampoPerfil, string> = {
   chavePix: "chave Pix",
 };
 
-export interface PerfilParaChecagem {
+interface PerfilParaChecagem {
   role: "MUSICIAN" | "CONTRACTOR";
   fotoPerfilUrl?: string | null;
   documento?: string | null;

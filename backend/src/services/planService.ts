@@ -26,7 +26,7 @@ export interface PlanStore {
   activate(userId: string, asaasPaymentId: string, dias: number): Promise<Date | null>;
 }
 
-export interface PlanStatus {
+interface PlanStatus {
   plano: Plano;
   ativoAte: string | null;
   assinatura: {

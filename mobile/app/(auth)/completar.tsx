@@ -5,9 +5,7 @@ import { completeProfile, type Role } from "../../../shared/client/account.ts";
 import { errorMessage } from "../../../shared/client/api.ts";
 import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import { AuthHeader } from "../../components/AuthHeader";
-import { Alert, Button, Checkbox, Field, grupoDeOpcoes, OpcaoDePapel, Screen } from "../../components/ui";
-import { space } from "../../lib/theme";
-import { roles } from "./signup";
+import { Alert, Button, Checkbox, Field, EscolhaDePapel, Screen } from "../../components/ui";
 
 export default function CompleteSignupScreen() {
   const { state, refreshMe, signOut } = useAuth();
@@ -44,12 +42,7 @@ export default function CompleteSignupScreen() {
 
   return <Screen evitarTeclado>
     <AuthHeader titulo="Quase lá" subtitulo={`Você entrou com ${email || "o Google"}. Falta só dizer como vai usar a Muve.`}/>
-    <View {...grupoDeOpcoes(roles.map((option) => option.value), role, setRole)} style={{ flexDirection: "row", gap: space.md }}>
-      {roles.map((option) => {
-        const on = role === option.value;
-        return <OpcaoDePapel key={option.value} ativa={on} icone={option.icon} titulo={option.title} detalhe={option.sub} onPress={() => setRole(option.value)}/>;
-      })}
-    </View>
+    <EscolhaDePapel papel={role} escolher={setRole}/>
     <Field label={role === "MUSICIAN" ? "Nome ou nome da banda" : "Nome ou nome fantasia"} value={nome} onChangeText={(v) => { setNome(v); setError(""); }} autoComplete="name"/>
     <View>
       <Checkbox label="Li e aceito os Termos de Uso" checked={aceite} onChange={(v) => { setAceite(v); setError(""); }}/>

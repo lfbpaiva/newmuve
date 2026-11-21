@@ -6,13 +6,13 @@ import type { PaymentService } from "./paymentService.ts";
 import type { EventStore, PaymentStore, TravaDaRotina } from "./ports.ts";
 import { AUSENCIA_PRAZO_RESPOSTA_MS, CONCLUSAO_AUTOMATICA_MS } from "../../../shared/dominio.ts";
 
-export const VALIDADE_DA_TRAVA_S = 600;
-export const RENOVACAO_DA_TRAVA_MS = 2 * 60 * 1000;
-export const MARGEM_DA_TRAVA_MS = 60 * 1000;
+const VALIDADE_DA_TRAVA_S = 600;
+const RENOVACAO_DA_TRAVA_MS = 2 * 60 * 1000;
+const MARGEM_DA_TRAVA_MS = 60 * 1000;
 
 export type InicioDaRotina = "INICIADA" | "EM_ANDAMENTO";
 
-export class TravaDaRotinaPerdida extends Error {}
+class TravaDaRotinaPerdida extends Error {}
 
 type Renovacao = { parar(): void };
 
@@ -155,7 +155,6 @@ export function createRotinaFinanceira(deps: {
   };
 }
 
-export type RotinaFinanceira = ReturnType<typeof createRotinaFinanceira>;
 
 export function createAgendaFinanceira(deps: {
   rotina: { run(): Promise<void> };

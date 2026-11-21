@@ -35,7 +35,7 @@ function Meta({ icon, text }: { icon: IconName; text: string }) {
   </View>;
 }
 
-export function DateTile({ iso, uf }: { iso: string; uf: string }) {
+function DateTile({ iso, uf }: { iso: string; uf: string }) {
   const { day, month, weekday } = eventDateParts(iso, uf);
   return <View style={{ width: 54, paddingVertical: space.sm, borderRadius: radius.md, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.hairline, alignItems: "center" }}>
     <Text style={[type.labelSmall, { color: colors.accentText, letterSpacing: 0.5 }]}>{weekday}</Text>

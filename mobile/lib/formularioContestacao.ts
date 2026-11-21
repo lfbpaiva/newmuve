@@ -1,4 +1,4 @@
-export interface FormularioDaContestacao {
+interface FormularioDaContestacao {
   aberto: boolean;
   motivo: string;
 }

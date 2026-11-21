@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import type { Mailer } from "../services/notifications.ts";
 
-export interface SmtpConfig {
+interface SmtpConfig {
   host: string;
   port: number;
   user: string;

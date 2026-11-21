@@ -1,4 +1,4 @@
-export interface CepAddress {
+interface CepAddress {
   logradouro: string;
   bairro: string;
   cidade: string;

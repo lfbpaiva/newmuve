@@ -1,12 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { lerEnvDoBackend } from "./env-do-backend.mjs";
 
-const env = Object.fromEntries(
-  readFileSync("backend/.env", "utf8")
-    .split("\n")
-    .filter((line) => line.includes("=") && !line.trim().startsWith("#"))
-    .map((line) => [line.slice(0, line.indexOf("=")).trim(), line.slice(line.indexOf("=") + 1).trim().replace(/^["']|["']$/g, "")]),
-);
+const env = lerEnvDoBackend();
 const apiUrl = process.env.API_URL || `http://localhost:${env.PORT || 3333}/api`;
 const [id, decisao, ...observacao] = process.argv.slice(2);
 const decisoes = { pagar: "PAGAR_MUSICO", devolver: "DEVOLVER_CONTRATANTE" };

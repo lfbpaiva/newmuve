@@ -1,4 +1,4 @@
-export type SituacaoDaCobranca = "aguardando" | "confirmando-prazo" | "encerrada";
+type SituacaoDaCobranca = "aguardando" | "confirmando-prazo" | "encerrada";
 
 export function situacaoDaCobranca(status: string, segundosRestantes: number): SituacaoDaCobranca {
   if (status !== "PENDENTE") return "encerrada";

@@ -95,7 +95,7 @@ export function situacaoDoCache(hiring: Hiring): string {
   }
 }
 
-export type ConfirmacaoDaParte =
+type ConfirmacaoDaParte =
   | { situacao: "confirmada"; texto: string }
   | { situacao: "aguardando-outra-parte"; texto: string }
   | { situacao: "disponivel"; texto: string }
@@ -155,7 +155,7 @@ export function avisoDoEstorno(hiring: Hiring): { tom: "info" | "error"; texto: 
   return null;
 }
 
-export interface HistoricoDaContestacao {
+interface HistoricoDaContestacao {
   titulo: string;
   resultado: string;
   data: string | null;
@@ -173,7 +173,7 @@ export function historicoDaContestacao(hiring: Hiring): HistoricoDaContestacao |
   };
 }
 
-export interface AcaoDeContestacao {
+interface AcaoDeContestacao {
   botao: string;
   explicacao: string | null;
 }

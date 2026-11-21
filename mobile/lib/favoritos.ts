@@ -1,13 +1,13 @@
 export const FALHA_AO_ATUALIZAR_FAVORITOS = "Não foi possível atualizar a lista de favoritos. Os dados mostrados podem estar desatualizados.";
 
-export interface EstadoDosFavoritos {
+interface EstadoDosFavoritos {
   ids: string[] | undefined;
   pendentes: string[];
   erro: string;
   podeTentarDeNovo: boolean;
 }
 
-export interface EstadoDoBotaoDeFavorito {
+interface EstadoDoBotaoDeFavorito {
   visivel: boolean;
   favorito: boolean;
   salvando: boolean;
@@ -18,7 +18,7 @@ export function estadoDoBotaoDeFavorito(estado: EstadoDosFavoritos, musicianId: 
   return { visivel: true, favorito: estado.ids.includes(musicianId), salvando: estado.pendentes.includes(musicianId) };
 }
 
-export interface AparenciaDoCoracao {
+interface AparenciaDoCoracao {
   preenchido: boolean;
   opacidade: number;
 }
@@ -28,7 +28,7 @@ export const aparenciaDoCoracao = ({ favorito }: { favorito: boolean }): Aparenc
   opacidade: 1,
 });
 
-export interface ControleDeFavoritos {
+interface ControleDeFavoritos {
   estado(): EstadoDosFavoritos;
   inscrever(ouvinte: () => void): () => void;
   carregar(): Promise<void>;

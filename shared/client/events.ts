@@ -35,7 +35,7 @@ export interface EventItem {
   distanciaKm?: number;
 }
 
-export interface EventData {
+interface EventData {
   titulo: string;
   tipoEvento: string;
   inicio: string;
@@ -58,7 +58,7 @@ export interface Application {
   event: EventItem;
 }
 
-export interface MyApplication {
+interface MyApplication {
   id: string;
   status: CandidateStatus;
   valorProposto: number | null;
@@ -81,7 +81,7 @@ export interface Candidate {
   musician: PublicProfile & { bio: string | null; estilosMusicais: string[]; portfolioUrl: string | null; pro: boolean };
 }
 
-export interface Review {
+interface Review {
   id: string;
   rating: number;
   comment: string | null;

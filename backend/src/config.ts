@@ -1,10 +1,10 @@
-export type AsaasEnvironment = "sandbox" | "production";
+type AsaasEnvironment = "sandbox" | "production";
 export type FinancialRoutineSetting = "enabled" | "disabled" | "invalid";
-export type FinancialRoutineTrigger = { token: string; problema: null } | { token: null; problema: "ausente" | "invalido" };
+type FinancialRoutineTrigger = { token: string; problema: null } | { token: null; problema: "ausente" | "invalido" };
 
 const TAMANHO_MINIMO_DO_TOKEN_DA_ROTINA = 32;
 
-export interface ServerConfig {
+interface ServerConfig {
   host: string;
   port: number;
   supabaseUrl: string;
