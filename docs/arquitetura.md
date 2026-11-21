@@ -131,6 +131,45 @@ Depois do início do evento ninguém cancela: o encerramento é pela confirmaç�
 
 Mocks existem apenas nos testes; a aplicação não tem dados simulados.
 
+## Glossário
+
+O código mistura português e inglês. Esta tabela liga cada termo do produto ao nome usado no banco e no código, para quem precisa achar onde uma regra está.
+
+| No produto | No banco | No código | Exemplos |
+|---|---|---|---|
+| Músico, contratante | `musician_profiles`, `contractor_profiles` | `Role`: `MUSICIAN`, `CONTRACTOR` | `Account`, `Me`, `PublicProfile` |
+| Evento | `events` | `Event…` | `EventRecord`, `EventItem`, `createEvent`, `fetchFeed` |
+| Feed (eventos para o músico) | função `musician_feed` | `feed` | `fetchFeed`, `filterFeed`, `FeedFilters` |
+| Inscrição (candidatura) | `event_candidates` | `Candidate`, `Application` | `CandidateRecord`, `applyToEvent`, `cancelApplication`, `declineCandidate` |
+| Convite | `event_invites` | `invite` | `inviteMusician`, `fetchMyInvite` |
+| Conversa e proposta de cachê | `candidate_messages` | `Message`, `Proposal` | `sendMessage`, `proposeValue`, `answerProposal` |
+| Cobrança Pix (pagamento do contratante) | `payments` | `Payment`, `Checkout` | `PaymentRecord`, `startCheckout`, `syncCheckout` |
+| Contratação | `events.musico_contratado_id` | `Hiring` | `getHiring`, `fetchHiring`, `cancelHiring` |
+| Comissão | `payments.valor_comissao` | `comissao` | `calcularCobranca`, `comissaoPercentual` |
+| Confirmação do show | `events.confirmacao_musico`, `confirmacao_contratante` | `confirmCompletion` | `confirmacaoDaParte` |
+| Não comparecimento | `events.ausencia_informada_em` | `NoShow`, `ausencia` | `reportNoShow`, `AUSENCIA_PRAZO_RESPOSTA_MS` |
+| Contestação | `disputes` | `Dispute`, `contestacao` | `DisputeRecord`, `openDispute`, `resolucaoSchema` |
+| Estorno | `payments.refund_status` | `Refund` | `RefundStatus`, `RefundAction`, `cancelHiring` |
+| Repasse (cachê ao músico) | `payments.repasse_status`, `repasse_tentativas` | `Payout`, `repasse` | `PayoutStatus`, `PayoutAttempt`, `claim_payout`, `reabrir_repasses_falhos` |
+| Multa e visibilidade reduzida | `penalties`, `musician_profiles.visibilidade_reduzida_ate` | `Penalty`, `multa` | `PenaltyRecord`, `multaDescontada`, `TipoPenalidade` |
+| Rotina financeira | `rotina_financeira_execucao` | `rotinaFinanceira` | `createRotinaFinanceira`, `TravaDaRotina` |
+| Avaliação | `reviews` | `Review` | `reviewEvent`, `RatingSummary` |
+| Favoritos (Muve Casa) | `contractor_favorites` | `Favorite` | `setFavorite`, `useFavoritos` |
+| Muve Pro e Muve Casa | `subscriptions`, `plan_payments` | `Plan` | `PlanService`, `subscribePlan`, `isPro` |
+| Notificação | `notifications`, `push_tokens` | `Notification`, `Inbox`, `Push` | `AppNotification`, `createNotifier` |
+
+Situações gravadas no banco, sempre em português e maiúsculas:
+
+| Campo | Situações |
+|---|---|
+| Evento (`EventStatus`) | `ABERTO`, `CONTRATADO`, `CANCELADO`, `CONCLUIDO` |
+| Inscrição (`CandidateStatus`) | `PENDENTE`, `APROVADO`, `RECUSADO` |
+| Cobrança (`PaymentStatus`) | `PENDENTE`, `PAGO`, `EXPIRADO`, `CANCELADO`, `ESTORNADO` |
+| Repasse (`PayoutStatus`) | `RETIDO`, `PROCESSANDO`, `REPASSADO`, `FALHOU` |
+| Estorno (`RefundStatus`) | `PROCESSANDO`, `NEGADO`, `CONFIRMADO` |
+
+**Para código novo:** termos do produto e regras em português (`calcularCobranca`, `EscolhaDePapel`); termos técnicos podem ficar em inglês (`fetch`, `create`, `Store`, `Service`, `Record`). Ao mexer num arquivo, siga o padrão dele em vez de renomear o que já existe. Unificar os nomes de uma vez é dívida técnica conhecida: exigiria mudar o banco e cerca de 2.000 ocorrências, e ficou para depois da entrega.
+
 ## Limitações conhecidas
 
 - **Modelo de custódia:** reter valores de terceiros na conta da plataforma é aceitável como protótipo acadêmico; em produção, o split com subcontas e Conta Escrow da Asaas é o caminho regulado.
