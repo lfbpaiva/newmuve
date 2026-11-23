@@ -46,9 +46,9 @@ Contratar músico independente é informal: o músico arrisca calote, o contrata
 4. Destacar: telefone e WhatsApp só são liberados depois da contratação, para o pagamento não sair da plataforma.
 
 ### 5. Contratação e pagamento (2 min)
-1. Contratante vê o candidato com o valor pedido, abre o perfil e as avaliações.
+1. Contratante vê o candidato com o valor pedido, abre o perfil, as avaliações e as redes sociais do músico (Instagram, YouTube, Spotify, TikTok).
 2. **Aprovar e pagar** → QR Code Pix com o cachê proposto + 10%.
-3. No painel do sandbox da Asaas, abrir a cobrança e usar **Confirmar pagamento**.
+3. No painel do sandbox da Asaas, abrir a cobrança e usar **Confirmar pagamento**. Se o QR Code não aparecer (a conta de testes ficou sem chave Pix ativa em 20/11), usar o vídeo gravado do pagamento e explicar que a falha é do sandbox.
 4. Em poucos segundos o app avança sozinho: "Pagamento confirmado". O músico recebe "Você foi contratado".
 5. Abrir o **comprovante**: endereço, telefone, valores e a frase "Pago · Retido na plataforma até a conclusão do show".
 
@@ -70,7 +70,9 @@ O repasse não acontece ao vivo: com a API no notebook e o banco hospedado, a ro
 |---|---|
 | Por que 10% e não 15% como na monografia? | A taxa somada ao cachê é mais clara para o músico, que recebe o valor combinado inteiro. A comparação completa está em `docs/produto.md`, seção 9. |
 | A plataforma pode reter dinheiro? | No protótipo, sim (sandbox, sem dinheiro real). Em produção, o caminho regulado é o split com Conta Escrow da Asaas, e os Termos de Uso explicam a retenção. |
-| E se o músico faltar? | O contratante registra a ausência em até 7 dias e recebe tudo de volta. |
+| E se o músico faltar? | O contratante registra a ausência em até 7 dias. O músico tem 24 horas para responder: se disser que tocou, o suporte decide pela contestação; sem resposta, o contratante recebe tudo de volta e o músico leva multa de 20% e 15 dias de visibilidade reduzida. |
+| O que o Muve Pro dá ao músico? | Ele se inscreve 24 horas antes nos eventos novos marcados com 7 dias ou mais de antecedência, aparece em destaque para o contratante e busca eventos em até 400 km. Quem não é Pro vê o mesmo evento e a hora em que a inscrição abre. |
+| Como o músico sabe se o contratante é confiável? | A tela do evento mostra as avaliações que o contratante recebeu de outros músicos. |
 | E se alguém tentar mudar o valor pelo aplicativo? | O app só manda IDs; a API lê o valor do banco e a RLS impede escrita direta. |
 | Como a plataforma ganha dinheiro além da taxa? | Dois planos por Pix recorrente na Asaas: Muve Pro para o músico (R$ 19,90) e Muve Casa para o contratante (R$ 49,90, taxa cai para 6%). Nenhum plano muda garantia, cancelamento ou multa. |
 | Por que não tem notificação com o app fechado? | Exige gerar o app pelo EAS; as notificações dentro do app funcionam em tempo real. |
