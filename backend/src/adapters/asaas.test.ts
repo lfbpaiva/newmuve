@@ -87,6 +87,15 @@ describe("Asaas Sandbox gateway", () => {
     expect(fetchMock.mock.calls.map(([url]) => new URL(url).pathname)).toEqual(["/v3/payments/pay_test/pixQrCode", "/v3/payments/pay_test", "/v3/payments/pay_test/pixQrCode"]);
     vi.useRealTimers();
   });
+
+  it("conta sem chave Pix ativa: encerra na primeira resposta, sem repetir, com erro próprio", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => Response.json({ errors: [{ code: "invalid_action", description: "Chave Pix não encontrada." }] }, { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(gateway().getPixQrCode("pay_test")).rejects.toMatchObject({ code: "PAGAMENTO_PIX_NAO_HABILITADO", status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("leitura do QR Code Pix com falhas transitórias", () => {

@@ -140,16 +140,16 @@ export function avisoDoEstorno(hiring: Hiring): { tom: "info" | "error"; texto: 
     return {
       tom: "info",
       texto: contestacao?.status === "AGUARDANDO_ESTORNO"
-        ? "O estorno decidido pelo suporte está em processamento no Asaas. A devolução ainda não foi confirmada."
-        : "Estorno em processamento no Asaas. A devolução ainda não foi confirmada.",
+        ? "O estorno decidido pelo suporte está em processamento na Asaas. A devolução ainda não foi confirmada."
+        : "Estorno em processamento na Asaas. A devolução ainda não foi confirmada.",
     };
   }
   if (pagamento?.refundStatus === "NEGADO") {
     return {
       tom: "error",
       texto: contestacao
-        ? "O Asaas não concluiu o estorno. A contestação continua com o suporte, e o show não pode ser confirmado nem o cachê repassado até a nova decisão."
-        : "O estorno solicitado não foi concluído pelo Asaas. A contratação continua ativa e pode ser confirmada ou cancelada normalmente.",
+        ? "A Asaas não concluiu o estorno. A contestação continua com o suporte, e o show não pode ser confirmado nem o cachê repassado até a nova decisão."
+        : "O estorno solicitado não foi concluído pela Asaas. A contratação continua ativa e pode ser confirmada ou cancelada normalmente.",
     };
   }
   return null;

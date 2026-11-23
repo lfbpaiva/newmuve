@@ -29,6 +29,7 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
 
     async createProfile(userId, profile) {
       const base = await admin.from("profiles").insert({ id: userId, role: profile.role });
+      if (base.error?.code === UNIQUE_VIOLATION) throw new AppError(409, "PERFIL_EXISTENTE", "Esta conta já tem um perfil.");
       if (base.error) throw base.error;
       const detail = await admin.from(detailTable(profile.role)).insert({ user_id: userId, [nameColumn(profile.role)]: profile.nome });
       if (detail.error) throw detail.error;

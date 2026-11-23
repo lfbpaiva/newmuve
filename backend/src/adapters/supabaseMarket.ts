@@ -205,6 +205,7 @@ export function createEventStore(admin: SupabaseClient): EventStore {
 
   return {
     async findEvent(id) {
+      if (!UUID.test(id)) return null;
       const { data, error } = await admin.from("events").select("*").eq("id", id).maybeSingle();
       if (error) throw error;
       return data && toEvent(data);
@@ -303,6 +304,7 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     },
 
     async findCandidateById(id) {
+      if (!UUID.test(id)) return null;
       const { data, error } = await admin.from("event_candidates").select("*").eq("id", id).maybeSingle();
       if (error) throw error;
       return data && toCandidate(data);
@@ -384,12 +386,14 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     },
 
     async hasAppliedToContractor(musicianId, contractorId) {
+      if (!UUID.test(musicianId)) return false;
       const { data, error } = await admin.from("event_candidates").select("id, event:events!inner(contractor_id)").eq("musician_id", musicianId).eq("event.contractor_id", contractorId).limit(1);
       if (error) throw error;
       return data.length > 0;
     },
 
     async setFavorite(contractorId, musicianId, favorite) {
+      if (!UUID.test(musicianId)) throw new AppError(404, "MUSICO_NAO_ENCONTRADO", "Músico não encontrado.");
       const { error } = favorite
         ? await admin.from("contractor_favorites").upsert({ contractor_id: contractorId, musician_id: musicianId })
         : await admin.from("contractor_favorites").delete().eq("contractor_id", contractorId).eq("musician_id", musicianId);
@@ -397,6 +401,7 @@ export function createEventStore(admin: SupabaseClient): EventStore {
     },
 
     async isFavorite(contractorId, musicianId) {
+      if (!UUID.test(musicianId)) return false;
       const { data, error } = await admin.from("contractor_favorites").select("musician_id").eq("contractor_id", contractorId).eq("musician_id", musicianId).maybeSingle();
       if (error) throw error;
       return Boolean(data);
@@ -442,11 +447,15 @@ export function createEventStore(admin: SupabaseClient): EventStore {
         })
         .select()
         .single();
+      if (error?.code === UNIQUE_VIOLATION && message.valor !== undefined) {
+        throw new AppError(409, "PROPOSTA_EM_ANDAMENTO", "Já existe uma proposta aberta nesta conversa. Atualize a conversa e tente de novo.");
+      }
       if (error) throw error;
       return toMessage(data);
     },
 
     async findMessage(id) {
+      if (!UUID.test(id)) return null;
       const { data, error } = await admin.from("candidate_messages").select("*").eq("id", id).maybeSingle();
       if (error) throw error;
       return data && toMessage(data);

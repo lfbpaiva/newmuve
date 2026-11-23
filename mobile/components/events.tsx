@@ -201,6 +201,6 @@ export function LinksDoTrabalho({ portfolioUrl, redesSociais, onErro }: { portfo
   if (redes.length === 0 && !portfolioUrl) return null;
   return <View style={[styles.row, { flexWrap: "wrap", gap: space.sm }]}>
     {redes.map((rede) => <Button key={rede} title={ROTULOS_REDES[rede]} variant="outlined" block={false} icon={ICONES_DAS_REDES[rede]} onPress={() => { onErro(""); abrirLink(redesSociais![rede]!, onErro); }}/>)}
-    {portfolioUrl ? <Button title="Site" variant="outlined" block={false} icon="play-circle-outline" onPress={() => { onErro(""); abrirLink(portfolioUrl, onErro); }}/> : null}
+    {portfolioUrl ? <Button title="Site" variant="outlined" block={false} icon="globe-outline" onPress={() => { onErro(""); abrirLink(portfolioUrl, onErro); }}/> : null}
   </View>;
 }

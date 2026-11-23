@@ -185,6 +185,9 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
       const detail = { errors: listaDeErros.filter((item): item is { code?: string; description?: string } => typeof item === "object" && item !== null) };
       const codigos = (detail?.errors ?? []).map((item) => item.code ?? "").filter(Boolean);
       registrarResultado("http", response.status, codigos, descricoesDoErro(corpo));
+      if (path.endsWith("/pixQrCode") && response.status === 400 && detail?.errors?.some((item) => item.code === "invalid_action" && /chave pix/i.test(item.description ?? ""))) {
+        throw new AppError(503, "PAGAMENTO_PIX_NAO_HABILITADO", "O recebimento por Pix da Muve está indisponível no momento. O pagamento não foi gerado; tente mais tarde.");
+      }
       if (path.endsWith("/pixQrCode") && response.status === 400 && detail?.errors?.some((item) => item.code === "invalid_action")) {
         throw new AppError(503, "PAGAMENTO_QR_INDISPONIVEL", "O QR Code Pix ainda não está disponível. Tente novamente em instantes.");
       }
@@ -192,21 +195,21 @@ export function createAsaasGateway(config: { apiUrl: string; apiKey: string | un
         const insufficient = detail?.errors?.some((item) => /saldo|balance/i.test(`${item.code ?? ""} ${item.description ?? ""}`));
         throw new AppError(409, insufficient ? "ESTORNO_SALDO_INSUFICIENTE" : "ESTORNO_RECUSADO",
           insufficient
-            ? "O Asaas recusou o estorno por saldo insuficiente. A contratação continua ativa; regularize o saldo do Sandbox e tente novamente."
-            : "O Asaas recusou o estorno. A contratação continua ativa; confira a situação da cobrança e tente novamente.");
+            ? "A Asaas recusou o estorno por saldo insuficiente. A contratação continua ativa; regularize o saldo do Sandbox e tente novamente."
+            : "A Asaas recusou o estorno. A contratação continua ativa; confira a situação da cobrança e tente novamente.");
       }
       if (path.endsWith("/refund") && response.status === 404) {
-        throw new AppError(409, "ESTORNO_COBRANCA_NAO_ENCONTRADA", `A cobrança não foi encontrada no Asaas. A contratação continua ativa; escreva para ${EMAIL_SUPORTE}.`);
+        throw new AppError(409, "ESTORNO_COBRANCA_NAO_ENCONTRADA", `A cobrança não foi encontrada na Asaas. A contratação continua ativa; escreva para ${EMAIL_SUPORTE}.`);
       }
       if (method === "DELETE" && (response.status === 400 || response.status === 422)) {
-        throw new AppError(409, "CANCELAMENTO_COBRANCA_RECUSADO", "A cobrança não pôde ser cancelada no Asaas. Atualize o pagamento antes de tentar novamente.");
+        throw new AppError(409, "CANCELAMENTO_COBRANCA_RECUSADO", "A cobrança não pôde ser cancelada na Asaas. Atualize o pagamento antes de tentar novamente.");
       }
       if (response.status === 401 || response.status === 403) {
         throw new AppError(503, "PAGAMENTO_CREDENCIAIS_INVALIDAS", `O serviço de pagamentos não está configurado corretamente. Escreva para ${EMAIL_SUPORTE}.`);
       }
       if (response.status === 400 || response.status === 422) {
         if (method === "GET" && path.startsWith("/payments/")) {
-          throw new AppError(502, "PAGAMENTO_CONSULTA_RECUSADA", "Não foi possível verificar a cobrança no Asaas. Tente novamente em instantes.");
+          throw new AppError(502, "PAGAMENTO_CONSULTA_RECUSADA", "Não foi possível verificar a cobrança na Asaas. Tente novamente em instantes.");
         }
         if (method === "POST" && (path === "/payments" || path === "/subscriptions") && detail?.errors?.some((item) => item.code === "invalid_customer")) {
           throw new AppError(502, "PAGAMENTO_CLIENTE_INVALIDO", "O cadastro de pagamento não foi aceito. Tente novamente em instantes.");

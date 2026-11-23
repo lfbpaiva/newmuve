@@ -5,8 +5,8 @@ import { fetchMyEvents } from "../../../shared/client/events.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts";
-import { EventPosterRow, EventStatusPill, linkPrincipalDoTrabalho, LinksDoTrabalho, ReviewsSection } from "../../components/events";
-import { Alert, Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Surface, Section, Tag, type IconName } from "../../components/ui";
+import { EventPosterRow, EventStatusPill, linkPrincipalDoTrabalho, LinksDoTrabalho, ReviewsSection, withEncerrado } from "../../components/events";
+import { Alert, Avatar, Button, ErrorState, Icon, Loading, Pill, RatingSummary, Screen, Surface, Section, Tag, type IconName } from "../../components/ui";
 import { TopBar } from "../../components/TopBar";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
@@ -59,14 +59,15 @@ export default function ProfileScreen() {
 
 function EventHistory({ contractorId }: { contractorId: string }) {
   const router = useRouter();
-  const events = useAsync(`history:${contractorId}`, () => fetchMyEvents(contractorId));
+  const events = useAsync(`history:${contractorId}`, async () => (await fetchMyEvents(contractorId)).map((event) => withEncerrado(event)));
   useRefreshOnFocus(events.reload);
   const separados = events.data ? separarPorAndamento(events.data, (event) => event.inicio, (event) => eventoEmAndamento(event)) : null;
   const recentes = separados ? [...separados.andamento, ...separados.historico].slice(0, EVENTOS_NO_PERFIL) : [];
   return <Section title="Seus eventos">
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
+    {!events.error && !events.data && <Loading cards={1}/>}
     {events.data?.length === 0 && <Text style={type.bodySmall}>Nenhum evento criado até o momento.</Text>}
-    {recentes.map((event) => <EventPosterRow key={event.id} event={event} status={<EventStatusPill status={event.status}/>} onPress={() => router.push(`/event/${event.id}`)}/>)}
+    {recentes.map((event) => <EventPosterRow key={event.id} event={event} status={<EventStatusPill status={event.status} encerrado={event.encerrado} inscricoesEncerradas={event.inscricoesEncerradas}/>} onPress={() => router.push(`/event/${event.id}`)}/>)}
     {(events.data?.length ?? 0) > EVENTOS_NO_PERFIL && <Button title={`Ver todos (${events.data!.length})`} variant="text" onPress={() => router.push("/(app)/events")}/>}
   </Section>;
 }

@@ -188,6 +188,17 @@ describe("rotas autenticadas", () => {
     expect(accounts.completeProfile).toHaveBeenCalledOnce();
   });
 
+  it("mensagens de validação sem texto próprio chegam em português", async () => {
+    const { app } = setup();
+
+    const resposta = await app.request("/api/auth/signup", signupBody({ ...contratante, redirectTo: "x".repeat(400) }));
+    const { error } = await resposta.json() as { error: { message: string } };
+
+    expect(resposta.status).toBe(400);
+    expect(error.message).not.toMatch(/too|expected/i);
+    expect(error.message).toMatch(/grande|caracteres/i);
+  });
+
   it("DELETE /api/me exige e-mail e senha no corpo", async () => {
     const { app, accounts } = setup();
     const headers = { Authorization: "Bearer token-valido", "Content-Type": "application/json" };
@@ -462,19 +473,19 @@ describe("limites por usuário nas rotas", () => {
     expect((await req("POST", "/api/events/e1/checkout", "token-u1", checkout)).status).toBe(201);
   });
 
-  it("consulta da contratação: 30 por 10 minutos, sem executar o serviço quando bloqueada", async () => {
+  it("consulta da contratação: 120 por 10 minutos, sem executar o serviço quando bloqueada", async () => {
     const { req, events } = setupLimites();
-    for (let i = 0; i < 30; i++) expect((await req("GET", `/api/events/e${i % 3}/contratacao`, "token-u1")).status).toBe(200);
+    for (let i = 0; i < 120; i++) expect((await req("GET", `/api/events/e${i % 3}/contratacao`, "token-u1")).status).toBe(200);
     const bloqueada = await req("GET", "/api/events/e1/contratacao", "token-u1");
     expect(bloqueada.status).toBe(429);
     expect(bloqueada.headers.get("Retry-After")).toBe("600");
-    expect(events.getHiring).toHaveBeenCalledTimes(30);
+    expect(events.getHiring).toHaveBeenCalledTimes(120);
     expect((await req("GET", "/api/events/e1/contratacao", "token-u2")).status).toBe(200);
   });
 
   it("grupos diferentes não interferem: esgotar a consulta da contratação não bloqueia mensagens nem checkout", async () => {
     const { req, events } = setupLimites();
-    for (let i = 0; i < 31; i++) await req("GET", "/api/events/e1/contratacao", "token-u1");
+    for (let i = 0; i < 121; i++) await req("GET", "/api/events/e1/contratacao", "token-u1");
     expect((await req("POST", "/api/candidaturas/c1/mensagens", "token-u1", { texto: "Olá" })).status).toBe(201);
     expect((await req("POST", "/api/events/e1/checkout", "token-u1", checkout)).status).toBe(201);
     expect(events.sendMessage).toHaveBeenCalledOnce();

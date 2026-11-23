@@ -42,6 +42,7 @@ const PLANOS: Record<Role, { plano: Plano; preco: number; descricao: string }> =
 };
 
 const EM_ABERTO = ["PENDING", "OVERDUE"];
+export const PLANO_QR_PRAZO_MS = 8_000;
 
 const hojeEmSaoPaulo = (now: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(now);
 
@@ -54,14 +55,25 @@ export function createPlanService(deps: { accounts: AccountStore; store: PlanSto
     return account;
   }
 
-  async function sync(userId: string): Promise<PlanStatus> {
+  async function sync(userId: string, { mostrarSemAsaas = false } = {}): Promise<PlanStatus> {
     const account = await accounts.findAccount(userId);
     const { plano } = PLANOS[account?.role ?? "MUSICIAN"];
     let ativoAte = (plano === "PRO" ? account?.proAte : account?.casaAte) ?? null;
     const subscription = await store.findSubscription(userId);
     if (!subscription) return { plano, ativoAte: ativoAte?.toISOString() ?? null, assinatura: null };
 
-    const cobrancas = await asaas.listSubscriptionPayments(subscription.asaasSubscriptionId);
+    const consulta = await asaas.listSubscriptionPayments(subscription.asaasSubscriptionId).then(
+      (lista) => ({ lista }),
+      (erro: unknown) => {
+        if (!mostrarSemAsaas) throw erro;
+        console.error("Cobranças do plano indisponíveis na Asaas; mostrando a situação gravada", userId, erro);
+        return null;
+      },
+    );
+    if (!consulta) {
+      return { plano, ativoAte: ativoAte?.toISOString() ?? null, assinatura: { status: subscription.status, valor: subscription.valor, cobranca: null } };
+    }
+    const cobrancas = consulta.lista;
     for (const pago of cobrancas.filter((c) => cobrancaQuitada(c.status))) {
       const antes = ativoAte?.getTime() ?? 0;
       ativoAte = (await store.activate(userId, pago.id, PLANO_DIAS_POR_PAGAMENTO)) ?? ativoAte;
@@ -70,7 +82,7 @@ export function createPlanService(deps: { accounts: AccountStore; store: PlanSto
     const status = subscription.status === "AGUARDANDO_PAGAMENTO" && cobrancas.some((c) => cobrancaQuitada(c.status)) ? "ATIVA" : subscription.status;
 
     const emAberto = status === "CANCELADA" ? null : cobrancas.filter((c) => EM_ABERTO.includes(c.status)).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
-    const qr = emAberto ? await asaas.getPixQrCode(emAberto.id).catch(() => null) : null;
+    const qr = emAberto ? await asaas.getPixQrCode(emAberto.id, { prazo: Date.now() + PLANO_QR_PRAZO_MS }).catch(() => null) : null;
     return {
       plano,
       ativoAte: ativoAte?.toISOString() ?? null,
@@ -85,7 +97,7 @@ export function createPlanService(deps: { accounts: AccountStore; store: PlanSto
   return {
     async status(user: AuthUser): Promise<PlanStatus> {
       await requireAccount(user);
-      return sync(user.id);
+      return sync(user.id, { mostrarSemAsaas: true });
     },
 
     async subscribe(user: AuthUser, now = new Date()): Promise<PlanStatus> {

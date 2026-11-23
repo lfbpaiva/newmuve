@@ -11,7 +11,7 @@ import {
   TIPOS_CHAVE_PIX,
   normalizarLinkDaRede,
   REDES_SOCIAIS,
-  ROTULOS_REDES,
+  mensagemDeRedeInvalida,
   type RedesSociais,
 } from "../../../shared/dominio.ts";
 import { cidade, telefone, texto, uf } from "./fields.ts";
@@ -41,7 +41,7 @@ export const signupSchema = z.object({
 export type SignupInput = z.infer<typeof signupSchema>;
 
 export const dispositivoSchema = z.object({
-  token: z.string({ error: "Token inválido." }).regex(/^Expo(nent)?PushToken\[.+\]$/, "Token inválido."),
+  token: z.string({ error: "Token inválido." }).max(200, "Token inválido.").regex(/^Expo(nent)?PushToken\[.+\]$/, "Token inválido."),
 });
 
 export const completarPerfilSchema = z.object({
@@ -91,7 +91,7 @@ const redesSociais = z
       if (!texto) continue;
       const link = normalizarLinkDaRede(rede, texto);
       if (!link) {
-        ctx.addIssue({ code: "custom", message: `Informe um link válido do ${ROTULOS_REDES[rede]}.` });
+        ctx.addIssue({ code: "custom", message: mensagemDeRedeInvalida(rede) });
         return z.NEVER;
       }
       links[rede] = link;
@@ -114,8 +114,8 @@ const musicianProfile = z
     senhaAtual: z.string().max(200).optional(),
     captchaToken,
   })
-  .refine((p) => (p.chavePix ? Boolean(p.chavePixTipo) : true), "Selecione o tipo da chave Pix.")
-  .refine((p) => (p.chavePix && p.chavePixTipo ? isValidChavePix(p.chavePixTipo, p.chavePix) : true), "Chave Pix inválida para o tipo selecionado.")
+  .refine((p) => (p.chavePix ? Boolean(p.chavePixTipo) : true), { path: ["chavePixTipo"], message: "Selecione o tipo da chave Pix." })
+  .refine((p) => (p.chavePix && p.chavePixTipo ? isValidChavePix(p.chavePixTipo, p.chavePix) : true), { path: ["chavePix"], message: "Chave Pix inválida para o tipo selecionado." })
   .transform((p) => ({
     ...p,
     chavePix: p.chavePix && p.chavePixTipo ? normalizeChavePix(p.chavePixTipo, p.chavePix) : undefined,

@@ -7,7 +7,7 @@ import { useAuth } from "../../../shared/client/AuthContext.tsx";
 import type { UploadFile } from "../../../shared/client/config.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
-import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, isValidChavePix, isValidDocumento, isValidTelefone, isValidUrl, normalizarLinkDaRede, normalizeChavePix, REDES_SOCIAIS, ROTULOS_REDES, type AcaoPerfil, type CampoPerfil, type RedeSocial } from "../../../shared/dominio.ts";
+import { camposFaltantes, descreverFaltantes, ESTILOS_MUSICAIS, isValidChavePix, isValidDocumento, isValidTelefone, aceitaUsuarioDaRede, isValidUrl, linkComProtocolo, mensagemDeRedeInvalida, normalizarLinkDaRede, normalizeChavePix, REDES_SOCIAIS, ROTULOS_REDES, type AcaoPerfil, type CampoPerfil, type RedeSocial } from "../../../shared/dominio.ts";
 import { ImageField, LocationFields, PixKeyFields } from "../../components/fields";
 import { VerificacaoDeSeguranca } from "../../components/VerificacaoDeSeguranca";
 import { Alert, Button, Chips, Field, Grupo, Icon, PasswordField, Screen, Surface } from "../../components/ui";
@@ -48,6 +48,7 @@ export default function EditProfileScreen() {
   const set = (changes: Partial<typeof form>) => { setForm((c) => ({ ...c, ...changes })); setError(""); };
   const [senhaAtual, setSenhaAtual] = useState("");
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
   const login = useAsync("login-com-senha", hasPasswordLogin);
   const chaveNova = form.chavePix && form.chavePixTipo && isValidChavePix(form.chavePixTipo, form.chavePix) ? normalizeChavePix(form.chavePixTipo, form.chavePix) : null;
   const trocaChavePix = isMusician && Boolean(me.chavePix) && chaveNova !== null && (chaveNova !== me.chavePix || form.chavePixTipo !== me.chavePixTipo);
@@ -59,21 +60,26 @@ export default function EditProfileScreen() {
     if (form.telefone && !isValidTelefone(form.telefone)) return setError("Informe um telefone completo.");
     if (form.uf && !form.cidade) return setError("Selecione a cidade.");
     if (isMusician && form.chavePix && !isValidChavePix(form.chavePixTipo, form.chavePix)) return setError("Chave Pix inválida para o tipo selecionado.");
-    if (isMusician && form.portfolioUrl && !isValidUrl(form.portfolioUrl)) return setError("Informe um link válido, começando com http:// ou https://.");
+    const site = linkComProtocolo(form.portfolioUrl);
+    if (isMusician && site && !isValidUrl(site)) return setError("Informe um link válido para o site, como meusite.com.br.");
     const redeInvalida = isMusician && REDES_SOCIAIS.find((rede) => redes[rede].trim() && !normalizarLinkDaRede(rede, redes[rede]));
-    if (redeInvalida) return setError(`Informe um link válido do ${ROTULOS_REDES[redeInvalida]}.`);
+    if (redeInvalida) return setError(mensagemDeRedeInvalida(redeInvalida));
     if (pedeSenha && !senhaAtual) return setError("Para trocar a chave Pix, confirme a senha da conta.");
     if (pedeSenha && CAPTCHA_ATIVO && !captchaToken) return setError("Confirme a verificação de segurança.");
     setSubmitting(true);
     try {
-      const { bio, chavePixTipo, chavePix, portfolioUrl, ...comum } = form;
+      const { bio, chavePixTipo, chavePix, portfolioUrl: _portfolioDigitado, ...comum } = form;
       const confirmacao = pedeSenha ? { senhaAtual, captchaToken: captchaToken ?? undefined } : {};
-      await refreshMe(await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl, redesSociais: redes, ...confirmacao } : comum, avatar));
+      await refreshMe(await updateProfile(isMusician ? { ...comum, bio, estilosMusicais: estilos, chavePixTipo, chavePix, portfolioUrl: site, redesSociais: redes, ...confirmacao } : comum, avatar));
       if (router.canGoBack()) router.back();
       else router.replace("/(app)");
     } catch (e) {
       setError(errorMessage(e));
       setSubmitting(false);
+      if (pedeSenha) {
+        setCaptchaToken(null);
+        setCaptchaKey((atual) => atual + 1);
+      }
     }
   }
 
@@ -99,8 +105,8 @@ export default function EditProfileScreen() {
       <Chips options={ESTILOS_MUSICAIS} selected={estilos} onToggle={(s) => { setEstilos((old) => old.includes(s) ? old.filter((x) => x !== s) : [...old, s]); setError(""); }}/>
       {!acao && <>
         <Text style={type.bodySmall}>Onde mostrar o seu trabalho (opcional). É o que o contratante vê antes de escolher.</Text>
-        {REDES_SOCIAIS.map((rede) => <Field key={rede} label={ROTULOS_REDES[rede]} value={redes[rede]} onChangeText={(valor) => { setRedes((atuais) => ({ ...atuais, [rede]: valor })); setError(""); }} autoCapitalize="none" keyboardType="url" placeholder={EXEMPLOS_DAS_REDES[rede]}/>)}
-        <Field label="Site ou outro link" value={form.portfolioUrl} onChangeText={(portfolioUrl) => set({ portfolioUrl })} autoCapitalize="none" keyboardType="url" placeholder="https://"/>
+        {REDES_SOCIAIS.map((rede) => <Field key={rede} label={ROTULOS_REDES[rede]} value={redes[rede]} onChangeText={(valor) => { setRedes((atuais) => ({ ...atuais, [rede]: valor })); setError(""); }} autoCapitalize="none" autoCorrect={false} keyboardType={aceitaUsuarioDaRede(rede) ? "default" : "url"} placeholder={EXEMPLOS_DAS_REDES[rede]}/>)}
+        <Field label="Site ou outro link" value={form.portfolioUrl} onChangeText={(portfolioUrl) => set({ portfolioUrl })} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="meusite.com.br"/>
       </>}
       {!acao && <Field label="Bio (opcional)" value={form.bio} onChangeText={(bio) => set({ bio })} multiline maxLength={1000} placeholder="Conte um pouco sobre sua trajetória musical..."/>}
     </Grupo>}
@@ -109,7 +115,7 @@ export default function EditProfileScreen() {
       {pedeSenha && <>
         <Text style={type.bodySmall}>É para essa chave que os seus cachês são repassados. Para trocar, confirme a senha da conta.</Text>
         <PasswordField label="Senha da conta" value={senhaAtual} onChangeText={(senha) => { setSenhaAtual(senha); setError(""); }}/>
-        <VerificacaoDeSeguranca onToken={setCaptchaToken}/>
+        <VerificacaoDeSeguranca key={captchaKey} onToken={setCaptchaToken}/>
       </>}
     </Grupo>}
     {error ? <Alert tone="error">{error}</Alert> : null}

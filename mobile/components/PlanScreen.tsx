@@ -31,11 +31,18 @@ export function PlanScreen({ nome, preco, beneficios, observacao }: { nome: stri
 
   useEffect(() => {
     let active = true;
-    const load = () => fetchPlanStatus().then((next) => {
-      if (!active) return;
-      setStatus(next);
-      if (isPro(next.ativoAte) && !isPro(ativoNoPerfil)) void refreshMe();
-    }, (e: unknown) => active && setError(errorMessage(e)));
+    let consultando = false;
+    const load = () => {
+      if (consultando) return;
+      consultando = true;
+      fetchPlanStatus().then((next) => {
+        if (!active) return;
+        setStatus(next);
+        if (isPro(next.ativoAte) && !isPro(ativoNoPerfil)) void refreshMe();
+      }, (e: unknown) => active && setError(errorMessage(e))).finally(() => {
+        consultando = false;
+      });
+    };
     load();
     const timer = aguardando ? setInterval(load, 5000) : null;
     return () => {

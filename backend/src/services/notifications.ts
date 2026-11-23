@@ -27,11 +27,17 @@ export interface Inbox {
   markAllRead(userId: string): Promise<void>;
 }
 
+export const TITULO_MAXIMO = 160;
+export const TEXTO_MAXIMO = 600;
+const caber = (texto: string, maximo: number) => (texto.length > maximo ? `${texto.slice(0, maximo - 1).trimEnd()}…` : texto);
+
 export function createNotifier(deps: { accounts: AccountStore; events: EventStore; inbox: Inbox; mailer: Mailer; appUrl: string; push?: PushGateway }) {
   const { accounts, events, inbox, mailer, appUrl, push } = deps;
 
   async function notify(userId: string | null, titulo: string, texto: string, link: string | null, { email = true } = {}): Promise<void> {
     if (!userId) return;
+    titulo = caber(titulo, TITULO_MAXIMO);
+    texto = caber(texto, TEXTO_MAXIMO);
     try {
       await inbox.add({ userId, titulo, texto, link });
     } catch (error) {

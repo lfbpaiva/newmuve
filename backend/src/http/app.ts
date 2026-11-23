@@ -3,7 +3,7 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { completarPerfilSchema, deleteAccountSchema, dispositivoSchema, signupSchema, updateProfileSchemas, type SignupInput } from "../domain/account.ts";
 import { AppError } from "../domain/errors.ts";
 import { asaasWebhookSchema, cancelamentoSchema, confirmacaoAusenciaSchema, conviteSchema, candidaturaSchema, contestacaoSchema, inscricoesSchema, liberacaoRepasseSchema, propostaSchema, resolucaoSchema, respostaPropostaSchema, checkoutSchema, eventSchema, mensagemSchema, reviewSchema, toCheckoutView } from "../domain/event.ts";
@@ -13,6 +13,8 @@ import type { PaymentService } from "../services/paymentService.ts";
 import type { PlanService } from "../services/planService.ts";
 import type { InicioDaRotina } from "../services/rotinaFinanceira.ts";
 import { rateLimit } from "./rateLimit.ts";
+
+z.config(z.locales.pt());
 
 interface AppDeps {
   accounts: AccountService;
@@ -108,7 +110,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
   const limites = {
     checkout: porUsuario("checkout", 10, 10 * MINUTO, "Muitas tentativas de pagamento em pouco tempo."),
     consultaPagamento: porUsuario("consulta-pagamento", 300, 10 * MINUTO, "Muitas consultas de pagamento em pouco tempo."),
-    consultaContratacao: porUsuario("consulta-contratacao", 30, 10 * MINUTO, "Muitas consultas da contratação em pouco tempo."),
+    consultaContratacao: porUsuario("consulta-contratacao", 120, 10 * MINUTO, "Muitas consultas da contratação em pouco tempo."),
     assinatura: porUsuario("assinatura", 5, 60 * MINUTO, "Muitas alterações de assinatura em pouco tempo."),
     estorno: porUsuario("estorno", 10, 60 * MINUTO, "Muitos pedidos de cancelamento em pouco tempo."),
     mensagens: porUsuario("mensagens", 60, 5 * MINUTO, "Muitas mensagens em pouco tempo."),
@@ -119,6 +121,10 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     perfil: porUsuario("perfil", 20, 60 * MINUTO, "Muitas alterações de perfil em pouco tempo."),
     contestacao: porUsuario("contestacao", 5, 60 * MINUTO, "Muitas contestações em pouco tempo."),
     exclusao: porUsuario("exclusao-de-conta", 5, 60 * MINUTO, "Muitas tentativas de excluir a conta em pouco tempo."),
+    favoritos: porUsuario("favoritos", 60, 10 * MINUTO, "Muitas alterações de favoritos em pouco tempo."),
+    dispositivos: porUsuario("dispositivos", 20, 60 * MINUTO, "Muitos registros de aparelho em pouco tempo."),
+    leituras: porUsuario("leituras", 120, 10 * MINUTO, "Muitas marcações de leitura em pouco tempo."),
+    confirmacoes: porUsuario("confirmacoes", 20, 10 * MINUTO, "Muitas confirmações em pouco tempo."),
   };
 
   app.onError((error, c) => {
@@ -177,7 +183,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.get("/me", async (c) => c.json(await accounts.getMe(c.get("user"))));
 
-  app.post("/me/perfil", async (c) => {
+  app.post("/me/perfil", limites.perfil, async (c) => {
     await accounts.completeProfile(c.get("user"), completarPerfilSchema.parse(await readJson(c)));
     return c.body(null, 204);
   });
@@ -188,29 +194,29 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
 
   app.delete("/me/plano", limites.assinatura, async (c) => c.json(await requirePlans().cancel(c.get("user"))));
 
-  app.post("/me/favoritos/:musicianId", async (c) => {
+  app.post("/me/favoritos/:musicianId", limites.favoritos, async (c) => {
     await events.setFavorite(c.get("user"), c.req.param("musicianId"), true);
     return c.body(null, 204);
   });
 
-  app.delete("/me/favoritos/:musicianId", async (c) => {
+  app.delete("/me/favoritos/:musicianId", limites.favoritos, async (c) => {
     await events.setFavorite(c.get("user"), c.req.param("musicianId"), false);
     return c.body(null, 204);
   });
 
-  app.post("/me/dispositivos", async (c) => {
+  app.post("/me/dispositivos", limites.dispositivos, async (c) => {
     const { token } = dispositivoSchema.parse(await readJson(c));
     await accounts.registerDevice(c.get("user"), token);
     return c.body(null, 204);
   });
 
-  app.post("/me/dispositivos/remover", async (c) => {
+  app.post("/me/dispositivos/remover", limites.dispositivos, async (c) => {
     const { token } = dispositivoSchema.parse(await readJson(c));
     await accounts.unregisterDevice(c.get("user"), token);
     return c.body(null, 204);
   });
 
-  app.post("/me/notificacoes/lidas", async (c) => {
+  app.post("/me/notificacoes/lidas", limites.leituras, async (c) => {
     await accounts.markNotificationsRead(c.get("user"));
     return c.body(null, 204);
   });
@@ -254,7 +260,7 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.body(null, 204);
   });
 
-  app.patch("/events/:id/inscricoes", async (c) => {
+  app.patch("/events/:id/inscricoes", limites.inscricoes, async (c) => {
     const { encerradas } = inscricoesSchema.parse(await readJson(c));
     await events.setApplicationsClosed(c.get("user"), c.req.param("id"), encerradas);
     return c.body(null, 204);
@@ -373,12 +379,12 @@ export function createApp({ accounts, events, payments, verifyToken, allowedOrig
     return c.json(await events.reportNoShow(c.get("user"), c.req.param("id")));
   });
 
-  app.post("/events/:id/confirmacao", async (c) => {
+  app.post("/events/:id/confirmacao", limites.confirmacoes, async (c) => {
     const event = await events.confirmCompletion(c.get("user"), c.req.param("id"));
     return c.json({ status: event.status });
   });
 
-  app.post("/events/:id/avaliacao", async (c) => {
+  app.post("/events/:id/avaliacao", limites.confirmacoes, async (c) => {
     await events.review(c.get("user"), c.req.param("id"), reviewSchema.parse(await readJson(c)));
     return c.body(null, 204);
   });
