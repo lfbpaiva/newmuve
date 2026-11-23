@@ -29,13 +29,13 @@ insert into public.contractor_profiles (user_id, nome_fantasia, documento, telef
 
 insert into public.events (id, contractor_id, titulo, tipo_evento, inicio, duracao_minutos, uf, cidade, estilos_musicais, cache, imagem_url, status) values
   -- e1: compatível com m1 (cidade com caixa diferente)
-  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 'Rock em Cascavel', 'Bar e restaurante', now() + interval '7 days', 180, 'PR', 'CASCAVEL', '{Rock}', 500, 'https://x/e1.png', 'ABERTO'),
+  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 'Rock em Cascavel', 'Bar e restaurante', now() + interval '6 days', 180, 'PR', 'CASCAVEL', '{Rock}', 500, 'https://x/e1.png', 'ABERTO'),
   -- e2: estilo fora do perfil de m1
-  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000c1', 'Pagode em Cascavel', 'Festa particular', now() + interval '7 days', 120, 'PR', 'Cascavel', '{Pagode}', 300, 'https://x/e2.png', 'ABERTO'),
+  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000c1', 'Pagode em Cascavel', 'Festa particular', now() + interval '6 days', 120, 'PR', 'Cascavel', '{Pagode}', 300, 'https://x/e2.png', 'ABERTO'),
   -- e3: outra cidade
-  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000c1', 'Rock em Curitiba', 'Corporativo', now() + interval '7 days', 120, 'PR', 'Curitiba', '{Rock}', 300, 'https://x/e3.png', 'ABERTO'),
+  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000c1', 'Rock em Curitiba', 'Corporativo', now() + interval '6 days', 120, 'PR', 'Curitiba', '{Rock}', 300, 'https://x/e3.png', 'ABERTO'),
   -- e4: compatível, mas já contratado
-  ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000c1', 'MPB contratado', 'Corporativo', now() + interval '7 days', 120, 'PR', 'Cascavel', '{MPB}', 300, 'https://x/e4.png', 'CONTRATADO'),
+  ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000c1', 'MPB contratado', 'Corporativo', now() + interval '6 days', 120, 'PR', 'Cascavel', '{MPB}', 300, 'https://x/e4.png', 'CONTRATADO'),
   -- e5: compatível, mas já começou
   ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000c1', 'Rock de ontem', 'Corporativo', now() - interval '1 day', 120, 'PR', 'Cascavel', '{Rock}', 300, 'https://x/e5.png', 'ABERTO');
 

@@ -21,14 +21,14 @@ insert into public.contractor_profiles (user_id, nome_fantasia, documento, telef
 
 -- Cascavel (mesma cidade), Toledo (~45 km), Foz do Iguaçu (~140 km), Curitiba (~430 km) e Cascavel no Ceará (homônima, outro estado).
 insert into public.events (id, contractor_id, titulo, tipo_evento, inicio, duracao_minutos, uf, cidade, estilos_musicais, cache, imagem_url) values
-  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 'Cascavel', 'Corporativo', now() + interval '7 days', 60, 'PR', 'CASCAVEL', '{Rock}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000c1', 'Toledo', 'Corporativo', now() + interval '7 days', 60, 'PR', 'Toledo', '{Rock}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000c1', 'Foz', 'Corporativo', now() + interval '7 days', 60, 'PR', 'Foz do Iguaçu', '{Rock}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000c1', 'Curitiba', 'Corporativo', now() + interval '7 days', 60, 'PR', 'Curitiba', '{Rock}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000c1', 'Cascavel CE', 'Corporativo', now() + interval '7 days', 60, 'CE', 'Cascavel', '{Rock}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e6', '00000000-0000-0000-0000-0000000000c1', 'Toledo pagode', 'Corporativo', now() + interval '7 days', 60, 'PR', 'Toledo', '{Pagode}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-0000000000c1', 'Qualquer estilo', 'Festa particular', now() + interval '7 days', 60, 'PR', 'Cascavel', '{"Qualquer estilo"}', 500, 'https://x/e.png'),
-  ('00000000-0000-0000-0000-0000000000e8', '00000000-0000-0000-0000-0000000000c1', 'Pagode ou rock', 'Corporativo', now() + interval '7 days', 60, 'PR', 'Cascavel', '{Pagode,Rock}', 500, 'https://x/e.png');
+  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000c1', 'Cascavel', 'Corporativo', now() + interval '6 days', 60, 'PR', 'CASCAVEL', '{Rock}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000c1', 'Toledo', 'Corporativo', now() + interval '6 days', 60, 'PR', 'Toledo', '{Rock}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000c1', 'Foz', 'Corporativo', now() + interval '6 days', 60, 'PR', 'Foz do Iguaçu', '{Rock}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000c1', 'Curitiba', 'Corporativo', now() + interval '6 days', 60, 'PR', 'Curitiba', '{Rock}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e5', '00000000-0000-0000-0000-0000000000c1', 'Cascavel CE', 'Corporativo', now() + interval '6 days', 60, 'CE', 'Cascavel', '{Rock}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e6', '00000000-0000-0000-0000-0000000000c1', 'Toledo pagode', 'Corporativo', now() + interval '6 days', 60, 'PR', 'Toledo', '{Pagode}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e7', '00000000-0000-0000-0000-0000000000c1', 'Qualquer estilo', 'Festa particular', now() + interval '6 days', 60, 'PR', 'Cascavel', '{"Qualquer estilo"}', 500, 'https://x/e.png'),
+  ('00000000-0000-0000-0000-0000000000e8', '00000000-0000-0000-0000-0000000000c1', 'Pagode ou rock', 'Corporativo', now() + interval '6 days', 60, 'PR', 'Cascavel', '{Pagode,Rock}', 500, 'https://x/e.png');
 
 select is(private.distance_km(-24.9573, -53.459, -24.7246, -53.7412), 38.5::numeric, 'haversine Cascavel–Toledo (sedes)');
 
