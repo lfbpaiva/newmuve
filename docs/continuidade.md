@@ -4,10 +4,10 @@ Guia para quem pegar o Muve a partir daqui. Regras do produto em [produto.md](pr
 
 ## Estado atual (21/11/2026)
 
-- **Código:** tudo está no `main` de `lfbpaiva/newmuve` (PRs #7 a #21). O repositório `Cleiton-Martins/MUVE` é antigo; não use. Os PRs 1 e 2 partiam de uma versão antiga e foram fechados.
-- **Banco:** 39 migrations, todas aplicadas no Supabase hospedado (a última é `20261121130000_avaliacoes_do_contratante_publicas`). A suíte pgTAP passa no hospedado (21/11).
+- **Código:** tudo está no `main` de `lfbpaiva/newmuve` (PRs #7 a #23). O repositório `Cleiton-Martins/MUVE` é antigo; não use. Os PRs 1 e 2 partiam de uma versão antiga e foram fechados.
+- **Banco:** 40 migrations, todas aplicadas no Supabase hospedado (a última é `20261122120000_redes_sociais_do_musico`). A suíte pgTAP passa no hospedado (22/11).
 - **Fluxo:** testado de ponta a ponta no sandbox da Asaas em 20/11 (ver "Fluxos de ponta a ponta"). Falta o teste no celular pelo Expo Go.
-- **Pix no sandbox (20/11, à noite; ainda igual em 21/11 à tarde):** desde cerca de 20h40, a Asaas responde `invalid_action` ("Um erro desconhecido") ao gerar o QR Code, e o app mostra que a Asaas não conseguiu gerar o QR. A chave Pix nova da conta ficou em "Aguardando ativação" e a antiga, em "Aguardando exclusão". É um problema da conta no sandbox, não do app nem do Expo Go. Se continuar, falar com o suporte da Asaas e usar o plano B do roteiro (vídeo ou prints do pagamento).
+- **Pix no sandbox (20/11, à noite; ainda igual em 22/11 à noite, agora com a mensagem "Chave Pix não encontrada"):** desde cerca de 20h40, a Asaas responde `invalid_action` ("Um erro desconhecido") ao gerar o QR Code, e o app mostra que a Asaas não conseguiu gerar o QR. A chave Pix nova da conta ficou em "Aguardando ativação" e a antiga, em "Aguardando exclusão". É um problema da conta no sandbox, não do app nem do Expo Go. Se continuar, falar com o suporte da Asaas e usar o plano B do roteiro (vídeo ou prints do pagamento).
 - **Verificação:** o GitHub Actions roda `pnpm typecheck`, `pnpm lint` e `pnpm test` a cada push e pull request. O `pnpm lint` ignora a pasta `mobile/`.
 - **Histórico:** a auditoria do Expo Go, o registro de execução do PR #6 e o plano de migrations ficaram em [historico/](historico/). Servem de consulta; o estado atual é o deste documento. As capturas do redesign estão em `docs/imagens/redesign/`.
 
@@ -261,6 +261,12 @@ Antes: `git pull` e `npm install` na pasta `mobile`.
 8. Com o Wi-Fi desligado, favoritar e depois tocar em "Tentar de novo" com o Wi-Fi ligado.
 9. Se der tempo: o aviso de 24 horas do não comparecimento (precisa de um evento contratado que já começou).
 10. Pix: uma tentativa só, quando a chave da Asaas sair de "Aguardando ativação".
+
+## Mudanças de 22/11/2026 (PR #23)
+
+- **Histórico de eventos:** "Meus eventos" e "Minhas inscrições" separam o que está em andamento do histórico, que mostra 5 e "Ver todos". Antes, o contratante via os shows antigos primeiro. O perfil do contratante mostra 3 eventos.
+- **Redes sociais do músico:** Instagram, YouTube, Spotify e TikTok, além de "Site ou outro link" (o campo antigo). Instagram e TikTok aceitam o @; a API confere que o link é da própria rede. Migration `20261122120000_redes_sociais_do_musico`, com teste pgTAP.
+- **Para o roteiro do Expo Go:** como músico, preencher as redes em Editar perfil e conferir os botões no Perfil; como contratante, conferir as duas seções da aba Eventos e os botões das redes na tela do candidato.
 
 ## O que falta
 
