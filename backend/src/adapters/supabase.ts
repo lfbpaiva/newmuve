@@ -62,6 +62,7 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
         account.chavePixTipo = data.chave_pix_tipo;
         account.chavePix = data.chave_pix;
         account.portfolioUrl = data.portfolio_url;
+        account.redesSociais = data.redes_sociais ?? {};
         account.visibilidadeReduzidaAte = data.visibilidade_reduzida_ate ? new Date(data.visibilidade_reduzida_ate) : null;
         account.proAte = data.pro_ate ? new Date(data.pro_ate) : null;
       }
@@ -85,6 +86,7 @@ export function createAccountStore(admin: SupabaseClient): AccountStore {
         if (changes.estilosMusicais !== undefined) row.estilos_musicais = changes.estilosMusicais;
         if (changes.bio !== undefined) row.bio = changes.bio;
         if (changes.portfolioUrl !== undefined) row.portfolio_url = changes.portfolioUrl;
+        if (changes.redesSociais !== undefined) row.redes_sociais = changes.redesSociais;
         if (changes.chavePix !== undefined) {
           row.chave_pix = changes.chavePix;
           row.chave_pix_tipo = changes.chavePixTipo;

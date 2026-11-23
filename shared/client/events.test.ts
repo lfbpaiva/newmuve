@@ -14,6 +14,7 @@ const row = (candidateId: string, musicianId: string, nome: string) => ({
     bio: null,
     estilos_musicais: ["Rock"],
     portfolio_url: null,
+    redes_sociais: null,
     uf: "PR",
     cidade: "Cascavel",
     avaliacao_media: 0,

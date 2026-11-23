@@ -1,6 +1,7 @@
 import type { AuthError } from "@supabase/supabase-js";
 import { ApiError, apiRequest } from "./api.ts";
 import { appendFile, clientConfig, supabase, type UploadFile } from "./config.ts";
+import type { RedesSociais } from "../dominio.ts";
 
 export type Role = "MUSICIAN" | "CONTRACTOR";
 
@@ -21,6 +22,7 @@ export interface Me {
   chavePixTipo?: string | null;
   chavePix?: string | null;
   portfolioUrl?: string | null;
+  redesSociais?: RedesSociais;
   visibilidadeReduzidaAte?: string | null;
   proAte?: string | null;
   casaAte?: string | null;
@@ -37,6 +39,7 @@ interface ProfileData {
   chavePixTipo?: string;
   chavePix?: string;
   portfolioUrl?: string;
+  redesSociais?: RedesSociais;
   senhaAtual?: string;
   captchaToken?: string;
 }

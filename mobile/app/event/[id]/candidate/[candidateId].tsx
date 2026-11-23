@@ -4,11 +4,10 @@ import { Text, View } from "react-native";
 import { fetchCandidateProfile, type CandidateStatus } from "../../../../../shared/client/events.ts";
 import { useAsync } from "../../../../../shared/client/useAsync.ts";
 import { isPro, isValidUrl } from "../../../../../shared/dominio.ts";
-import { ReviewsSection } from "../../../../components/events";
+import { LinksDoTrabalho, ReviewsSection } from "../../../../components/events";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Loading, Pill, RatingSummary, Screen, Surface, Section, Tag } from "../../../../components/ui";
 import { useFavoritos } from "../../../../lib/useFavoritos";
 import { space, styles, type } from "../../../../lib/theme";
-import { abrirLink } from "../../../../lib/links";
 import { denunciar } from "../../../../lib/suporte";
 import { useMe } from "../../../../lib/useMe";
 
@@ -60,7 +59,7 @@ export default function CandidateProfileScreen() {
     <Section title="Apresentação">
       <Text style={musician.bio ? type.body : type.bodySmall}>{musician.bio || "Descrição não informada."}</Text>
       {musician.estilosMusicais.length > 0 && <View style={[styles.row, { flexWrap: "wrap" }]}>{musician.estilosMusicais.map((estilo) => <Tag key={estilo} text={estilo}/>)}</View>}
-      {musician.portfolioUrl && isValidUrl(musician.portfolioUrl) ? <Button title="Ver trabalho do músico" variant="outlined" icon="play-circle-outline" onPress={() => { setError(""); abrirLink(musician.portfolioUrl!, setError); }}/> : null}
+      <LinksDoTrabalho portfolioUrl={musician.portfolioUrl && isValidUrl(musician.portfolioUrl) ? musician.portfolioUrl : null} redesSociais={musician.redesSociais} onErro={setError}/>
     </Section>
     <ReviewsSection userId={musician.id} empty="Nenhuma avaliação recebida."/>
   </Screen>;

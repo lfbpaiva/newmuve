@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   conteudoDeImagemConfere,
   emAcessoAntecipado,
+  normalizarLinkDaRede,
   liberadoParaTodosEm,
   calcularCobranca,
   comissaoPercentual,
@@ -217,5 +218,24 @@ describe("acesso antecipado do Muve Pro na inscrição", () => {
     expect(liberacao.getTime()).toBe(AGORA.getTime() + 2 * 60 * MINUTO + 1);
     expect(emAcessoAntecipado(perto, liberacao)).toBe(false);
     expect(emAcessoAntecipado(perto, new Date(liberacao.getTime() - 1))).toBe(true);
+  });
+});
+
+describe("links das redes sociais do músico", () => {
+  it("aceita o @ do Instagram e do TikTok e monta o link do perfil", () => {
+    expect(normalizarLinkDaRede("instagram", "@banda.teste")).toBe("https://www.instagram.com/banda.teste");
+    expect(normalizarLinkDaRede("tiktok", "bandateste")).toBe("https://www.tiktok.com/@bandateste");
+  });
+
+  it("aceita o link completo da própria rede, com ou sem https", () => {
+    expect(normalizarLinkDaRede("youtube", "https://youtu.be/abc123")).toBe("https://youtu.be/abc123");
+    expect(normalizarLinkDaRede("youtube", "www.youtube.com/@banda")).toBe("https://www.youtube.com/@banda");
+    expect(normalizarLinkDaRede("spotify", "https://open.spotify.com/artist/123")).toBe("https://open.spotify.com/artist/123");
+  });
+
+  it("recusa link de outra rede ou de domínio parecido", () => {
+    expect(normalizarLinkDaRede("instagram", "https://youtube.com/@banda")).toBeNull();
+    expect(normalizarLinkDaRede("spotify", "https://spotify.com.golpe.net/artista")).toBeNull();
+    expect(normalizarLinkDaRede("youtube", "banda")).toBeNull();
   });
 });

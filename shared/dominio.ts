@@ -84,6 +84,34 @@ export const valorDaInscricao = (valorProposto: number | null, cacheOferecido: n
 
 export const isValidUrl = (value: string) => /^https?:\/\/\S+\.\S+$/.test(value.trim()) && value.trim().length <= 300;
 
+export const REDES_SOCIAIS = ["instagram", "youtube", "spotify", "tiktok"] as const;
+export type RedeSocial = (typeof REDES_SOCIAIS)[number];
+export type RedesSociais = Partial<Record<RedeSocial, string>>;
+export const ROTULOS_REDES: Record<RedeSocial, string> = { instagram: "Instagram", youtube: "YouTube", spotify: "Spotify", tiktok: "TikTok" };
+const DOMINIOS_DAS_REDES: Record<RedeSocial, string[]> = {
+  instagram: ["instagram.com"],
+  youtube: ["youtube.com", "youtu.be"],
+  spotify: ["spotify.com"],
+  tiktok: ["tiktok.com"],
+};
+const PERFIL_POR_USUARIO: Partial<Record<RedeSocial, string>> = { instagram: "https://www.instagram.com/", tiktok: "https://www.tiktok.com/@" };
+
+export function normalizarLinkDaRede(rede: RedeSocial, texto: string): string | null {
+  const limpo = texto.trim();
+  const usuario = /^@?([A-Za-z0-9._]{1,30})$/.exec(limpo);
+  const perfil = PERFIL_POR_USUARIO[rede];
+  if (usuario && perfil && !limpo.includes(".com")) return `${perfil}${usuario[1]}`;
+  const link = /^https?:\/\//i.test(limpo) ? limpo : `https://${limpo}`;
+  if (!isValidUrl(link)) return null;
+  let host: string;
+  try {
+    host = new URL(link).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  return DOMINIOS_DAS_REDES[rede].some((dominio) => host === dominio || host.endsWith(`.${dominio}`)) ? link : null;
+}
+
 export const isValidTelefone = (value: string) => [10, 11].includes(onlyDigits(value).length);
 
 function checkDigit(digits: number[], weights: number[]): number {

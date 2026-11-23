@@ -5,9 +5,10 @@ import { Animated, Image, Pressable, Text, View } from "react-native";
 import { fetchReviewsOf, type EventItem, type EventStatus } from "../../shared/client/events.ts";
 import { eventDateParts, formatCurrency, formatDuration } from "../../shared/client/format.ts";
 import { useAsync } from "../../shared/client/useAsync.ts";
-import { liberadoParaTodosEm } from "../../shared/dominio.ts";
+import { liberadoParaTodosEm, REDES_SOCIAIS, ROTULOS_REDES, type RedeSocial, type RedesSociais } from "../../shared/dominio.ts";
+import { abrirLink } from "../lib/links";
 import { colors, radius, space, styles, type } from "../lib/theme";
-import { CabecalhoFixo, ErrorState, Icon, Parallax, Pill, Section, Stars, Surface, Tag, usePressao, type IconName } from "./ui";
+import { Button, CabecalhoFixo, ErrorState, Icon, Parallax, Pill, Section, Stars, Surface, Tag, usePressao, type IconName } from "./ui";
 
 const statusLabels: Record<EventStatus, string> = {
   ABERTO: "Inscrições abertas",
@@ -188,4 +189,18 @@ export function ReviewsSection({ userId, empty, titulo = "Avaliações recebidas
       {review.comment ? <Text style={type.body}>{review.comment}</Text> : null}
     </View>)}
   </Section>;
+}
+
+const ICONES_DAS_REDES: Record<RedeSocial, IconName> = { instagram: "logo-instagram", youtube: "logo-youtube", spotify: "musical-notes-outline", tiktok: "logo-tiktok" };
+
+export const linkPrincipalDoTrabalho = ({ portfolioUrl, redesSociais }: { portfolioUrl?: string | null; redesSociais?: RedesSociais }) =>
+  portfolioUrl || REDES_SOCIAIS.map((rede) => redesSociais?.[rede]).find(Boolean) || null;
+
+export function LinksDoTrabalho({ portfolioUrl, redesSociais, onErro }: { portfolioUrl?: string | null; redesSociais?: RedesSociais; onErro: (mensagem: string) => void }) {
+  const redes = REDES_SOCIAIS.filter((rede) => redesSociais?.[rede]);
+  if (redes.length === 0 && !portfolioUrl) return null;
+  return <View style={[styles.row, { flexWrap: "wrap", gap: space.sm }]}>
+    {redes.map((rede) => <Button key={rede} title={ROTULOS_REDES[rede]} variant="outlined" block={false} icon={ICONES_DAS_REDES[rede]} onPress={() => { onErro(""); abrirLink(redesSociais![rede]!, onErro); }}/>)}
+    {portfolioUrl ? <Button title="Site" variant="outlined" block={false} icon="play-circle-outline" onPress={() => { onErro(""); abrirLink(portfolioUrl, onErro); }}/> : null}
+  </View>;
 }

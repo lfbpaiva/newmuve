@@ -1,7 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { ApiError, apiRequest } from "./api.ts";
 import { appendFile, supabase, type UploadFile } from "./config.ts";
-import { CHECKOUT_TEMPO_LIMITE_APP_MS } from "../dominio.ts";
+import { CHECKOUT_TEMPO_LIMITE_APP_MS, type RedesSociais } from "../dominio.ts";
 
 export type EventStatus = "ABERTO" | "CONTRATADO" | "CANCELADO" | "CONCLUIDO";
 export type CandidateStatus = "PENDENTE" | "APROVADO" | "RECUSADO";
@@ -78,7 +78,7 @@ export interface Candidate {
   id: string;
   status: CandidateStatus;
   valorProposto: number | null;
-  musician: PublicProfile & { bio: string | null; estilosMusicais: string[]; portfolioUrl: string | null; pro: boolean };
+  musician: PublicProfile & { bio: string | null; estilosMusicais: string[]; portfolioUrl: string | null; redesSociais: RedesSociais; pro: boolean };
 }
 
 interface Review {
@@ -173,7 +173,7 @@ interface CandidateRow {
   id: string;
   status: CandidateStatus;
   valor_proposto: number | string | null;
-  musician: ProfileRow & { bio: string | null; estilos_musicais: string[] | null; portfolio_url: string | null; pro_ate: string | null };
+  musician: ProfileRow & { bio: string | null; estilos_musicais: string[] | null; portfolio_url: string | null; redes_sociais: RedesSociais | null; pro_ate: string | null };
 }
 
 export const SEM_CONEXAO_MENSAGEM = "Sem conexão com a internet. Os dados não puderam ser carregados; confira a rede e tente novamente.";
@@ -217,7 +217,7 @@ const toEvent = (row: EventRow): EventItem => ({
 });
 
 const PUBLIC_PROFILE = "user_id, foto_perfil_url, uf, cidade, avaliacao_media, total_avaliacoes";
-const CANDIDATE_SELECT = `id, status, valor_proposto, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, pro_ate, ${PUBLIC_PROFILE})`;
+const CANDIDATE_SELECT = `id, status, valor_proposto, musician:musician_profiles(nome_completo, bio, estilos_musicais, portfolio_url, redes_sociais, pro_ate, ${PUBLIC_PROFILE})`;
 
 const toPublicProfile = (row: ProfileRow, nameColumn: "nome_completo" | "nome_fantasia"): PublicProfile => ({
   id: row.user_id,
@@ -240,6 +240,7 @@ const toCandidate = (row: CandidateRow): Candidate => ({
     bio: row.musician.bio,
     estilosMusicais: row.musician.estilos_musicais ?? [],
     portfolioUrl: row.musician.portfolio_url,
+    redesSociais: row.musician.redes_sociais ?? {},
     pro: Boolean(row.musician.pro_ate && new Date(row.musician.pro_ate) > new Date()),
   },
 });
