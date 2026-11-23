@@ -131,7 +131,7 @@ function Feed() {
             <View style={{ width: 40, height: 40, borderRadius: cantos.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="flash" size={20} color={colors.accentText}/></View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={type.titleSmall}>Muve Pro</Text>
-              <Text style={type.bodySmall}>Inscreva-se 24h antes nos eventos novos marcados com 7 dias ou mais de antecedência e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
+              <Text style={type.bodySmall}>Veja 24h antes os eventos novos marcados com 7 dias ou mais de antecedência e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
             </View>
             <Icon name="chevron-forward" size={18} color={colors.ink3}/>
           </View>

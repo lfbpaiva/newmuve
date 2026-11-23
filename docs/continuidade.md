@@ -251,7 +251,7 @@ Observações da rodada:
 
 Antes: `git pull` e `npm install` na pasta `mobile`.
 
-1. Evento novo marcado para daqui a 8 dias ou mais: `musico2@teste.com` (sem Pro) vê o evento com "Inscrição abre…" e não consegue se inscrever; `musico3@teste.com` (Pro) se inscreve na hora.
+1. Evento novo marcado para daqui a 8 dias ou mais: `musico2@teste.com` (sem Pro) não vê o evento no feed nas primeiras 24 horas; `musico3@teste.com` (Pro) vê e se inscreve na hora. Um evento para daqui a menos de 7 dias aparece para os dois.
 2. Tela do evento, como músico: aparece "Avaliações do contratante".
 3. Ajustes, como músico: não aparece mais "Estilos e recebimento".
 4. Conversa com proposta, como contratante: o cartão mostra o total que o contratante paga, e o topo mostra "Para aprovar a inscrição de R$ Y, você paga R$ X" (D12).
@@ -267,6 +267,10 @@ Antes: `git pull` e `npm install` na pasta `mobile`.
 - **Histórico de eventos:** "Meus eventos" e "Minhas inscrições" separam o que está em andamento do histórico, que mostra 5 e "Ver todos". Antes, o contratante via os shows antigos primeiro. O perfil do contratante mostra 3 eventos.
 - **Redes sociais do músico:** Instagram, YouTube, Spotify e TikTok, além de "Site ou outro link" (o campo antigo). Instagram e TikTok aceitam o @; a API confere que o link é da própria rede. Migration `20261122120000_redes_sociais_do_musico`, com teste pgTAP.
 - **Para o roteiro do Expo Go:** como músico, preencher as redes em Editar perfil e conferir os botões no Perfil; como contratante, conferir as duas seções da aba Eventos e os botões das redes na tela do candidato.
+
+## Mudança de 23/11/2026
+
+- **Pro volta a ver os eventos antes:** por decisão do grupo, nas primeiras 24 horas os eventos com 7 dias ou mais de antecedência voltam a aparecer só para o Pro (migration `20261123120000_pro_ve_eventos_antes`). Fica a melhoria de 21/11 no cálculo: a antecedência é conferida no momento, e 7 dias exatos ainda esperam.
 
 ## O que falta
 
