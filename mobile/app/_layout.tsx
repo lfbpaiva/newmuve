@@ -5,14 +5,15 @@ import { DarkTheme, Stack, ThemeProvider, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { AuthProvider, useAuth } from "../../shared/client/AuthContext.tsx";
 import { Abertura } from "../components/Abertura";
 import { voltarNaWeb } from "../components/BotaoVoltar";
 import { telasLiberadas } from "../lib/abertura";
 import { consumeAuthLink } from "../lib/authLinks";
 import { usePushNotifications } from "../lib/push";
-import { colors, stackOptions } from "../lib/theme";
+import { colors, space, stackOptions, type } from "../lib/theme";
+import { Button } from "../components/ui";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -51,7 +52,7 @@ function WebFrame({ children }: { children: ReactNode }) {
 function LinksDeAutenticacao() {
   const { beginPasswordRecovery } = useAuth();
   useEffect(() => {
-    const handle = (url: string | null) => consumeAuthLink(url, beginPasswordRecovery);
+    const handle = (url: string | null) => consumeAuthLink(url, beginPasswordRecovery).catch((error: unknown) => console.warn("Link de autenticação não aplicado", error instanceof Error ? error.message : error));
     Linking.getInitialURL().then(handle);
     const subscription = Linking.addEventListener("url", (event) => handle(event.url));
     return () => subscription.remove();
@@ -75,11 +76,9 @@ function AuthGate() {
 
   if (loading) return null;
 
-  if (state.status === "error") return <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, backgroundColor: colors.bg }}>
-    <Text style={{ color: colors.ink, textAlign: "center", marginBottom: 20 }}>{state.notice}</Text>
-    <Pressable onPress={() => void retrySession()} accessibilityRole="button" style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 20, backgroundColor: pressed ? colors.accentPressed : colors.accent, borderRadius: 4 })}>
-      <Text style={{ color: colors.onAccent, fontWeight: "700" }}>Tentar novamente</Text>
-    </Pressable>
+  if (state.status === "error") return <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: space.xl, gap: space.lg, backgroundColor: colors.bg }}>
+    <Text style={[type.body, { textAlign: "center" }]}>{state.notice}</Text>
+    <Button title="Tentar novamente" icon="refresh" block={false} onPress={() => void retrySession()}/>
   </View>;
 
   return <Stack screenOptions={{ ...stackOptions, ...voltarNaWeb, animation: "slide_from_right" }}>

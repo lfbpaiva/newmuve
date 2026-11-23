@@ -108,7 +108,7 @@ function Feed() {
       {setupPending && <EmptyState title="Monte seu feed" icon="musical-notes-outline" action={<Button title="Montar meu feed" icon="arrow-forward" block={false} onPress={() => router.push({ pathname: "/account/edit", params: { acao: "feed" } })}/>}>
         <Text style={type.bodySmall}>Diga sua cidade e os estilos que você toca. É assim que escolhemos os eventos que aparecem aqui.</Text>
       </EmptyState>}
-      {reduzida && <Alert tone="info">Por causa de uma desistência em cima da hora ou de uma ausência, novos eventos não aparecem para você até {new Date(me.visibilidadeReduzidaAte!).toLocaleDateString("pt-BR")}.</Alert>}
+      {reduzida && <Alert tone="info">Por causa de uma desistência em cima da hora ou de uma ausência, novos eventos não aparecem para você e você não pode se inscrever em eventos até {new Date(me.visibilidadeReduzidaAte!).toLocaleDateString("pt-BR")}.</Alert>}
       {(multas.data ?? 0) > 0 && <Alert tone="info">Você tem {formatCurrency(multas.data!)} em multa por ausência, que será descontado do seu próximo cachê.</Alert>}
       {!setupPending && <Reveal><View style={{ gap: space.md }}>
         <FeedFiltersPanel filtros={filtros} onChange={setFiltros}/>
@@ -131,7 +131,7 @@ function Feed() {
             <View style={{ width: 40, height: 40, borderRadius: cantos.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="flash" size={20} color={colors.accentText}/></View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={type.titleSmall}>Muve Pro</Text>
-              <Text style={type.bodySmall}>Inscreva-se 24h antes nos eventos novos e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
+              <Text style={type.bodySmall}>Inscreva-se 24h antes nos eventos novos marcados com 7 dias ou mais de antecedência e apareça primeiro para o contratante. {formatCurrency(PRO_PRECO)}/mês.</Text>
             </View>
             <Icon name="chevron-forward" size={18} color={colors.ink3}/>
           </View>

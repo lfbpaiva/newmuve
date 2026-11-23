@@ -11,7 +11,8 @@ export async function consumeAuthLink(url: string | null, onRecovery: () => void
   const refresh_token = params.get("refresh_token");
   if (!access_token || !refresh_token) return;
   if (params.get("type") === "recovery") onRecovery();
-  await supabase.auth.setSession({ access_token, refresh_token });
+  const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+  if (error) throw new Error("Não foi possível concluir a entrada pelo link. Tente entrar de novo.");
   if (Platform.OS === "web") window.history.replaceState(null, "", window.location.pathname);
 }
 

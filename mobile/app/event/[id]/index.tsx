@@ -20,7 +20,7 @@ import {
 import { mostraEstimativaParaContratante } from "../../../../shared/client/conversation.ts";
 import { detalharTotalDoContratante, formatCurrency, formatTotalDoContratante } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
-import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, emAcessoAntecipado, estimarCobrancaDoContratante, hasCancellationNotice, isPro, valorDaInscricao, type EstimativaDoContratante } from "../../../../shared/dominio.ts";
+import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, emAcessoAntecipado, estimarCobrancaDoContratante, hasCancellationNotice, isPro, PRO_RAIO_MAXIMO_KM, QUALQUER_ESTILO, RAIO_MAXIMO_KM, valorDaInscricao, type EstimativaDoContratante } from "../../../../shared/dominio.ts";
 import { CachePoster, EventFacts, EventHero, EventStatusPill, EventStickyHeader, linkPrincipalDoTrabalho, ReviewsSection, textoDaAbertura, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Reveal, Screen, Section } from "../../../components/ui";
@@ -115,7 +115,10 @@ function Opportunity({ eventId }: { eventId: string }) {
             <Text style={type.titleSmall}>{formatCurrency(application.valorProposto ?? event.cache)}</Text>
           </View>
           {aguardandoResposta && (editingProposal
-            ? <ProposalForm cacheOferecido={event.cache} valorAtual={application.valorProposto} submitLabel="Salvar valor" icon="checkmark" busy={busy} onSubmit={(valor) => run(async () => { await updateProposal(event.id, valor); setPropostaSalva({ valor: valorDaInscricao(valor, event.cache), base: details.data }); setEditingProposal(false); })}/>
+            ? <>
+              <ProposalForm cacheOferecido={event.cache} valorAtual={application.valorProposto} submitLabel="Salvar valor" icon="checkmark" busy={busy} onSubmit={(valor) => run(async () => { await updateProposal(event.id, valor); setPropostaSalva({ valor: valorDaInscricao(valor, event.cache), base: details.data }); setEditingProposal(false); })}/>
+              <Button variant="text" title="Cancelar" disabled={busy} onPress={() => setEditingProposal(false)}/>
+            </>
             : <Button variant="text" title="Alterar valor" onPress={() => setEditingProposal(true)}/>)}
           {conversar && <Button title="Conversar com o contratante" variant="outlined" icon="chatbubbles-outline" onPress={conversar}/>}
           {aguardandoResposta && <Button variant="outlined" title={cancellable ? "Cancelar inscrição" : "Cancelamento indisponível (menos de 24h)"} disabled={!cancellable} loading={busy} onPress={() => confirmAction({ title: "Cancelar inscrição", message: "Cancelar sua inscrição neste evento? A conversa com o contratante também é apagada.", confirmLabel: "Cancelar inscrição", cancelLabel: "Voltar", onConfirm: () => void run(() => cancelApplication(event.id)) })}/>}
@@ -147,6 +150,7 @@ function Manage({ eventId }: { eventId: string }) {
   const { busy, error, run } = useAction(() => router.back());
   const decline = useAction(details.reload);
   const runDecline = decline.run;
+  const inscricoes = useAction(details.reload);
   const me = useMe();
   const casa = isPro(me.casaAte);
   const favoritos = useFavoritos(me.id, casa);
@@ -183,21 +187,24 @@ function Manage({ eventId }: { eventId: string }) {
       variant="outlined"
       icon={event.inscricoesEncerradas ? "lock-open-outline" : "lock-closed-outline"}
       title={event.inscricoesEncerradas ? "Reabrir inscrições" : "Encerrar inscrições"}
-      loading={decline.busy}
-      onPress={() => void runDecline(() => setApplicationsClosed(event.id, !event.inscricoesEncerradas))}
+      loading={inscricoes.busy}
+      onPress={() => void inscricoes.run(() => setApplicationsClosed(event.id, !event.inscricoesEncerradas))}
     />}
     {!locked && event.inscricoesEncerradas && <Text style={type.bodySmall}>O evento não aparece mais para novos músicos. Você ainda pode aprovar quem já se inscreveu.</Text>}
     {!locked && pendentes > 0 && <Text style={type.bodySmall}>Se você mudar data, local, estilos ou cachê, {pendentes === 1 ? "o inscrito será avisado" : `os ${pendentes} inscritos serão avisados`}.</Text>}
     {event.status !== "ABERTO" && <Button title="Ver contratação" icon="document-text-outline" onPress={() => router.push(`/event/${event.id}/hiring`)}/>}
     {error ? <Alert tone="error">{error}</Alert> : null}
     {decline.error ? <Alert tone="error">{decline.error}</Alert> : null}
+    {inscricoes.error ? <Alert tone="error">{inscricoes.error}</Alert> : null}
     {favoritos.erro ? <Alert tone="error">{favoritos.erro}</Alert> : null}
     {favoritos.erro && favoritos.podeTentarDeNovo ? <Button title="Tentar novamente" variant="text" icon="refresh" block={false} onPress={favoritos.tentarDeNovo}/> : null}
     </Section>
 
     <Section title={candidates.length === 0 ? "Candidatos" : `${candidates.length} ${candidates.length === 1 ? "candidato" : "candidatos"}`}>
       {hired && <Text style={type.bodySmall}>Contratado: {hired.musician.nome}</Text>}
-      {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>Músicos de {event.estilosMusicais.join(", ")} num raio de até 200 km de {event.cidade} veem este evento. As inscrições aparecem aqui.</Text></EmptyState>}
+      {candidates.length === 0 && <EmptyState title="Ninguém se inscreveu ainda"><Text style={[type.bodySmall, { textAlign: "center" }]}>{event.inscricoesEncerradas
+        ? "As inscrições estão encerradas. Reabra para o evento voltar a aparecer para os músicos."
+        : `${event.estilosMusicais.includes(QUALQUER_ESTILO) ? "Músicos de qualquer estilo" : `Músicos de ${event.estilosMusicais.join(", ")}`} em ${event.cidade} e a até ${RAIO_MAXIMO_KM} km (${PRO_RAIO_MAXIMO_KM} km para o Muve Pro) veem este evento. As inscrições aparecem aqui.`}</Text></EmptyState>}
       {payingFor && <Alert tone="info">Há um Pix em andamento para um dos candidatos. Conclua ou cancele esse pagamento antes de escolher outro.</Alert>}
       {candidates.map((candidate, index) => {
         const botaoFavorito = favoritos.botao(candidate.musician.id);

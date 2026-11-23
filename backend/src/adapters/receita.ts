@@ -10,8 +10,9 @@ export function createCnpjLookup(): CnpjLookup {
         });
         if (response.status === 404) return "INEXISTENTE";
         if (!response.ok) return null;
-        const data = (await response.json()) as { descricao_situacao_cadastral?: string };
-        return data.descricao_situacao_cadastral === "ATIVA" ? "ATIVA" : "INATIVA";
+        const data = (await response.json()) as { descricao_situacao_cadastral?: unknown };
+        if (typeof data.descricao_situacao_cadastral !== "string") return null;
+        return data.descricao_situacao_cadastral.trim().toUpperCase() === "ATIVA" ? "ATIVA" : "INATIVA";
       } catch (error) {
         console.error("Consulta de CNPJ indisponível", error instanceof Error ? error.name : "erro desconhecido");
         return null;

@@ -217,7 +217,7 @@ export default function CheckoutScreen() {
 
       <View style={[styles.row, { alignItems: "flex-start", gap: space.md }]}>
         <View style={{ width: 36, height: 36, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}><Icon name="shield-checkmark-outline" size={18} color={colors.accentText}/></View>
-        <Text style={[type.bodySmall, { flex: 1 }]}>O cachê fica guardado pela Muve e só é repassado ao músico depois que vocês dois confirmarem o show. Se o músico não comparecer, ou se você cancelar com mais de 24h, o valor volta integralmente.</Text>
+        <Text style={[type.bodySmall, { flex: 1 }]}>O cachê fica guardado pela Muve e só é repassado ao músico depois do show: quando vocês dois confirmarem, ou 7 dias depois da data, se ninguém registrar problema. Se você cancelar com mais de 24h, o valor volta integralmente. Se o músico não comparecer, ele tem 24 horas para responder; sem resposta, o valor também volta integralmente.</Text>
       </View>
       {checkout && !expired && <Button title="Cancelar cobrança pendente" variant="text" loading={canceling} onPress={cancelCharge}/>}
     </Screen>

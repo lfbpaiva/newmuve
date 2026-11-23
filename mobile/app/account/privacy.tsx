@@ -15,8 +15,12 @@ export default function PrivacyScreen() {
   const items: { icon: IconName; title: string; text: string }[] = [
     { icon: "mail-outline", title: "E-mail de acesso", text: `${me.email}. Para trocar, escreva para ${EMAIL_SUPORTE}.` },
     { icon: "card-outline", title: "CPF/CNPJ e telefone", text: "Usados para identificar a conta e, no caso do músico, para o repasse do cachê. Nunca aparecem para outros usuários; só o telefone é compartilhado com a outra parte depois de uma contratação." },
-    { icon: "location-outline", title: "Cidade", text: "Define quais eventos aparecem para você e a que distância. O endereço exato de um evento só é mostrado ao músico contratado." },
-    { icon: "star-outline", title: "Avaliações", text: "As notas que você recebe são públicas no seu perfil e ajudam a outra parte a decidir." },
+    me.role === "MUSICIAN"
+      ? { icon: "location-outline", title: "Cidade", text: "Define quais eventos aparecem para você e a que distância. O endereço exato de um evento só é mostrado ao músico contratado." }
+      : { icon: "location-outline", title: "Cidade", text: "Aparece no seu perfil. O endereço exato dos seus eventos só é mostrado ao músico contratado." },
+    me.role === "MUSICIAN"
+      ? { icon: "star-outline", title: "Avaliações", text: "As notas que você recebe aparecem no seu perfil e para os contratantes dos eventos em que você se inscreve." }
+      : { icon: "star-outline", title: "Avaliações", text: "As notas que você recebe aparecem no seu perfil e para todos os músicos, na tela dos seus eventos." },
   ];
 
   return <Screen>

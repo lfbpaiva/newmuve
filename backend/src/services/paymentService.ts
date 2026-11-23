@@ -21,7 +21,7 @@ const cobrancaEmConciliacao = () =>
 const tempoInsuficiente = () =>
   new AppError(503, "PAGAMENTO_TEMPO_INSUFICIENTE", "O serviço de pagamentos demorou para responder. Tente novamente em instantes.");
 const FALHAS_NA_GERACAO_DO_QR = ["PAGAMENTO_INDISPONIVEL", "PAGAMENTO_QR_INDISPONIVEL", "PAGAMENTO_QR_INCONCLUSIVO"];
-export const MENSAGEM_QR_NAO_GERADO = "A Asaas não conseguiu gerar o QR Code do Pix agora. Tente novamente em alguns minutos.";
+export const MENSAGEM_QR_NAO_GERADO = "Não foi possível gerar o QR Code do Pix agora. Tente novamente em alguns minutos.";
 const qrNaoGerado = (error: unknown) =>
   error instanceof AppError && FALHAS_NA_GERACAO_DO_QR.includes(error.code)
     ? new AppError(error.status, error.code, MENSAGEM_QR_NAO_GERADO, error.retryAfter)
@@ -649,7 +649,7 @@ export function createPaymentService(deps: {
       }
       if (payment.repasseStatus === "PROCESSANDO" || (await payments.findOpenAttempt(payment.id))) throw repasseEmAndamento();
       const remote = await asaas.getPayment(payment.asaasPaymentId);
-      if (!remote || remote.value < payment.valor) throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", `A cobrança no Asaas não corresponde ao pagamento registrado. Escreva para ${EMAIL_SUPORTE}.`);
+      if (!remote || remote.value < payment.valor) throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", `A cobrança na Asaas não corresponde ao pagamento registrado. Escreva para ${EMAIL_SUPORTE}.`);
       let current = payment;
       if (current.refundStatus === "PROCESSANDO") {
         current = await atualizarEstorno(current);
@@ -657,7 +657,7 @@ export function createPaymentService(deps: {
         if (current.refundStatus === "PROCESSANDO") return "PROCESSANDO";
       }
       if (!cobrancaQuitada(remote.status) && remote.status !== "REFUNDED") {
-        throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", "A cobrança não está confirmada no Asaas. Atualize a contratação e tente novamente.");
+        throw new AppError(409, "ESTORNO_COBRANCA_DIVERGENTE", "A cobrança não está confirmada na Asaas. Atualize a contratação e tente novamente.");
       }
       const previous: RefundState = { refundStatus: current.refundStatus, refundAction: current.refundAction };
       if (!(await payments.claimRefund(current.id, action, contestacaoId))) return explainRefusedRefund(current.id);
@@ -692,7 +692,7 @@ export function createPaymentService(deps: {
       if (payment?.status !== "PAGO" || payment.refundStatus === "PROCESSANDO") throw new AppError(409, "PAGAMENTO_INDISPONIVEL", "O pagamento deste evento não está disponível para cancelamento sem estorno.");
       const remote = await asaas.getPayment(payment.asaasPaymentId);
       if (!remote || !cobrancaQuitada(remote.status) || remote.value < payment.valor) {
-        throw new AppError(409, "PAGAMENTO_DIVERGENTE", `O pagamento no Asaas não corresponde ao registro do evento. Escreva para ${EMAIL_SUPORTE}.`);
+        throw new AppError(409, "PAGAMENTO_DIVERGENTE", `O pagamento na Asaas não corresponde ao registro do evento. Escreva para ${EMAIL_SUPORTE}.`);
       }
     },
 

@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CASA_PRECO, PRO_PRECO } from "../../../shared/dominio.ts";
 import { createNotifier } from "./notifications.ts";
-import { createPlanService, type PlanStore, type PlanSubscription } from "./planService.ts";
+import { createPlanService, PLANO_QR_PRAZO_MS, type PlanStore, type PlanSubscription } from "./planService.ts";
 import { contratante, memoryWorld, musico, NOW } from "./testing.ts";
 
 function setup() {
@@ -43,6 +43,9 @@ let t: ReturnType<typeof setup>;
 beforeEach(() => {
   t = setup();
 });
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("assinaturas Muve Pro e Muve Casa", () => {
   it("cliente de outra conta da Asaas é recriado na assinatura", async () => {
@@ -81,6 +84,35 @@ describe("assinaturas Muve Pro e Muve Casa", () => {
 
     await expect(t.service.subscribe(musico, NOW)).resolves.toMatchObject({ assinatura: { status: "AGUARDANDO_PAGAMENTO" } });
     expect(t.world.asaasSubscriptions.size).toBe(assinaturas);
+  });
+
+  it("com a Asaas fora do ar, a tela do plano mostra a situação gravada em vez de erro", async () => {
+    await t.service.subscribe(contratante, NOW);
+    await t.pagarPrimeira();
+    vi.spyOn(t.world.stores.asaas, "listSubscriptionPayments").mockRejectedValueOnce(new Error("Asaas fora do ar"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const status = await t.service.status(contratante);
+
+    expect(status).toMatchObject({ plano: "CASA", ativoAte: expect.any(String), assinatura: { status: "ATIVA", cobranca: null } });
+  });
+
+  it("o aviso de pagamento não esconde a falha da Asaas, para ser reenviado", async () => {
+    await t.service.subscribe(contratante, NOW);
+    const [asaasId] = [...t.world.asaasSubscriptions.keys()].slice(-1);
+    vi.spyOn(t.world.stores.asaas, "listSubscriptionPayments").mockRejectedValueOnce(new Error("Asaas fora do ar"));
+
+    await expect(t.service.handleWebhook(asaasId)).rejects.toThrow("Asaas fora do ar");
+  });
+
+  it("a consulta do QR do plano usa um prazo curto, para a tela não esperar demais", async () => {
+    const qr = vi.spyOn(t.world.stores.asaas, "getPixQrCode");
+    const antes = Date.now();
+
+    await t.service.subscribe(musico, NOW);
+
+    const prazo = qr.mock.calls.at(-1)?.[1]?.prazo ?? 0;
+    expect(prazo - antes).toBeLessThanOrEqual(PLANO_QR_PRAZO_MS + 1_000);
   });
 
   it("cancelar sem assinatura responde SEM_ASSINATURA", async () => {

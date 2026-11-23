@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   ArrowRight, Banknote, Bell, BellRing, Building2, Calendar, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleAlert, CircleCheck, CircleHelp, CircleMinus, CirclePlay,
-  Clock, CloudOff, Copy, CreditCard, Eye, EyeOff, FileText, Flag, Heart, House, Image as ImagemIcone, Info, Lock, LockOpen, LogOut, Mail, MailOpen, Map as MapaIcone, MapPin, Megaphone, MessagesSquare, Music,
+  Clock, CloudOff, Copy, CreditCard, Eye, EyeOff, FileText, Flag, Globe, Heart, House, Image as ImagemIcone, Info, Lock, LockOpen, LogOut, Mail, MailOpen, Map as MapaIcone, MapPin, Megaphone, MessagesSquare, Music,
   Navigation, Phone, Plus, RefreshCw, Repeat, Save, Search, Send, SendHorizontal, Settings, ShieldCheck, SlidersHorizontal, SquarePen, Star, Store, Tag as TagIcone, Trash2, TrendingUp, User, Users, Volume2, X, Zap,
   type LucideIcon,
 } from "lucide-react-native";
@@ -93,6 +93,7 @@ const icones = {
   "person-outline": User,
   "play-circle-outline": CirclePlay,
   "pricetag-outline": TagIcone,
+  "globe-outline": Globe,
   "refresh": RefreshCw,
   "remove-circle-outline": CircleMinus,
   "repeat-outline": Repeat,

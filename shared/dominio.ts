@@ -96,12 +96,23 @@ const DOMINIOS_DAS_REDES: Record<RedeSocial, string[]> = {
 };
 const PERFIL_POR_USUARIO: Partial<Record<RedeSocial, string>> = { instagram: "https://www.instagram.com/", tiktok: "https://www.tiktok.com/@" };
 
+export const linkComProtocolo = (texto: string) => {
+  const limpo = texto.trim();
+  if (!limpo) return "";
+  return /^https?:\/\//i.test(limpo) ? limpo : `https://${limpo}`;
+};
+
+export const aceitaUsuarioDaRede = (rede: RedeSocial) => rede in PERFIL_POR_USUARIO;
+
+export const mensagemDeRedeInvalida = (rede: RedeSocial) =>
+  aceitaUsuarioDaRede(rede) ? `Informe o @ ou um link válido do ${ROTULOS_REDES[rede]}.` : `Informe um link válido do ${ROTULOS_REDES[rede]}.`;
+
 export function normalizarLinkDaRede(rede: RedeSocial, texto: string): string | null {
   const limpo = texto.trim();
   const usuario = /^@?([A-Za-z0-9._]{1,30})$/.exec(limpo);
   const perfil = PERFIL_POR_USUARIO[rede];
   if (usuario && perfil && !limpo.includes(".com")) return `${perfil}${usuario[1]}`;
-  const link = /^https?:\/\//i.test(limpo) ? limpo : `https://${limpo}`;
+  const link = linkComProtocolo(limpo);
   if (!isValidUrl(link)) return null;
   let host: string;
   try {

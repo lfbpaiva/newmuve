@@ -21,7 +21,7 @@ import { useMe } from "../../../lib/useMe";
 import { useRefreshOnFocus } from "../../../lib/useRefreshOnFocus";
 
 const finishedMessages: Record<Exclude<CancellationResult["situacao"], "ESTORNO_PROCESSANDO" | "AGUARDANDO_MUSICO">, string> = {
-  ESTORNADO: "O Asaas confirmou o estorno ao contratante. A contratação foi encerrada.",
+  ESTORNADO: "A Asaas confirmou o estorno ao contratante. A contratação foi encerrada.",
   SEM_ESTORNO: "A contratação foi cancelada sem estorno, conforme a regra de prazo. O cachê será repassado ao músico.",
   COBRANCA_CANCELADA: "A cobrança pendente foi cancelada. Nenhum valor havia sido recebido, portanto não há reembolso.",
 };
@@ -74,7 +74,7 @@ export default function HiringScreen() {
         setRetorno({ area: "confirmacao", tom: "info", texto: "Não comparecimento informado. O músico tem 24 horas para responder; sem resposta, o estorno integral é pedido automaticamente." });
         hiring.reload();
       } else if (situacao === "ESTORNO_PROCESSANDO") {
-        setRetorno({ area: "desfazer", tom: "info", texto: "Estorno solicitado ao Asaas. A contratação continua ativa até a confirmação da devolução." });
+        setRetorno({ area: "desfazer", tom: "info", texto: "Estorno solicitado à Asaas. A contratação continua ativa até a confirmação da devolução." });
         hiring.reload();
       } else {
         setFinished(finishedMessages[situacao]);
@@ -116,9 +116,9 @@ export default function HiringScreen() {
   function cancel() {
     const message = isContractor
       ? cancelamento.reembolso
-        ? "O estorno integral será solicitado ao Asaas. A contratação termina quando a devolução for confirmada."
+        ? "O estorno integral será solicitado à Asaas. A contratação termina quando a devolução for confirmada."
         : "Faltam menos de 24h: não há devolução e o cachê será repassado ao músico."
-      : `O estorno integral ao contratante será solicitado. Depois da confirmação da devolução, o evento volta a receber candidatos.${hasCancellationNotice(new Date(evento.inicio), new Date()) ? "" : ` Como faltam menos de 24h para o show, você fica ${VISIBILIDADE_REDUZIDA_DIAS} dias sem ver eventos novos no feed.`}`;
+      : `O estorno integral ao contratante será solicitado. Depois da confirmação da devolução, o evento volta a receber candidatos.${hasCancellationNotice(new Date(evento.inicio), new Date()) ? "" : ` Como faltam menos de 24h para o show, você fica ${VISIBILIDADE_REDUZIDA_DIAS} dias sem ver eventos novos no feed e sem poder se inscrever em eventos.`}`;
     const esperado = isContractor ? (cancelamento.reembolso ? "COM_ESTORNO" : "SEM_ESTORNO") : undefined;
     confirmAction({ title: isContractor ? "Cancelar contratação" : "Desistir do show", message, onConfirm: () => void runCancellation(() => cancelHiring(evento.id, esperado)) });
   }
@@ -249,7 +249,7 @@ export default function HiringScreen() {
         </View>}
         {cancelamento.permitido && <View style={[styles.card, { gap: space.sm }]}>
           <Text style={type.bodySmall}>{isContractor
-            ? (cancelamento.reembolso ? "Até 24h antes do evento, é possível solicitar o estorno integral. A contratação termina quando o Asaas confirmar a devolução." : "Faltam menos de 24h: ao cancelar, o cachê é repassado ao músico.")
+            ? (cancelamento.reembolso ? "Até 24h antes do evento, é possível solicitar o estorno integral. A contratação termina quando a Asaas confirmar a devolução." : "Faltam menos de 24h: ao cancelar, o cachê é repassado ao músico.")
             : "Ao desistir, o estorno ao contratante é solicitado. Depois da confirmação da devolução, o evento volta a receber candidatos."}</Text>
           <Button variant="danger" title={isContractor ? "Cancelar contratação" : "Desistir do show"} block={false} loading={busy} onPress={cancel}/>
         </View>}

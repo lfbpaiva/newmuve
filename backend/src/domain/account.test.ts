@@ -14,7 +14,7 @@ describe("redes sociais no perfil do músico", () => {
     const resultado = perfil({ tiktok: "https://instagram.com/bandateste" });
 
     expect(resultado.success).toBe(false);
-    expect(resultado.error?.issues[0]?.message).toBe("Informe um link válido do TikTok.");
+    expect(resultado.error?.issues[0]?.message).toBe("Informe o @ ou um link válido do TikTok.");
   });
 
   it("ignora rede que o app não conhece", () => {
@@ -24,5 +24,15 @@ describe("redes sociais no perfil do músico", () => {
 
   it("sem o campo, as redes ficam como estão", () => {
     expect(perfil(undefined).data?.redesSociais).toBeUndefined();
+  });
+});
+
+describe("chave Pix no perfil do músico", () => {
+  it("o erro aponta o campo, para a mensagem chegar ao app em vez de \"Dados inválidos.\"", () => {
+    const semTipo = updateProfileSchemas.MUSICIAN.safeParse({ nome: "Banda Teste", chavePix: "123" });
+    const invalida = updateProfileSchemas.MUSICIAN.safeParse({ nome: "Banda Teste", chavePixTipo: "CPF", chavePix: "123" });
+
+    expect(semTipo.error?.issues[0]).toMatchObject({ path: ["chavePixTipo"], message: "Selecione o tipo da chave Pix." });
+    expect(invalida.error?.issues[0]).toMatchObject({ path: ["chavePix"], message: "Chave Pix inválida para o tipo selecionado." });
   });
 });

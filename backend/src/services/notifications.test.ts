@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNotifier, type PushGateway } from "./notifications.ts";
+import { createNotifier, TEXTO_MAXIMO, TITULO_MAXIMO, type PushGateway } from "./notifications.ts";
 import { memoryWorld } from "./testing.ts";
 
 describe("notificação com o app fechado", () => {
@@ -54,5 +54,19 @@ describe("aviso de penalidade", () => {
       expect(aviso.texto).toContain("As inscrições que você já fez continuam valendo");
       expect(aviso.texto).not.toMatch(/cancelad/i);
     }
+  });
+});
+
+describe("tamanho do aviso", () => {
+  it("corta título e texto longos para caberem na caixa de entrada, em vez de perder o aviso", async () => {
+    const world = memoryWorld();
+    const notifier = createNotifier({ ...world.stores, appUrl: "http://localhost:8081" });
+
+    await notifier.candidateDeclined(world.seedEvent({ titulo: "Show ".repeat(200) }), "m1");
+
+    const [aviso] = world.notifications;
+    expect(aviso.titulo.length).toBeLessThanOrEqual(TITULO_MAXIMO);
+    expect(aviso.texto.length).toBeLessThanOrEqual(TEXTO_MAXIMO);
+    expect(`${aviso.titulo}${aviso.texto}`).toContain("…");
   });
 });
