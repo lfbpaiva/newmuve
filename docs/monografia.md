@@ -13,7 +13,7 @@ Trechos prontos para substituir ou complementar as seções do documento "Projet
 ## 4.2 Fontes de receita
 
 - **Taxa de serviço:** 10% somados ao valor do cachê e pagos pelo contratante. O músico recebe o cachê integral combinado.
-- **Assinatura Muve Pro:** R$ 19,90 por mês, paga pelo músico que quer se inscrever antes nos eventos novos e aparecer primeiro para o contratante.
+- **Assinatura Muve Pro:** R$ 19,90 por mês, paga pelo músico que quer ver eventos novos antes e aparecer primeiro para o contratante.
 - **Multa por ausência:** 20% do cachê, descontada do próximo repasse do músico.
 - **Assinatura Muve Casa:** R$ 49,90 por mês, paga pelo contratante frequente: taxa de 6%, eventos recorrentes, favoritos com convite direto e agenda do mês.
 
@@ -25,7 +25,7 @@ Trechos prontos para substituir ou complementar as seções do documento "Projet
 - **RN04:** o contratante que cancela com menos de 24 horas não recebe devolução; o cachê é repassado ao músico.
 - **RN05:** se o músico não comparecer, o contratante registra a ausência em até 7 dias. O músico tem 24 horas para responder: se confirmar que fez o show, abre-se uma contestação decidida pelo suporte; sem resposta, o contratante recebe o valor integral de volta e o músico recebe a multa. Se o músico desistir antes do evento, o contratante recebe tudo de volta e o evento volta a receber inscrições.
 - **RN06:** todo evento tem data, horário de início (no fuso do estado), duração e cachê mínimo de R$ 100,00.
-- **RN07:** o evento só aparece para músicos com estilo compatível, na mesma cidade ou num raio de até 200 km (400 km no Muve Pro). Nas primeiras 24 horas, a inscrição em eventos com 7 dias ou mais de antecedência é exclusiva do Muve Pro; os demais músicos já veem o evento e a hora em que a inscrição abre.
+- **RN07:** o evento só aparece para músicos com estilo compatível, na mesma cidade ou num raio de até 200 km (400 km no Muve Pro). Nas primeiras 24 horas, os eventos com 7 dias ou mais de antecedência aparecem só para o Muve Pro.
 - **RN08:** o músico pode aceitar o cachê oferecido ou propor outro valor; a cobrança usa sempre o valor gravado na inscrição.
 - **RN09:** CPF/CNPJ e chave Pix nunca são exibidos a terceiros; endereço e telefone só após a contratação.
 - **RN10:** um músico não pode ser contratado para dois shows em horários sobrepostos.
@@ -75,7 +75,7 @@ A tela "Contratos" do protótipo foi substituída pelo **comprovante da contrata
 - Contestação com decisão do suporte (mediação de disputas).
 - Consulta de CNPJ na Receita Federal.
 - Notificações em tempo real no app e com o app fechado (push).
-- Plano Muve Pro para músicos (R$ 19,90/mês): inscrição 24h antes nos eventos novos com 7 dias ou mais de antecedência, destaque nas inscrições e raio de 400 km.
+- Plano Muve Pro para músicos (R$ 19,90/mês): acesso 24h antes aos eventos novos com 7 dias ou mais de antecedência, destaque nas inscrições e raio de 400 km.
 - Avaliações do contratante visíveis para todos os músicos, na tela do evento.
 - Redes sociais do músico (Instagram, YouTube, Spotify e TikTok) no perfil e na tela do candidato.
 - Eventos e inscrições separados entre "em andamento" e histórico.

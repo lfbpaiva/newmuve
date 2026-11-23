@@ -4,6 +4,8 @@ import { ESPERA_CONFIRMACAO_MS, ESPERA_VERIFICACAO_MS } from "../backend/src/ser
 import {
   CANCELAMENTO_ANTECEDENCIA_MINIMA_MS,
   MULTA_AUSENCIA_PERCENTUAL,
+  PRO_ANTECEDENCIA_MINIMA_DIAS,
+  PRO_ANTECIPACAO_HORAS,
   PRO_RAIO_MAXIMO_KM,
   RAIO_MAXIMO_KM,
   VISIBILIDADE_REDUZIDA_DIAS,
@@ -36,11 +38,12 @@ describe("regras que existem no banco e no TypeScript continuam iguais", () => {
     expect(sql).toContain(`interval '${CANCELAMENTO_ANTECEDENCIA_MINIMA_MS / HORA_MS} hours'`);
   });
 
-  it("feed usa o mesmo raio do Muve Pro e mostra o evento a todos; o acesso antecipado vale só na inscrição, pela API", () => {
+  it("feed usa o mesmo raio e o mesmo acesso antecipado do Muve Pro", () => {
     const sql = versaoAtual("musician_feed");
 
     expect(sql).toContain(`then ${PRO_RAIO_MAXIMO_KM} else ${RAIO_MAXIMO_KM} end`);
-    expect(sql).not.toContain("created_at");
+    expect(sql).toContain(`e.created_at <= now() - interval '${PRO_ANTECIPACAO_HORAS} hours'`);
+    expect(sql).toContain(`e.inicio - now() < interval '${PRO_ANTECEDENCIA_MINIMA_DIAS} days'`);
   });
 
   it("prazos da liberação manual de repasse são os mesmos na API e no banco", () => {

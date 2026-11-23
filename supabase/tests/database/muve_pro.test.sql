@@ -18,7 +18,9 @@ insert into public.contractor_profiles (user_id, nome_fantasia, documento, telef
 insert into public.events (id, contractor_id, titulo, tipo_evento, inicio, duracao_minutos, uf, cidade, estilos_musicais, cache, imagem_url, created_at) values
   ('00000000-0000-0000-0000-0000000003e1', '00000000-0000-0000-0000-0000000003c1', 'Jazz daqui a um mes', 'Bar e restaurante', now() + interval '30 days', 120, 'PR', 'Cascavel', '{Jazz}', 500, 'https://x/1.png', now() - interval '1 hour'),
   ('00000000-0000-0000-0000-0000000003e2', '00000000-0000-0000-0000-0000000003c1', 'Jazz amanha', 'Bar e restaurante', now() + interval '1 day', 120, 'PR', 'Cascavel', '{Jazz}', 500, 'https://x/2.png', now() - interval '1 hour'),
-  ('00000000-0000-0000-0000-0000000003e3', '00000000-0000-0000-0000-0000000003c1', 'Jazz em Londrina', 'Bar e restaurante', now() + interval '3 days', 120, 'PR', 'Londrina', '{Jazz}', 500, 'https://x/3.png', now() - interval '3 days');
+  ('00000000-0000-0000-0000-0000000003e3', '00000000-0000-0000-0000-0000000003c1', 'Jazz em Londrina', 'Bar e restaurante', now() + interval '3 days', 120, 'PR', 'Londrina', '{Jazz}', 500, 'https://x/3.png', now() - interval '3 days'),
+  ('00000000-0000-0000-0000-0000000003e4', '00000000-0000-0000-0000-0000000003c1', 'Jazz em 7 dias exatos', 'Bar e restaurante', now() + interval '7 days', 120, 'PR', 'Cascavel', '{Jazz}', 500, 'https://x/4.png', now() - interval '1 hour'),
+  ('00000000-0000-0000-0000-0000000003e5', '00000000-0000-0000-0000-0000000003c1', 'Jazz em quase 7 dias', 'Bar e restaurante', now() + interval '7 days' - interval '1 minute', 120, 'PR', 'Cascavel', '{Jazz}', 500, 'https://x/5.png', now() - interval '1 hour');
 insert into public.subscriptions (user_id, plano, asaas_subscription_id, status, valor) values
   ('00000000-0000-0000-0000-0000000003a2', 'PRO', 'sub_teste', 'AGUARDANDO_PAGAMENTO', 19.90);
 
@@ -33,14 +35,14 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000003a1","role":"authenticated"}';
 select results_eq(
   $$ select event_id from public.musician_feed(400) where event_id::text like '00000000-0000-0000-0000-0000000003%' order by event_id $$,
-  $$ values ('00000000-0000-0000-0000-0000000003e1'::uuid), ('00000000-0000-0000-0000-0000000003e2'::uuid) $$,
-  'musico gratuito ve o evento em acesso antecipado, mas nao passa de 200 km');
+  $$ values ('00000000-0000-0000-0000-0000000003e2'::uuid), ('00000000-0000-0000-0000-0000000003e5'::uuid) $$,
+  'musico gratuito nao ve o evento em acesso antecipado (7 dias exatos ainda espera) nem passa de 200 km');
 
 set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000003a2","role":"authenticated"}';
 select results_eq(
   $$ select event_id from public.musician_feed(400) where event_id::text like '00000000-0000-0000-0000-0000000003%' order by event_id $$,
-  $$ values ('00000000-0000-0000-0000-0000000003e1'::uuid), ('00000000-0000-0000-0000-0000000003e2'::uuid), ('00000000-0000-0000-0000-0000000003e3'::uuid) $$,
-  'musico Pro ve os eventos ate 400 km');
+  $$ values ('00000000-0000-0000-0000-0000000003e1'::uuid), ('00000000-0000-0000-0000-0000000003e2'::uuid), ('00000000-0000-0000-0000-0000000003e3'::uuid), ('00000000-0000-0000-0000-0000000003e4'::uuid), ('00000000-0000-0000-0000-0000000003e5'::uuid) $$,
+  'musico Pro ve o evento antes e ate 400 km');
 select throws_ok($$ select public.activate_plan('00000000-0000-0000-0000-0000000003a2', 'pay_x', 31) $$, '42501', null, 'cliente nao ativa o Pro sozinho');
 select throws_ok($$ select 1 from public.subscriptions $$, '42501', null, 'cliente nao le assinaturas');
 reset role;
