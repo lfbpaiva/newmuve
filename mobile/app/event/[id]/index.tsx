@@ -21,7 +21,7 @@ import { mostraEstimativaParaContratante } from "../../../../shared/client/conve
 import { detalharTotalDoContratante, formatCurrency, formatTotalDoContratante } from "../../../../shared/client/format.ts";
 import { useAsync } from "../../../../shared/client/useAsync.ts";
 import { calcularCobranca, camposFaltantes, comissaoPercentual, descreverFaltantes, emAcessoAntecipado, estimarCobrancaDoContratante, hasCancellationNotice, isPro, valorDaInscricao, type EstimativaDoContratante } from "../../../../shared/dominio.ts";
-import { CachePoster, EventFacts, EventHero, EventStatusPill, EventStickyHeader, ReviewsSection, textoDaAbertura, withEncerrado } from "../../../components/events";
+import { CachePoster, EventFacts, EventHero, EventStatusPill, EventStickyHeader, linkPrincipalDoTrabalho, ReviewsSection, textoDaAbertura, withEncerrado } from "../../../components/events";
 import { ProposalForm } from "../../../components/proposal";
 import { Alert, Avatar, Button, EmptyState, ErrorState, Icon, Loading, Pill, RatingSummary, Reveal, Screen, Section } from "../../../components/ui";
 import { aparenciaDoCoracao } from "../../../lib/favoritos";
@@ -243,7 +243,7 @@ function CandidateCard({ candidate, estimativa, canApprove, canDecline, approveL
       {candidate.status === "PENDENTE" && canApprove && <Button icon="checkmark" title={approveLabel} onPress={onApprove}/>}
       <View style={[styles.row, { gap: space.sm }]}>
         {candidate.status !== "RECUSADO" && <View style={{ flex: 1 }}><Button variant="tonal" icon="chatbubbles-outline" title="Conversar" onPress={onChat}/></View>}
-        {musician.portfolioUrl ? <View style={{ flex: 1 }}><Button variant="tonal" icon="play-circle-outline" title="Ver trabalho" onPress={() => onPortfolio(musician.portfolioUrl!)}/></View> : null}
+        {linkPrincipalDoTrabalho(musician) ? <View style={{ flex: 1 }}><Button variant="tonal" icon="play-circle-outline" title="Ver trabalho" onPress={() => onPortfolio(linkPrincipalDoTrabalho(musician)!)}/></View> : null}
       </View>
       {candidate.status === "PENDENTE" && canDecline && <Button variant="text" title="Recusar inscrição" onPress={onDecline}/>}
     </View>

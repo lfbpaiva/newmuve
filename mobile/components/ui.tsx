@@ -112,7 +112,7 @@ const icones = {
 } satisfies Record<string, LucideIcon>;
 
 const preenchidos = new Set(["heart", "star", "ellipse", "flash", "checkmark-circle", "notifications", "home", "person"]);
-const marcas = { "logo-google": "logo-google", "logo-whatsapp": "logo-whatsapp" } as const;
+const marcas = { "logo-google": "logo-google", "logo-whatsapp": "logo-whatsapp", "logo-instagram": "logo-instagram", "logo-youtube": "logo-youtube", "logo-tiktok": "logo-tiktok" } as const;
 
 export type IconName = keyof typeof icones | keyof typeof marcas;
 

@@ -5,13 +5,15 @@ import { fetchMyEvents } from "../../../shared/client/events.ts";
 import { useAsync } from "../../../shared/client/useAsync.ts";
 import { maskDocumento, maskPhone } from "../../../shared/client/validators.ts";
 import { ROTULOS_CHAVE_PIX, type TipoChavePix } from "../../../shared/dominio.ts";
-import { EventPosterRow, EventStatusPill, ReviewsSection } from "../../components/events";
+import { EventPosterRow, EventStatusPill, linkPrincipalDoTrabalho, LinksDoTrabalho, ReviewsSection } from "../../components/events";
 import { Alert, Avatar, Button, ErrorState, Icon, Pill, RatingSummary, Screen, Surface, Section, Tag, type IconName } from "../../components/ui";
-import { abrirLink } from "../../lib/links";
 import { TopBar } from "../../components/TopBar";
 import { colors, space, styles, type } from "../../lib/theme";
 import { useMe } from "../../lib/useMe";
 import { useRefreshOnFocus } from "../../lib/useRefreshOnFocus";
+import { eventoEmAndamento, separarPorAndamento } from "../../lib/historico";
+
+const EVENTOS_NO_PERFIL = 3;
 
 export default function ProfileScreen() {
   const me = useMe();
@@ -39,9 +41,9 @@ export default function ProfileScreen() {
       </View>
       <Button title="Editar perfil" variant="outlined" icon="create-outline" onPress={() => router.push("/account/edit")}/>
     </Surface>
-    {isMusician && (me.bio || me.portfolioUrl) && <View style={[styles.card, { gap: space.md }]}>
+    {isMusician && (me.bio || linkPrincipalDoTrabalho(me)) && <View style={[styles.card, { gap: space.md }]}>
       {me.bio ? <Text style={type.body}>{me.bio}</Text> : null}
-      {me.portfolioUrl ? <Button title="Ver meu trabalho" variant="outlined" icon="play-circle-outline" onPress={() => { setLinkError(""); abrirLink(me.portfolioUrl!, setLinkError); }}/> : null}
+      <LinksDoTrabalho portfolioUrl={me.portfolioUrl} redesSociais={me.redesSociais} onErro={setLinkError}/>
     </View>}
     {linkError ? <Alert tone="error">{linkError}</Alert> : null}
     {isMusician && <View style={[styles.row, { flexWrap: "wrap" }]}>{(me.estilosMusicais ?? []).map((estilo) => <Tag key={estilo} text={estilo}/>)}</View>}
@@ -59,9 +61,12 @@ function EventHistory({ contractorId }: { contractorId: string }) {
   const router = useRouter();
   const events = useAsync(`history:${contractorId}`, () => fetchMyEvents(contractorId));
   useRefreshOnFocus(events.reload);
-  return <Section title="Histórico de eventos">
+  const separados = events.data ? separarPorAndamento(events.data, (event) => event.inicio, (event) => eventoEmAndamento(event)) : null;
+  const recentes = separados ? [...separados.andamento, ...separados.historico].slice(0, EVENTOS_NO_PERFIL) : [];
+  return <Section title="Seus eventos">
     {events.error && <ErrorState message={events.error} onRetry={events.reload}/>}
     {events.data?.length === 0 && <Text style={type.bodySmall}>Nenhum evento criado até o momento.</Text>}
-    {events.data?.map((event) => <EventPosterRow key={event.id} event={event} status={<EventStatusPill status={event.status}/>} onPress={() => router.push(`/event/${event.id}`)}/>)}
+    {recentes.map((event) => <EventPosterRow key={event.id} event={event} status={<EventStatusPill status={event.status}/>} onPress={() => router.push(`/event/${event.id}`)}/>)}
+    {(events.data?.length ?? 0) > EVENTOS_NO_PERFIL && <Button title={`Ver todos (${events.data!.length})`} variant="text" onPress={() => router.push("/(app)/events")}/>}
   </Section>;
 }

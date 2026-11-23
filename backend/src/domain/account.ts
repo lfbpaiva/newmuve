@@ -9,6 +9,10 @@ import {
   onlyDigits,
   SENHA_TAMANHO_MINIMO,
   TIPOS_CHAVE_PIX,
+  normalizarLinkDaRede,
+  REDES_SOCIAIS,
+  ROTULOS_REDES,
+  type RedesSociais,
 } from "../../../shared/dominio.ts";
 import { cidade, telefone, texto, uf } from "./fields.ts";
 
@@ -75,6 +79,26 @@ const profileCommon = {
 
 const contractorProfile = z.object(profileCommon);
 
+const linkDeRede = z.string({ error: "Link inválido." }).max(300, "O link deve ter no máximo 300 caracteres.").optional();
+const redesSociais = z
+  .object({ instagram: linkDeRede, youtube: linkDeRede, spotify: linkDeRede, tiktok: linkDeRede }, { error: "Redes sociais inválidas." })
+  .optional()
+  .transform((redes, ctx) => {
+    if (!redes) return undefined;
+    const links: RedesSociais = {};
+    for (const rede of REDES_SOCIAIS) {
+      const texto = redes[rede]?.trim();
+      if (!texto) continue;
+      const link = normalizarLinkDaRede(rede, texto);
+      if (!link) {
+        ctx.addIssue({ code: "custom", message: `Informe um link válido do ${ROTULOS_REDES[rede]}.` });
+        return z.NEVER;
+      }
+      links[rede] = link;
+    }
+    return links;
+  });
+
 const musicianProfile = z
   .object({
     ...profileCommon,
@@ -84,6 +108,7 @@ const musicianProfile = z
       .optional()
       .transform((estilos) => (estilos && estilos.length ? [...new Set(estilos)] : undefined)),
     portfolioUrl: clearableText(z.string().refine(isValidUrl, "Informe um link válido, começando com http:// ou https://.")),
+    redesSociais,
     chavePixTipo: optionalText(z.enum(TIPOS_CHAVE_PIX, { error: "Tipo de chave Pix inválido." })),
     chavePix: optionalText(z.string()),
     senhaAtual: z.string().max(200).optional(),
@@ -123,6 +148,7 @@ export interface Account {
   chavePixTipo?: string | null;
   chavePix?: string | null;
   portfolioUrl?: string | null;
+  redesSociais?: RedesSociais;
   visibilidadeReduzidaAte?: Date | null;
   proAte?: Date | null;
   casaAte?: Date | null;
